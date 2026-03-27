@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
+  "name": "romulus",
+  "version": "0.1.0",
+  "description": "Production-grade C++ backend for managing ROM collections",
+  "builtin-baseline": "596c7b12a7958343e22077fb4c9b2ee5a9a8e7fa",
+  "dependencies": [
+    {
+      "name": "pugixml",
+      "version>=": "1.15"
+    },
+    {
+      "name": "spdlog",
+      "version>=": "1.17.0"
+    },
+    {
+      "name": "openssl",
+      "version>=": "3.6.1"
+    },
+    {
+      "name": "catch2",
+      "version>=": "3.13.0",
+      "default-features": false
+    }
+  ]
+}

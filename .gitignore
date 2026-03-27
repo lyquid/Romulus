@@ -1,0 +1,14 @@
+build/
+build-*/
+*.o
+*.a
+*.so
+*.dll
+*.exe
+.cache/
+compile_commands.json
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+vcpkg_installed/

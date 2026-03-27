@@ -1,0 +1,3 @@
+add_library(romulus_common INTERFACE)
+target_include_directories(romulus_common INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(romulus_common INTERFACE cxx_std_23)
