@@ -1,0 +1,163 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  BUILD_TYPE: Release
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
+
+permissions:
+  contents: read
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Build & Test Matrix (MSVC, GCC, Clang)
+  # ─────────────────────────────────────────────
+  build:
+    name: "${{ matrix.os }} / ${{ matrix.compiler }}"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            compiler: msvc
+            cmake-preset: ci-windows
+          - os: ubuntu-latest
+            compiler: gcc
+            cmake-preset: ci-linux-gcc
+          - os: ubuntu-latest
+            compiler: clang
+            cmake-preset: ci-linux-clang
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup vcpkg cache
+        run: mkdir -p ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        shell: bash
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ matrix.os }}-${{ matrix.compiler }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-${{ matrix.os }}-${{ matrix.compiler }}-
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: "c82f74667287d3dc386bce81e44964370c91a289"
+
+      # GCC 13+ for C++23 support
+      - name: Install GCC 13
+        if: matrix.compiler == 'gcc'
+        run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          sudo apt-get update
+          sudo apt-get install -y gcc-13 g++-13
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 130
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 130
+
+      # Clang 17+ for C++23 support
+      - name: Install Clang 17
+        if: matrix.compiler == 'clang'
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 17
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-17 170
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-17 170
+
+      - name: Configure CMake
+        run: cmake --preset ${{ matrix.cmake-preset }}
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }}
+
+      - name: Run Tests
+        run: ctest --test-dir build --config ${{ env.BUILD_TYPE }} --output-on-failure --no-tests=error
+
+  # ─────────────────────────────────────────────
+  # Code Formatting Check
+  # ─────────────────────────────────────────────
+  format:
+    name: "clang-format"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 17
+          sudo apt-get install -y clang-format-17
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-17 170
+
+      - name: Check formatting
+        run: |
+          find lib/ apps/ tests/ -name '*.hpp' -o -name '*.cpp' | head -200 | \
+            xargs clang-format --dry-run --Werror --style=file 2>&1
+        shell: bash
+
+  # ─────────────────────────────────────────────
+  # Static Analysis
+  # ─────────────────────────────────────────────
+  lint:
+    name: "clang-tidy"
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup vcpkg cache
+        run: mkdir -p ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        shell: bash
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-ubuntu-latest-clang-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-ubuntu-latest-clang-
+
+      - name: Install Clang 17
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 17
+          sudo apt-get install -y clang-tidy-17
+          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-17 170
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-17 170
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-17 170
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: "c82f74667287d3dc386bce81e44964370c91a289"
+
+      - name: Configure CMake
+        run: cmake --preset ci-linux-clang -DROMULUS_ENABLE_CLANG_TIDY=ON
+
+      - name: Run clang-tidy (via build)
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} 2>&1 | tee clang-tidy-output.txt
+
+      - name: Check for clang-tidy warnings
+        run: |
+          if grep -q "warning:" clang-tidy-output.txt; then
+            echo "::error::clang-tidy found warnings"
+            grep "warning:" clang-tidy-output.txt
+            exit 1
+          fi

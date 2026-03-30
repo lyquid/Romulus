@@ -1,0 +1,60 @@
+{
+  "branches": ["main"],
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "conventionalcommits",
+        "releaseRules": [
+          { "type": "feat", "release": "minor" },
+          { "type": "fix", "release": "patch" },
+          { "type": "perf", "release": "patch" },
+          { "type": "refactor", "release": "patch" },
+          { "type": "docs", "release": false },
+          { "type": "test", "release": false },
+          { "type": "build", "release": false },
+          { "type": "chore", "release": false },
+          { "breaking": true, "release": "major" }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits",
+        "presetConfig": {
+          "types": [
+            { "type": "feat", "section": "⚡ Features" },
+            { "type": "fix", "section": "🐛 Bug Fixes" },
+            { "type": "perf", "section": "🚀 Performance" },
+            { "type": "refactor", "section": "♻️ Refactoring" },
+            { "type": "docs", "section": "📚 Documentation", "hidden": true },
+            { "type": "test", "section": "🧪 Tests", "hidden": true },
+            { "type": "build", "section": "🔧 Build", "hidden": true },
+            { "type": "chore", "section": "🧹 Chores", "hidden": true }
+          ]
+        }
+      }
+    ],
+    [
+      "@semantic-release/changelog",
+      {
+        "changelogFile": "CHANGELOG.md",
+        "changelogTitle": "# CHANGELOG\n\n> *ROMULUS imposes order on chaos — and keeps a record of it.*\n\nAll notable changes to this project will be documented in this file.\nThis changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org/)."
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "echo Setting version to ${nextRelease.version}"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [],
+        "successComment": "🎮 This ${issue.pull_request ? 'PR is included' : 'issue is fixed'} in version **${nextRelease.version}**"
+      }
+    ]
+  ]
+}

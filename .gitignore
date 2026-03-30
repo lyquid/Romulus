@@ -1,0 +1,46 @@
+# ── Build artifacts ───────────────────────────────────────────
+build/
+out/
+cmake-build-*/
+CMakeUserPresets.json
+
+# ── vcpkg ─────────────────────────────────────────────────────
+vcpkg_installed/
+vcpkg-cache/
+
+# ── IDE ───────────────────────────────────────────────────────
+.vs/
+.vscode/
+.idea/
+*.sln
+*.vcxproj*
+*.user
+*.suo
+*.opensdf
+*.sdf
+
+# ── Compiled objects ──────────────────────────────────────────
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Database (local dev) ─────────────────────────────────────
+*.db
+*.db-journal
+*.db-wal
+
+# ── Misc ──────────────────────────────────────────────────────
+*.log
+compile_commands.json

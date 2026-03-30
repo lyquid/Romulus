@@ -1,0 +1,86 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+
+# Indentation
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+IndentCaseLabels: true
+IndentPPDirectives: BeforeHash
+NamespaceIndentation: None
+
+# Braces — K&R style (opening brace on same line)
+BreakBeforeBraces: Attach
+Cpp11BracedListStyle: true
+
+# Line width
+ColumnLimit: 100
+
+# Alignment
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignOperands: true
+AlignTrailingComments: true
+
+# Short forms
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: Inline
+
+# Includes
+SortIncludes: CaseInsensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  # 1. Corresponding header
+  - Regex: '^".*"$'
+    Priority: 1
+  # 2. Project headers
+  - Regex: '^<romulus/.*>'
+    Priority: 2
+  # 3. Third-party headers
+  - Regex: '^<(spdlog|pugixml|sqlite3|CLI|archive|openssl|nlohmann|gtest|gmock)/.*>'
+    Priority: 3
+  - Regex: '^<(spdlog|pugixml|sqlite3|CLI11|archive|openssl|nlohmann|gtest|gmock).*>'
+    Priority: 3
+  # 4. Standard library
+  - Regex: '^<.*>'
+    Priority: 4
+
+# Spaces
+SpaceAfterCStyleCast: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyBlock: false
+SpacesInAngles: Never
+SpacesInParentheses: false
+
+# Breaking
+BreakConstructorInitializers: BeforeComma
+BreakInheritanceList: BeforeComma
+PackConstructorInitializers: NextLine
+
+# Pointer/Reference alignment
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+# Misc
+AccessModifierOffset: -2
+BinPackArguments: false
+BinPackParameters: false
+FixNamespaceComments: true
+ReflowComments: true
+SortUsingDeclarations: true
+InsertBraces: true
+
+# Penalties
+PenaltyBreakComment: 300
+PenaltyBreakString: 1000
+PenaltyExcessCharacter: 1000000
+PenaltyReturnTypeOnItsOwnLine: 1000

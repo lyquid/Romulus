@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!DOCTYPE datafile SYSTEM "http://www.logiqx.com/Dats/datafile.dtd">
+<datafile>
+  <header>
+    <name>Test System - Sample</name>
+    <description>Test System - Sample</description>
+    <version>20240101-000000</version>
+    <author>ROMULUS Test Suite</author>
+  </header>
+  <game name="Test Game Alpha (World)">
+    <description>Test Game Alpha (World)</description>
+    <rom name="Test Game Alpha (World).bin" size="1024" crc="D87F7E0C" md5="e99a18c428cb38d5f260853678922e03" sha1="6367c48dd193d56ea7b0baad25b19455e529f5ee"/>
+  </game>
+  <game name="Test Game Beta (USA)">
+    <description>Test Game Beta (USA)</description>
+    <rom name="Test Game Beta (USA).bin" size="2048" crc="A1B2C3D4" md5="d41d8cd98f00b204e9800998ecf8427e" sha1="da39a3ee5e6b4b0d3255bfef95601890afd80709"/>
+  </game>
+  <game name="Test Game Gamma (Europe)">
+    <description>Test Game Gamma (Europe)</description>
+    <rom name="Test Game Gamma (Europe).bin" size="512" crc="DEADBEEF" md5="098f6bcd4621d373cade4e832627b4f6" sha1="a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"/>
+  </game>
+</datafile>
