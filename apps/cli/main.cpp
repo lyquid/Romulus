@@ -6,6 +6,7 @@
 #include <CLI/CLI.hpp>
 
 #include <algorithm>
+#include <cstdio>
 #include <filesystem>
 #include <print>
 #include <sstream>

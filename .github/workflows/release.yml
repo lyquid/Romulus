@@ -95,14 +95,14 @@ jobs:
           restore-keys: |
             vcpkg-release-${{ matrix.os }}-
 
-      - name: Install GCC 13 (Linux)
+      - name: Install GCC 14 (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
           sudo apt-get update
-          sudo apt-get install -y gcc-13 g++-13
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 130
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 130
+          sudo apt-get install -y gcc-14 g++-14
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 140
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 140
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
