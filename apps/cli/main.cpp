@@ -24,18 +24,17 @@ auto get_db_path(const std::string& db_flag) -> std::filesystem::path {
 } // namespace
 
 int main(int argc, char** argv) {
-  CLI::App app{
-    "ROMULUS — ROM collection verification system\n"
-    "Imposes order on chaos.",
-    "romulus"};
+  CLI::App app{"ROMULUS — ROM collection verification system\n"
+               "Imposes order on chaos.",
+               "romulus"};
   app.set_version_flag("--version", std::string(k_Version));
 
   std::string db_path_str;
   std::string log_level = "info";
   app.add_option("--db", db_path_str, "Path to SQLite database")
-    ->default_str(std::string(k_DefaultDb));
+      ->default_str(std::string(k_DefaultDb));
   app.add_option("--log-level", log_level, "Log level (trace/debug/info/warn/error)")
-    ->default_str("info");
+      ->default_str("info");
 
   // ── import-dat ─────────────────────────────────────────────
   auto* cmd_import = app.add_subcommand("import-dat", "Import a No-Intro DAT file");
@@ -67,9 +66,9 @@ int main(int argc, char** argv) {
   std::string report_format = "text";
   std::string report_system;
   cmd_report->add_option("type", report_type, "Report type (summary/missing)")
-    ->default_str("summary");
+      ->default_str("summary");
   cmd_report->add_option("--format,-f", report_format, "Output format (text/csv/json)")
-    ->default_str("text");
+      ->default_str("text");
   cmd_report->add_option("--system,-s", report_system, "Filter by system name");
 
   // ── systems ────────────────────────────────────────────────
@@ -104,18 +103,15 @@ int main(int argc, char** argv) {
 
     // ── scan ─────────────────────────────────────────────────
     else if (cmd_scan->parsed()) {
-      auto ext = scan_extensions.empty()
-        ? std::nullopt
-        : std::optional<std::string>{scan_extensions};
+      auto ext =
+          scan_extensions.empty() ? std::nullopt : std::optional<std::string>{scan_extensions};
       auto result = svc.scan_directory(scan_dir, ext);
       if (!result) {
         std::cerr << "Error: " << result.error().message << "\n";
         return 1;
       }
-      std::cout << "Scan complete: "
-                << result->files_scanned << " files, "
-                << result->files_hashed << " hashed, "
-                << result->files_skipped << " skipped, "
+      std::cout << "Scan complete: " << result->files_scanned << " files, " << result->files_hashed
+                << " hashed, " << result->files_skipped << " skipped, "
                 << result->archives_processed << " archives\n";
     }
 
@@ -140,9 +136,8 @@ int main(int argc, char** argv) {
       std::cout << "Full sync complete.\n";
 
       // Print summary
-      auto summary = svc.generate_report(
-        romulus::core::ReportType::Summary,
-        romulus::core::ReportFormat::Text);
+      auto summary = svc.generate_report(romulus::core::ReportType::Summary,
+                                         romulus::core::ReportFormat::Text);
       if (summary) {
         std::cout << *summary;
       }
@@ -196,8 +191,7 @@ int main(int argc, char** argv) {
     else if (cmd_status->parsed()) {
       auto sys = status_system.empty() ? std::nullopt : std::optional{status_system};
       auto result = svc.generate_report(
-        romulus::core::ReportType::Summary,
-        romulus::core::ReportFormat::Text, sys);
+          romulus::core::ReportType::Summary, romulus::core::ReportFormat::Text, sys);
       if (!result) {
         std::cerr << "Error: " << result.error().message << "\n";
         return 1;

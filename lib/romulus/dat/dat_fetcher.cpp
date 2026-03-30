@@ -10,118 +10,90 @@
 #include <iomanip>
 #include <sstream>
 
-namespace romulus::dat
-{
+namespace romulus::dat {
 
 auto DatFetcher::validate_local(const std::filesystem::path& path)
-    -> Result<std::filesystem::path>
-{
-    if (!std::filesystem::exists(path))
-    {
-        return std::unexpected(core::Error{
-            core::ErrorCode::FileNotFound,
-            "DAT file not found: " + path.string()});
-    }
+    -> Result<std::filesystem::path> {
+  if (!std::filesystem::exists(path)) {
+    return std::unexpected(
+        core::Error{core::ErrorCode::FileNotFound, "DAT file not found: " + path.string()});
+  }
 
-    if (!std::filesystem::is_regular_file(path))
-    {
-        return std::unexpected(core::Error{
-            core::ErrorCode::InvalidArgument,
-            "Path is not a regular file: " + path.string()});
-    }
+  if (!std::filesystem::is_regular_file(path)) {
+    return std::unexpected(core::Error{core::ErrorCode::InvalidArgument,
+                                       "Path is not a regular file: " + path.string()});
+  }
 
-    auto canonical = std::filesystem::canonical(path);
-    ROMULUS_INFO("Validated DAT file: {}", canonical.string());
-    return canonical;
+  auto canonical = std::filesystem::canonical(path);
+  ROMULUS_INFO("Validated DAT file: {}", canonical.string());
+  return canonical;
 }
 
-auto DatFetcher::compute_checksum(const std::filesystem::path& path)
-    -> Result<std::string>
-{
-    std::ifstream file(path, std::ios::binary);
-    if (!file.is_open())
-    {
-        return std::unexpected(core::Error{
-            core::ErrorCode::FileReadError,
-            "Cannot open file for checksum: " + path.string()});
+auto DatFetcher::compute_checksum(const std::filesystem::path& path) -> Result<std::string> {
+  std::ifstream file(path, std::ios::binary);
+  if (!file.is_open()) {
+    return std::unexpected(core::Error{core::ErrorCode::FileReadError,
+                                       "Cannot open file for checksum: " + path.string()});
+  }
+
+  auto* ctx = EVP_MD_CTX_new();
+  if (ctx == nullptr) {
+    return std::unexpected(
+        core::Error{core::ErrorCode::HashComputeError, "Failed to create EVP_MD_CTX"});
+  }
+
+  EVP_DigestInit_ex(ctx, EVP_sha1(), nullptr);
+
+  constexpr std::size_t k_BufferSize = 65536;
+  std::array<char, k_BufferSize> buffer{};
+
+  while (file.read(buffer.data(), k_BufferSize) || file.gcount() > 0) {
+    EVP_DigestUpdate(ctx, buffer.data(), static_cast<std::size_t>(file.gcount()));
+
+    if (file.gcount() < static_cast<std::streamsize>(k_BufferSize)) {
+      break;
     }
+  }
 
-    auto* ctx = EVP_MD_CTX_new();
-    if (ctx == nullptr)
-    {
-        return std::unexpected(core::Error{
-            core::ErrorCode::HashComputeError,
-            "Failed to create EVP_MD_CTX"});
-    }
+  std::array<unsigned char, EVP_MAX_MD_SIZE> hash{};
+  unsigned int hash_len = 0;
+  EVP_DigestFinal_ex(ctx, hash.data(), &hash_len);
+  EVP_MD_CTX_free(ctx);
 
-    EVP_DigestInit_ex(ctx, EVP_sha1(), nullptr);
+  std::ostringstream hex;
+  for (unsigned int i = 0; i < hash_len; ++i) {
+    hex << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(hash[i]);
+  }
 
-    constexpr std::size_t k_BufferSize = 65536;
-    std::array<char, k_BufferSize> buffer{};
-
-    while (file.read(buffer.data(), k_BufferSize) || file.gcount() > 0)
-    {
-        EVP_DigestUpdate(
-            ctx,
-            buffer.data(),
-            static_cast<std::size_t>(file.gcount()));
-
-        if (file.gcount() < static_cast<std::streamsize>(k_BufferSize))
-        {
-            break;
-        }
-    }
-
-    std::array<unsigned char, EVP_MAX_MD_SIZE> hash{};
-    unsigned int hash_len = 0;
-    EVP_DigestFinal_ex(ctx, hash.data(), &hash_len);
-    EVP_MD_CTX_free(ctx);
-
-    std::ostringstream hex;
-    for (unsigned int i = 0; i < hash_len; ++i)
-    {
-        hex << std::hex << std::setfill('0') << std::setw(2)
-            << static_cast<int>(hash[i]);
-    }
-
-    return hex.str();
+  return hex.str();
 }
 
-auto DatFetcher::has_version_changed(
-    const std::filesystem::path& path,
-    std::string_view dat_name,
-    database::Database& db) -> Result<bool>
-{
-    auto checksum = compute_checksum(path);
-    if (!checksum)
-    {
-        return std::unexpected(checksum.error());
-    }
+auto DatFetcher::has_version_changed(const std::filesystem::path& path,
+                                     std::string_view dat_name,
+                                     database::Database& db) -> Result<bool> {
+  auto checksum = compute_checksum(path);
+  if (!checksum) {
+    return std::unexpected(checksum.error());
+  }
 
-    auto latest = db.get_latest_dat_version(0); // System ID not known yet
-    if (!latest)
-    {
-        return std::unexpected(latest.error());
-    }
+  auto latest = db.get_latest_dat_version(0); // System ID not known yet
+  if (!latest) {
+    return std::unexpected(latest.error());
+  }
 
-    if (!latest->has_value())
-    {
-        ROMULUS_INFO("No previous DAT version found for '{}' — treating as new", dat_name);
-        return true;
-    }
+  if (!latest->has_value()) {
+    ROMULUS_INFO("No previous DAT version found for '{}' — treating as new", dat_name);
+    return true;
+  }
 
-    if (latest->value().checksum != *checksum)
-    {
-        ROMULUS_INFO(
-            "DAT version changed for '{}': {} -> {}",
-            dat_name,
-            latest->value().checksum,
-            *checksum);
-        return true;
-    }
+  if (latest->value().checksum != *checksum) {
+    ROMULUS_INFO(
+        "DAT version changed for '{}': {} -> {}", dat_name, latest->value().checksum, *checksum);
+    return true;
+  }
 
-    ROMULUS_INFO("DAT file unchanged for '{}'", dat_name);
-    return false;
+  ROMULUS_INFO("DAT file unchanged for '{}'", dat_name);
+  return false;
 }
 
 } // namespace romulus::dat

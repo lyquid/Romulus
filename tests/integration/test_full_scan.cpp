@@ -55,7 +55,7 @@ TEST_F(FullScanTest, ImportDatAndScanDirectory) {
   // Check summary
   auto summary = svc.get_summary();
   ASSERT_TRUE(summary.has_value()) << summary.error().message;
-  EXPECT_EQ(summary->total_roms, 3);  // 3 ROMs in sample.dat
+  EXPECT_EQ(summary->total_roms, 3); // 3 ROMs in sample.dat
 }
 
 TEST_F(FullScanTest, ListSystemsAfterImport) {

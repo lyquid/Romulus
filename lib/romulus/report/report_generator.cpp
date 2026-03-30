@@ -9,52 +9,63 @@
 
 namespace romulus::report {
 
-auto ReportGenerator::generate(
-  database::Database& db,
-  core::ReportType type,
-  core::ReportFormat format,
-  std::optional<std::int64_t> system_id) -> Result<std::string> {
+auto ReportGenerator::generate(database::Database& db,
+                               core::ReportType type,
+                               core::ReportFormat format,
+                               std::optional<std::int64_t> system_id) -> Result<std::string> {
   switch (type) {
-  case core::ReportType::Summary:
-    switch (format) {
-    case core::ReportFormat::Text: return summary_text(db, system_id);
-    case core::ReportFormat::Csv: return summary_csv(db, system_id);
-    case core::ReportFormat::Json: return summary_json(db, system_id);
-    }
-    break;
-  case core::ReportType::Missing:
-    switch (format) {
-    case core::ReportFormat::Text: return missing_text(db, system_id);
-    case core::ReportFormat::Csv: return missing_csv(db, system_id);
-    case core::ReportFormat::Json: return missing_json(db, system_id);
-    }
-    break;
-  case core::ReportType::Duplicates:
-    switch (format) {
-    case core::ReportFormat::Text: return duplicates_text(db, system_id);
-    case core::ReportFormat::Csv: return duplicates_csv(db, system_id);
-    case core::ReportFormat::Json: return duplicates_json(db, system_id);
-    }
-    break;
-  case core::ReportType::Unverified:
-    switch (format) {
-    case core::ReportFormat::Text: return unverified_text(db, system_id);
-    case core::ReportFormat::Csv: return unverified_csv(db, system_id);
-    case core::ReportFormat::Json: return unverified_json(db, system_id);
-    }
-    break;
+    case core::ReportType::Summary:
+      switch (format) {
+        case core::ReportFormat::Text:
+          return summary_text(db, system_id);
+        case core::ReportFormat::Csv:
+          return summary_csv(db, system_id);
+        case core::ReportFormat::Json:
+          return summary_json(db, system_id);
+      }
+      break;
+    case core::ReportType::Missing:
+      switch (format) {
+        case core::ReportFormat::Text:
+          return missing_text(db, system_id);
+        case core::ReportFormat::Csv:
+          return missing_csv(db, system_id);
+        case core::ReportFormat::Json:
+          return missing_json(db, system_id);
+      }
+      break;
+    case core::ReportType::Duplicates:
+      switch (format) {
+        case core::ReportFormat::Text:
+          return duplicates_text(db, system_id);
+        case core::ReportFormat::Csv:
+          return duplicates_csv(db, system_id);
+        case core::ReportFormat::Json:
+          return duplicates_json(db, system_id);
+      }
+      break;
+    case core::ReportType::Unverified:
+      switch (format) {
+        case core::ReportFormat::Text:
+          return unverified_text(db, system_id);
+        case core::ReportFormat::Csv:
+          return unverified_csv(db, system_id);
+        case core::ReportFormat::Json:
+          return unverified_json(db, system_id);
+      }
+      break;
   }
 
-  return std::unexpected(core::Error{
-    core::ErrorCode::InvalidArgument, "Invalid report type/format combination"});
+  return std::unexpected(
+      core::Error{core::ErrorCode::InvalidArgument, "Invalid report type/format combination"});
 }
 
 // ═══════════════════════════════════════════════════════════════
 // Summary Reports
 // ═══════════════════════════════════════════════════════════════
 
-auto ReportGenerator::summary_text(
-  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+auto ReportGenerator::summary_text(database::Database& db,
+                                   std::optional<std::int64_t> sys) -> Result<std::string> {
   auto summary = db.get_collection_summary(sys);
   if (!summary) {
     return std::unexpected(summary.error());
@@ -65,13 +76,12 @@ auto ReportGenerator::summary_text(
   out << "╔══════════════════════════════════════════════════╗\n";
   out << "║           ROMULUS — Collection Summary           ║\n";
   out << "╠══════════════════════════════════════════════════╣\n";
-  out << "║ System:     " << std::setw(36) << std::left
-      << summary->system_name << " ║\n";
+  out << "║ System:     " << std::setw(36) << std::left << summary->system_name << " ║\n";
   out << "╠══════════════════════════════════════════════════╣\n";
   out << "║ Total ROMs: " << std::setw(36) << summary->total_roms << " ║\n";
   out << "║ Verified:   " << std::setw(36)
       << std::to_string(summary->verified) + " (" +
-           std::to_string(static_cast<int>(summary->verified_percent())) + "%)"
+             std::to_string(static_cast<int>(summary->verified_percent())) + "%)"
       << " ║\n";
   out << "║ Missing:    " << std::setw(36) << summary->missing << " ║\n";
   out << "║ Unverified: " << std::setw(36) << summary->unverified << " ║\n";
@@ -81,8 +91,8 @@ auto ReportGenerator::summary_text(
   return out.str();
 }
 
-auto ReportGenerator::summary_csv(
-  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+auto ReportGenerator::summary_csv(database::Database& db,
+                                  std::optional<std::int64_t> sys) -> Result<std::string> {
   auto summary = db.get_collection_summary(sys);
   if (!summary) {
     return std::unexpected(summary.error());
@@ -90,19 +100,15 @@ auto ReportGenerator::summary_csv(
 
   std::ostringstream out;
   out << "system,total_roms,verified,missing,unverified,mismatch,verified_pct\n";
-  out << summary->system_name << ","
-      << summary->total_roms << ","
-      << summary->verified << ","
-      << summary->missing << ","
-      << summary->unverified << ","
-      << summary->mismatch << ","
+  out << summary->system_name << "," << summary->total_roms << "," << summary->verified << ","
+      << summary->missing << "," << summary->unverified << "," << summary->mismatch << ","
       << std::fixed << std::setprecision(1) << summary->verified_percent() << "\n";
 
   return out.str();
 }
 
-auto ReportGenerator::summary_json(
-  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+auto ReportGenerator::summary_json(database::Database& db,
+                                   std::optional<std::int64_t> sys) -> Result<std::string> {
   auto summary = db.get_collection_summary(sys);
   if (!summary) {
     return std::unexpected(summary.error());
@@ -124,8 +130,8 @@ auto ReportGenerator::summary_json(
 // Missing ROM Reports
 // ═══════════════════════════════════════════════════════════════
 
-auto ReportGenerator::missing_text(
-  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+auto ReportGenerator::missing_text(database::Database& db,
+                                   std::optional<std::int64_t> sys) -> Result<std::string> {
   auto missing = db.get_missing_roms(sys);
   if (!missing) {
     return std::unexpected(missing.error());
@@ -146,8 +152,8 @@ auto ReportGenerator::missing_text(
   return out.str();
 }
 
-auto ReportGenerator::missing_csv(
-  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+auto ReportGenerator::missing_csv(database::Database& db,
+                                  std::optional<std::int64_t> sys) -> Result<std::string> {
   auto missing = db.get_missing_roms(sys);
   if (!missing) {
     return std::unexpected(missing.error());
@@ -156,17 +162,15 @@ auto ReportGenerator::missing_csv(
   std::ostringstream out;
   out << "system,game,rom,sha1\n";
   for (const auto& rom : *missing) {
-    out << rom.system_name << ","
-        << rom.game_name << ","
-        << rom.rom_name << ","
-        << rom.sha1 << "\n";
+    out << rom.system_name << "," << rom.game_name << "," << rom.rom_name << "," << rom.sha1
+        << "\n";
   }
 
   return out.str();
 }
 
-auto ReportGenerator::missing_json(
-  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+auto ReportGenerator::missing_json(database::Database& db,
+                                   std::optional<std::int64_t> sys) -> Result<std::string> {
   auto missing = db.get_missing_roms(sys);
   if (!missing) {
     return std::unexpected(missing.error());
@@ -175,10 +179,10 @@ auto ReportGenerator::missing_json(
   nlohmann::json j = nlohmann::json::array();
   for (const auto& rom : *missing) {
     j.push_back({
-      {"system", rom.system_name},
-      {"game", rom.game_name},
-      {"rom", rom.rom_name},
-      {"sha1", rom.sha1},
+        {"system", rom.system_name},
+        {"game", rom.game_name},
+        {"rom", rom.rom_name},
+        {"sha1", rom.sha1},
     });
   }
 
@@ -189,8 +193,8 @@ auto ReportGenerator::missing_json(
 // Duplicate File Reports
 // ═══════════════════════════════════════════════════════════════
 
-auto ReportGenerator::duplicates_text(
-  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+auto ReportGenerator::duplicates_text(database::Database& db,
+                                      std::optional<std::int64_t> sys) -> Result<std::string> {
   auto dupes = db.get_duplicate_files(sys);
   if (!dupes) {
     return std::unexpected(dupes.error());
@@ -215,8 +219,8 @@ auto ReportGenerator::duplicates_text(
   return out.str();
 }
 
-auto ReportGenerator::duplicates_csv(
-  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+auto ReportGenerator::duplicates_csv(database::Database& db,
+                                     std::optional<std::int64_t> sys) -> Result<std::string> {
   auto dupes = db.get_duplicate_files(sys);
   if (!dupes) {
     return std::unexpected(dupes.error());
@@ -225,16 +229,14 @@ auto ReportGenerator::duplicates_csv(
   std::ostringstream out;
   out << "file_path,rom_name,game_name\n";
   for (const auto& d : *dupes) {
-    out << d.file_path << ","
-        << d.rom_name << ","
-        << d.game_name << "\n";
+    out << d.file_path << "," << d.rom_name << "," << d.game_name << "\n";
   }
 
   return out.str();
 }
 
-auto ReportGenerator::duplicates_json(
-  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+auto ReportGenerator::duplicates_json(database::Database& db,
+                                      std::optional<std::int64_t> sys) -> Result<std::string> {
   auto dupes = db.get_duplicate_files(sys);
   if (!dupes) {
     return std::unexpected(dupes.error());
@@ -243,9 +245,9 @@ auto ReportGenerator::duplicates_json(
   nlohmann::json j = nlohmann::json::array();
   for (const auto& d : *dupes) {
     j.push_back({
-      {"file_path", d.file_path},
-      {"rom_name", d.rom_name},
-      {"game_name", d.game_name},
+        {"file_path", d.file_path},
+        {"rom_name", d.rom_name},
+        {"game_name", d.game_name},
     });
   }
 
@@ -256,8 +258,8 @@ auto ReportGenerator::duplicates_json(
 // Unverified File Reports
 // ═══════════════════════════════════════════════════════════════
 
-auto ReportGenerator::unverified_text(
-  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+auto ReportGenerator::unverified_text(database::Database& db,
+                                      std::optional<std::int64_t> sys) -> Result<std::string> {
   auto unverified = db.get_unverified_files(sys);
   if (!unverified) {
     return std::unexpected(unverified.error());
@@ -276,8 +278,8 @@ auto ReportGenerator::unverified_text(
   return out.str();
 }
 
-auto ReportGenerator::unverified_csv(
-  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+auto ReportGenerator::unverified_csv(database::Database& db,
+                                     std::optional<std::int64_t> sys) -> Result<std::string> {
   auto unverified = db.get_unverified_files(sys);
   if (!unverified) {
     return std::unexpected(unverified.error());
@@ -287,18 +289,14 @@ auto ReportGenerator::unverified_csv(
   out << "path,size,crc32,md5,sha1\n";
 
   for (const auto& f : *unverified) {
-    out << f.path << ","
-        << f.size << ","
-        << f.crc32 << ","
-        << f.md5 << ","
-        << f.sha1 << "\n";
+    out << f.path << "," << f.size << "," << f.crc32 << "," << f.md5 << "," << f.sha1 << "\n";
   }
 
   return out.str();
 }
 
-auto ReportGenerator::unverified_json(
-  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+auto ReportGenerator::unverified_json(database::Database& db,
+                                      std::optional<std::int64_t> sys) -> Result<std::string> {
   auto unverified = db.get_unverified_files(sys);
   if (!unverified) {
     return std::unexpected(unverified.error());
@@ -308,11 +306,11 @@ auto ReportGenerator::unverified_json(
 
   for (const auto& f : *unverified) {
     j.push_back({
-      {"path", f.path},
-      {"size", f.size},
-      {"crc32", f.crc32},
-      {"md5", f.md5},
-      {"sha1", f.sha1},
+        {"path", f.path},
+        {"size", f.size},
+        {"crc32", f.crc32},
+        {"md5", f.md5},
+        {"sha1", f.sha1},
     });
   }
 

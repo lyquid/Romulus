@@ -32,7 +32,14 @@ auto create_archive_reader() -> ArchivePtr {
 
 // Extensions recognized as archives
 constexpr std::array k_ArchiveExtensions = {
-  ".zip", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz",
+    ".zip",
+    ".7z",
+    ".tar",
+    ".tar.gz",
+    ".tgz",
+    ".tar.bz2",
+    ".tbz2",
+    ".tar.xz",
 };
 
 } // namespace
@@ -47,20 +54,18 @@ auto ArchiveService::is_archive(const std::filesystem::path& path) -> bool {
     return static_cast<char>(std::tolower(c));
   });
 
-  return std::ranges::any_of(k_ArchiveExtensions, [&ext](std::string_view ae) {
-    return ext == ae;
-  });
+  return std::ranges::any_of(k_ArchiveExtensions,
+                             [&ext](std::string_view ae) { return ext == ae; });
 }
 
 auto ArchiveService::list_entries(const std::filesystem::path& path)
-  -> Result<std::vector<core::ArchiveEntry>> {
+    -> Result<std::vector<core::ArchiveEntry>> {
   auto reader = create_archive_reader();
 
   if (archive_read_open_filename(reader.get(), path.string().c_str(), 10240) != ARCHIVE_OK) {
-    return std::unexpected(core::Error{
-      core::ErrorCode::ArchiveOpenError,
-      "Cannot open archive '" + path.string() + "': " +
-        archive_error_string(reader.get())});
+    return std::unexpected(core::Error{core::ErrorCode::ArchiveOpenError,
+                                       "Cannot open archive '" + path.string() +
+                                           "': " + archive_error_string(reader.get())});
   }
 
   std::vector<core::ArchiveEntry> entries;
@@ -75,8 +80,8 @@ auto ArchiveService::list_entries(const std::filesystem::path& path)
 
     const char* name = archive_entry_pathname(entry);
     entries.push_back({
-      .name = name != nullptr ? name : "",
-      .size = archive_entry_size(entry),
+        .name = name != nullptr ? name : "",
+        .size = archive_entry_size(entry),
     });
 
     archive_read_data_skip(reader.get());
@@ -86,17 +91,15 @@ auto ArchiveService::list_entries(const std::filesystem::path& path)
   return entries;
 }
 
-auto ArchiveService::stream_entry(
-  const std::filesystem::path& path,
-  std::string_view entry_name,
-  const StreamCallback& callback) -> Result<void> {
+auto ArchiveService::stream_entry(const std::filesystem::path& path,
+                                  std::string_view entry_name,
+                                  const StreamCallback& callback) -> Result<void> {
   auto reader = create_archive_reader();
 
   if (archive_read_open_filename(reader.get(), path.string().c_str(), 10240) != ARCHIVE_OK) {
-    return std::unexpected(core::Error{
-      core::ErrorCode::ArchiveOpenError,
-      "Cannot open archive '" + path.string() + "': " +
-        archive_error_string(reader.get())});
+    return std::unexpected(core::Error{core::ErrorCode::ArchiveOpenError,
+                                       "Cannot open archive '" + path.string() +
+                                           "': " + archive_error_string(reader.get())});
   }
 
   struct archive_entry* entry = nullptr;
@@ -124,10 +127,9 @@ auto ArchiveService::stream_entry(
   }
 
   if (!found) {
-    return std::unexpected(core::Error{
-      core::ErrorCode::ArchiveReadError,
-      "Entry '" + std::string(entry_name) + "' not found in archive '" +
-        path.string() + "'"});
+    return std::unexpected(core::Error{core::ErrorCode::ArchiveReadError,
+                                       "Entry '" + std::string(entry_name) +
+                                           "' not found in archive '" + path.string() + "'"});
   }
 
   return {};

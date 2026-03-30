@@ -29,9 +29,7 @@ protected:
 
 TEST_F(ReportTest, SummaryTextFormatContainsROMULUSHeader) {
   auto result = romulus::report::ReportGenerator::generate(
-    *db_,
-    romulus::core::ReportType::Summary,
-    romulus::core::ReportFormat::Text);
+      *db_, romulus::core::ReportType::Summary, romulus::core::ReportFormat::Text);
 
   ASSERT_TRUE(result.has_value()) << result.error().message;
   EXPECT_NE(result->find("ROMULUS"), std::string::npos);
@@ -39,9 +37,7 @@ TEST_F(ReportTest, SummaryTextFormatContainsROMULUSHeader) {
 
 TEST_F(ReportTest, SummaryJsonIsValidJson) {
   auto result = romulus::report::ReportGenerator::generate(
-    *db_,
-    romulus::core::ReportType::Summary,
-    romulus::core::ReportFormat::Json);
+      *db_, romulus::core::ReportType::Summary, romulus::core::ReportFormat::Json);
 
   ASSERT_TRUE(result.has_value()) << result.error().message;
   // Should contain expected JSON keys
@@ -51,9 +47,7 @@ TEST_F(ReportTest, SummaryJsonIsValidJson) {
 
 TEST_F(ReportTest, SummaryCsvHasHeaderRow) {
   auto result = romulus::report::ReportGenerator::generate(
-    *db_,
-    romulus::core::ReportType::Summary,
-    romulus::core::ReportFormat::Csv);
+      *db_, romulus::core::ReportType::Summary, romulus::core::ReportFormat::Csv);
 
   ASSERT_TRUE(result.has_value()) << result.error().message;
   EXPECT_NE(result->find("system,total_roms"), std::string::npos);

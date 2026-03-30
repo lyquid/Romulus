@@ -3,13 +3,12 @@
 /// @file logging.hpp
 /// @brief Logging facade wrapping spdlog for structured logging.
 
+#include <spdlog/spdlog.h>
+
 #include <memory>
 #include <string_view>
 
-#include <spdlog/spdlog.h>
-
-namespace romulus::core
-{
+namespace romulus::core {
 
 /// Initializes the ROMULUS logger with the given verbosity level.
 /// Must be called once at application startup.

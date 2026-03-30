@@ -32,9 +32,9 @@ TEST_F(DatabaseTest, OpensAndCreatesSchema) {
 
 TEST_F(DatabaseTest, InsertsAndFindsSystem) {
   romulus::core::SystemInfo sys{
-    .name = "Nintendo - Game Boy",
-    .short_name = "GB",
-    .extensions = ".gb,.gbc",
+      .name = "Nintendo - Game Boy",
+      .short_name = "GB",
+      .extensions = ".gb,.gbc",
   };
 
   auto id = db_->insert_system(sys);
@@ -62,34 +62,34 @@ TEST_F(DatabaseTest, InsertAndRetrieveRom) {
   ASSERT_TRUE(sys_id.has_value());
 
   romulus::core::DatVersion dat{
-    .system_id = *sys_id,
-    .name = "Test System",
-    .version = "1.0",
-    .source_url = {},
-    .checksum = "abc123",
-    .imported_at = {},
+      .system_id = *sys_id,
+      .name = "Test System",
+      .version = "1.0",
+      .source_url = {},
+      .checksum = "abc123",
+      .imported_at = {},
   };
   auto dat_id = db_->insert_dat_version(dat);
   ASSERT_TRUE(dat_id.has_value());
 
   romulus::core::GameInfo game{
-    .name = "Test Game",
-    .description = {},
-    .system_id = *sys_id,
-    .dat_version_id = *dat_id,
-    .roms = {},
+      .name = "Test Game",
+      .description = {},
+      .system_id = *sys_id,
+      .dat_version_id = *dat_id,
+      .roms = {},
   };
   auto game_id = db_->insert_game(game);
   ASSERT_TRUE(game_id.has_value());
 
   romulus::core::RomInfo rom{
-    .game_id = *game_id,
-    .name = "test.bin",
-    .size = 1024,
-    .crc32 = "deadbeef",
-    .md5 = "d41d8cd98f00b204e9800998ecf8427e",
-    .sha1 = "da39a3ee5e6b4b0d3255bfef95601890afd80709",
-    .region = "USA",
+      .game_id = *game_id,
+      .name = "test.bin",
+      .size = 1024,
+      .crc32 = "deadbeef",
+      .md5 = "d41d8cd98f00b204e9800998ecf8427e",
+      .sha1 = "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+      .region = "USA",
   };
   auto rom_id = db_->insert_rom(rom);
   ASSERT_TRUE(rom_id.has_value());
@@ -103,12 +103,12 @@ TEST_F(DatabaseTest, InsertAndRetrieveRom) {
 
 TEST_F(DatabaseTest, UpsertFileUpdatesExisting) {
   romulus::core::FileInfo file{
-    .path = "/roms/test.bin",
-    .size = 1024,
-    .crc32 = "aabbccdd",
-    .md5 = "12345678901234567890123456789012",
-    .sha1 = "1234567890123456789012345678901234567890",
-    .last_scanned = {},
+      .path = "/roms/test.bin",
+      .size = 1024,
+      .crc32 = "aabbccdd",
+      .md5 = "12345678901234567890123456789012",
+      .sha1 = "1234567890123456789012345678901234567890",
+      .last_scanned = {},
   };
 
   auto id1 = db_->upsert_file(file);

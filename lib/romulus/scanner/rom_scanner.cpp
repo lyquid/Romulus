@@ -43,44 +43,57 @@ auto split_extensions(const std::string& ext_str) -> std::vector<std::string> {
 
 auto RomScanner::get_default_extensions() -> std::vector<std::string> {
   return {
-    // Nintendo
-    ".nes", ".smc", ".sfc", ".gb", ".gbc", ".gba", ".nds", ".n64", ".z64", ".v64",
-    // Sega
-    ".md", ".gen", ".sms", ".gg", ".32x",
-    // Others
-    ".pce", ".ngp", ".ngc", ".ws", ".wsc",
-    // Generic
-    ".bin", ".rom",
-    // Archives
-    ".zip", ".7z",
+      // Nintendo
+      ".nes",
+      ".smc",
+      ".sfc",
+      ".gb",
+      ".gbc",
+      ".gba",
+      ".nds",
+      ".n64",
+      ".z64",
+      ".v64",
+      // Sega
+      ".md",
+      ".gen",
+      ".sms",
+      ".gg",
+      ".32x",
+      // Others
+      ".pce",
+      ".ngp",
+      ".ngc",
+      ".ws",
+      ".wsc",
+      // Generic
+      ".bin",
+      ".rom",
+      // Archives
+      ".zip",
+      ".7z",
   };
 }
 
-auto RomScanner::matches_extension(
-  const std::filesystem::path& path,
-  const std::vector<std::string>& extensions) -> bool {
+auto RomScanner::matches_extension(const std::filesystem::path& path,
+                                   const std::vector<std::string>& extensions) -> bool {
   auto ext = path.extension().string();
   std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
   });
-  return std::ranges::any_of(extensions, [&ext](const std::string& e) {
-    return ext == e;
-  });
+  return std::ranges::any_of(extensions, [&ext](const std::string& e) { return ext == e; });
 }
 
-auto RomScanner::scan(
-  const std::filesystem::path& directory,
-  database::Database& db,
-  std::optional<std::string> extensions) -> Result<core::ScanReport> {
+auto RomScanner::scan(const std::filesystem::path& directory,
+                      database::Database& db,
+                      std::optional<std::string> extensions) -> Result<core::ScanReport> {
   if (!std::filesystem::exists(directory)) {
-    return std::unexpected(core::Error{
-      core::ErrorCode::DirectoryNotFound,
-      "Scan directory not found: " + directory.string()});
+    return std::unexpected(core::Error{core::ErrorCode::DirectoryNotFound,
+                                       "Scan directory not found: " + directory.string()});
   }
 
-  auto ext_filter = extensions.has_value()
-    ? split_extensions(*extensions)
-    : get_default_extensions();
+  auto ext_filter =
+      extensions.has_value() ? split_extensions(*extensions) : get_default_extensions();
 
   ROMULUS_INFO("Scanning directory: {}", directory.string());
 
@@ -94,7 +107,7 @@ auto RomScanner::scan(
   std::vector<FileCandidate> candidates;
 
   for (const auto& entry : std::filesystem::recursive_directory_iterator(
-         directory, std::filesystem::directory_options::skip_permission_denied)) {
+           directory, std::filesystem::directory_options::skip_permission_denied)) {
     if (!entry.is_regular_file()) {
       continue;
     }
@@ -102,9 +115,9 @@ auto RomScanner::scan(
       continue;
     }
     candidates.push_back({
-      .path = entry.path(),
-      .size = static_cast<std::int64_t>(entry.file_size()),
-      .is_archive = ArchiveService::is_archive(entry.path()),
+        .path = entry.path(),
+        .size = static_cast<std::int64_t>(entry.file_size()),
+        .is_archive = ArchiveService::is_archive(entry.path()),
     });
   }
 
@@ -115,10 +128,10 @@ auto RomScanner::scan(
 
   // Phase 2: Expand archives into individual entries
   struct HashJob {
-    std::string virtual_path;  // path or archive::entry
+    std::string virtual_path; // path or archive::entry
     std::int64_t size;
     std::filesystem::path real_path;
-    std::string entry_name;    // empty for regular files
+    std::string entry_name; // empty for regular files
   };
 
   std::vector<HashJob> jobs;
@@ -128,25 +141,24 @@ auto RomScanner::scan(
       auto entries = ArchiveService::list_entries(candidate.path);
       if (!entries) {
         ROMULUS_WARN(
-          "Failed to read archive '{}': {}",
-          candidate.path.string(), entries.error().message);
+            "Failed to read archive '{}': {}", candidate.path.string(), entries.error().message);
         continue;
       }
       for (const auto& entry : *entries) {
         jobs.push_back({
-          .virtual_path = candidate.path.string() + "::" + entry.name,
-          .size = entry.size,
-          .real_path = candidate.path,
-          .entry_name = entry.name,
+            .virtual_path = candidate.path.string() + "::" + entry.name,
+            .size = entry.size,
+            .real_path = candidate.path,
+            .entry_name = entry.name,
         });
       }
       ++report.archives_processed;
     } else {
       jobs.push_back({
-        .virtual_path = candidate.path.string(),
-        .size = candidate.size,
-        .real_path = candidate.path,
-        .entry_name = {},
+          .virtual_path = candidate.path.string(),
+          .size = candidate.size,
+          .real_path = candidate.path,
+          .entry_name = {},
       });
     }
   }
@@ -170,8 +182,8 @@ auto RomScanner::scan(
 
     // Compute hashes
     auto digest = job.entry_name.empty()
-      ? HashService::compute_hashes(job.real_path)
-      : HashService::compute_hashes_archive(job.real_path, job.entry_name);
+                      ? HashService::compute_hashes(job.real_path)
+                      : HashService::compute_hashes_archive(job.real_path, job.entry_name);
 
     if (!digest) {
       ROMULUS_WARN("Hash failed for '{}': {}", job.virtual_path, digest.error().message);
@@ -180,13 +192,13 @@ auto RomScanner::scan(
 
     // Store in DB
     core::FileInfo file_info{
-      .path = job.virtual_path,
-      .size = job.size,
-      .crc32 = digest->crc32,
-      .md5 = digest->md5,
-      .sha1 = digest->sha1,
-      .last_scanned = {},
-      .is_archive_entry = !job.entry_name.empty(),
+        .path = job.virtual_path,
+        .size = job.size,
+        .crc32 = digest->crc32,
+        .md5 = digest->md5,
+        .sha1 = digest->sha1,
+        .last_scanned = {},
+        .is_archive_entry = !job.entry_name.empty(),
     };
 
     {
@@ -222,10 +234,11 @@ auto RomScanner::scan(
 
   report.files_scanned = static_cast<std::int64_t>(jobs.size());
 
-  ROMULUS_INFO(
-    "Scan complete: {} files, {} hashed, {} skipped, {} archives",
-    report.files_scanned, report.files_hashed,
-    report.files_skipped, report.archives_processed);
+  ROMULUS_INFO("Scan complete: {} files, {} hashed, {} skipped, {} archives",
+               report.files_scanned,
+               report.files_hashed,
+               report.files_skipped,
+               report.archives_processed);
 
   return report;
 }

@@ -27,32 +27,48 @@ protected:
 
   void seed_data() {
     auto sys_id = db_->get_or_create_system("Test System");
-    romulus::core::DatVersion dat{
-      .system_id = *sys_id, .name = "Test", .version = "1.0",
-      .source_url = {}, .checksum = "abc", .imported_at = {}};
+    romulus::core::DatVersion dat{.system_id = *sys_id,
+                                  .name = "Test",
+                                  .version = "1.0",
+                                  .source_url = {},
+                                  .checksum = "abc",
+                                  .imported_at = {}};
     auto dat_id = db_->insert_dat_version(dat);
 
-    romulus::core::GameInfo game{
-      .name = "Game A", .description = {},
-      .system_id = *sys_id, .dat_version_id = *dat_id, .roms = {}};
+    romulus::core::GameInfo game{.name = "Game A",
+                                 .description = {},
+                                 .system_id = *sys_id,
+                                 .dat_version_id = *dat_id,
+                                 .roms = {}};
     auto game_id = db_->insert_game(game);
 
     // ROM with a matching file
-    romulus::core::RomInfo rom1{
-      .game_id = *game_id, .name = "matched.bin", .size = 100,
-      .crc32 = "11111111", .md5 = "m1", .sha1 = "s1", .region = {}};
+    romulus::core::RomInfo rom1{.game_id = *game_id,
+                                .name = "matched.bin",
+                                .size = 100,
+                                .crc32 = "11111111",
+                                .md5 = "m1",
+                                .sha1 = "s1",
+                                .region = {}};
     auto rom1_id = db_->insert_rom(rom1);
 
     // ROM without a matching file
-    romulus::core::RomInfo rom2{
-      .game_id = *game_id, .name = "missing.bin", .size = 200,
-      .crc32 = "22222222", .md5 = "m2", .sha1 = "s2", .region = {}};
+    romulus::core::RomInfo rom2{.game_id = *game_id,
+                                .name = "missing.bin",
+                                .size = 200,
+                                .crc32 = "22222222",
+                                .md5 = "m2",
+                                .sha1 = "s2",
+                                .region = {}};
     auto rom2_id = db_->insert_rom(rom2);
 
     // File that matches rom1
-    romulus::core::FileInfo file{
-      .path = "/roms/matched.bin", .size = 100,
-      .crc32 = "11111111", .md5 = "m1", .sha1 = "s1", .last_scanned = {}};
+    romulus::core::FileInfo file{.path = "/roms/matched.bin",
+                                 .size = 100,
+                                 .crc32 = "11111111",
+                                 .md5 = "m1",
+                                 .sha1 = "s1",
+                                 .last_scanned = {}};
     auto file_id = db_->upsert_file(file);
   }
 

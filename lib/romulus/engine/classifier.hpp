@@ -23,8 +23,7 @@ public:
   /// @param db Database with ROMs and file_matches populated.
   /// @param system_id Optional system filter.
   [[nodiscard]] static auto classify_all(
-    database::Database& db,
-    std::optional<std::int64_t> system_id = {}) -> Result<void>;
+      database::Database& db, std::optional<std::int64_t> system_id = {}) -> Result<void>;
 };
 
 } // namespace romulus::engine

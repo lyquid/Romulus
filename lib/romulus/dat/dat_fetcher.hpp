@@ -10,41 +10,37 @@
 #include <filesystem>
 #include <string>
 
-namespace romulus::database
-{
+namespace romulus::database {
 class Database;
 }
 
-namespace romulus::dat
-{
+namespace romulus::dat {
 
 using romulus::core::Result;
 
 /// Handles DAT file import and version tracking.
-class DatFetcher final
-{
+class DatFetcher final {
 public:
-    /// Validates a local DAT file exists and is readable.
-    /// @param path Path to the .dat file on the local filesystem.
-    /// @return The validated canonical path on success.
-    [[nodiscard]] static auto validate_local(const std::filesystem::path& path)
-        -> Result<std::filesystem::path>;
+  /// Validates a local DAT file exists and is readable.
+  /// @param path Path to the .dat file on the local filesystem.
+  /// @return The validated canonical path on success.
+  [[nodiscard]] static auto validate_local(const std::filesystem::path& path)
+      -> Result<std::filesystem::path>;
 
-    /// Computes a SHA1 checksum of a DAT file for version tracking.
-    /// @param path Path to the DAT file.
-    /// @return SHA1 hex string of the file contents.
-    [[nodiscard]] static auto compute_checksum(const std::filesystem::path& path)
-        -> Result<std::string>;
+  /// Computes a SHA1 checksum of a DAT file for version tracking.
+  /// @param path Path to the DAT file.
+  /// @return SHA1 hex string of the file contents.
+  [[nodiscard]] static auto compute_checksum(const std::filesystem::path& path)
+      -> Result<std::string>;
 
-    /// Checks if a DAT file has changed compared to the version stored in the database.
-    /// @param path Path to the DAT file.
-    /// @param dat_name The DAT name (system name from header).
-    /// @param db Database to check against.
-    /// @return true if the file is new or has changed.
-    [[nodiscard]] static auto has_version_changed(
-        const std::filesystem::path& path,
-        std::string_view dat_name,
-        database::Database& db) -> Result<bool>;
+  /// Checks if a DAT file has changed compared to the version stored in the database.
+  /// @param path Path to the DAT file.
+  /// @param dat_name The DAT name (system name from header).
+  /// @param db Database to check against.
+  /// @return true if the file is new or has changed.
+  [[nodiscard]] static auto has_version_changed(const std::filesystem::path& path,
+                                                std::string_view dat_name,
+                                                database::Database& db) -> Result<bool>;
 };
 
 } // namespace romulus::dat

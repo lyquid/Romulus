@@ -67,10 +67,13 @@ jobs:
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 130
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 130
 
-      # Clang 17+ for C++23 support
+      # Clang 17+ for C++23 support (needs GCC 13 libstdc++ for std::expected)
       - name: Install Clang 17
         if: matrix.compiler == 'clang'
         run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          sudo apt-get update
+          sudo apt-get install -y g++-13 libstdc++-13-dev
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 17
@@ -84,7 +87,7 @@ jobs:
         run: cmake --build build --config ${{ env.BUILD_TYPE }}
 
       - name: Run Tests
-        run: ctest --test-dir build --config ${{ env.BUILD_TYPE }} --output-on-failure --no-tests=error
+        run: ctest --test-dir build -C ${{ env.BUILD_TYPE }} --output-on-failure --no-tests=error
 
   # ─────────────────────────────────────────────
   # Code Formatting Check
@@ -135,6 +138,9 @@ jobs:
 
       - name: Install Clang 17
         run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          sudo apt-get update
+          sudo apt-get install -y g++-13 libstdc++-13-dev
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 17
