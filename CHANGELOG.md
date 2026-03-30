@@ -33,3 +33,7 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 - 6 unit test suites: DatParser, HashService, Matcher, Classifier, Database, ReportGenerator
 - 2 integration test suites: FullScan (end-to-end pipeline), DatUpdate (idempotency)
 - 27 tests total, all passing with zero warnings
+
+### 📝 Documentation
+
+- Added a repo instruction to update CHANGELOG.md for repository changes unless explicitly waived

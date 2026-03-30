@@ -13,6 +13,14 @@ target_compile_features(romulus_cli PRIVATE cxx_std_23)
 
 romulus_set_warnings(romulus_cli)
 
+add_custom_command(
+    TARGET romulus_cli
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/dats"
+            "$<TARGET_FILE_DIR:romulus_cli>/dats"
+)
+
 # Output as 'romulus' executable
 set_target_properties(romulus_cli PROPERTIES
     OUTPUT_NAME romulus

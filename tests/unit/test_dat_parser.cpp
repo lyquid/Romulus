@@ -1,13 +1,36 @@
 #include "romulus/dat/dat_parser.hpp"
+#include "romulus/scanner/archive_service.hpp"
 
 #include <gtest/gtest.h>
 
 #include <filesystem>
 #include <fstream>
+#include <optional>
 
 namespace {
 
 const std::filesystem::path k_FixturesDir{ROMULUS_TEST_FIXTURES_DIR};
+const std::filesystem::path k_RepoDatsDir{ROMULUS_REPO_DATS_DIR};
+
+auto find_repo_dat() -> std::optional<std::filesystem::path> {
+  if (!std::filesystem::exists(k_RepoDatsDir)) {
+    return std::nullopt;
+  }
+
+  for (const auto& entry : std::filesystem::directory_iterator(k_RepoDatsDir)) {
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+
+    const auto extension = entry.path().extension().string();
+    if (extension == ".dat" || extension == ".xml" ||
+        romulus::scanner::ArchiveService::is_archive(entry.path())) {
+      return entry.path();
+    }
+  }
+
+  return std::nullopt;
+}
 
 TEST(DatParser, ParsesValidLogiqxXml) {
   romulus::dat::DatParser parser;
@@ -74,6 +97,20 @@ TEST(DatParser, ReturnsErrorForMalformedXml) {
   EXPECT_EQ(result.error().code, romulus::core::ErrorCode::DatInvalidFormat);
 
   std::filesystem::remove(temp);
+}
+
+TEST(DatParser, ParsesRepoArchiveDat) {
+  const auto bundled_dat = find_repo_dat();
+  ASSERT_TRUE(bundled_dat.has_value()) << "Repository DAT artifact not found in "
+                                       << k_RepoDatsDir.string();
+
+  romulus::dat::DatParser parser;
+  auto result = parser.parse(*bundled_dat);
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+
+  EXPECT_FALSE(result->header.name.empty());
+  EXPECT_FALSE(result->header.version.empty());
+  EXPECT_FALSE(result->games.empty());
 }
 
 } // namespace

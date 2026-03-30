@@ -4,6 +4,7 @@ include(GoogleTest)
 
 # ── Test fixture path ─────────────────────────────────────────
 set(ROMULUS_TEST_FIXTURES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+set(ROMULUS_REPO_DATS_DIR "${CMAKE_SOURCE_DIR}/dats")
 
 # ── Unit tests ────────────────────────────────────────────────
 set(UNIT_TEST_SOURCES
@@ -29,6 +30,7 @@ target_compile_features(romulus_unit_tests PRIVATE cxx_std_23)
 target_compile_definitions(romulus_unit_tests
     PRIVATE
         ROMULUS_TEST_FIXTURES_DIR="${ROMULUS_TEST_FIXTURES_DIR}"
+        ROMULUS_REPO_DATS_DIR="${ROMULUS_REPO_DATS_DIR}"
 )
 
 romulus_set_warnings(romulus_unit_tests)
@@ -55,6 +57,7 @@ target_compile_features(romulus_integration_tests PRIVATE cxx_std_23)
 target_compile_definitions(romulus_integration_tests
     PRIVATE
         ROMULUS_TEST_FIXTURES_DIR="${ROMULUS_TEST_FIXTURES_DIR}"
+        ROMULUS_REPO_DATS_DIR="${ROMULUS_REPO_DATS_DIR}"
 )
 
 romulus_set_warnings(romulus_integration_tests)

@@ -303,6 +303,7 @@ TEST(HashService, computes_correct_sha1_for_known_file) { ... }
   - Example: `feat(dat): implement LogiqX XML parser`
 - One logical change per commit
 - Keep CHANGELOG.md updated (Keep a Changelog format)
+- When making repository changes, update CHANGELOG.md unless explicitly told not to
 
 ---
 

@@ -94,6 +94,9 @@ cmake --build --preset dev
 
 # 🧪 Run tests — Don't skip these or the final boss wins
 ctest --preset dev
+
+# 📦 Dev builds copy repository DAT artifacts beside the CLI binary
+# so `romulus import-dat` can use the bundled DAT with no path.
 ```
 
 ### 🏁 Release Build (Final Stage)
@@ -111,6 +114,7 @@ cmake --build build --config Release
 
 ```bash
 # 📥 Import a DAT file — Accepting the quest
+romulus import-dat
 romulus import-dat path/to/dat_file.dat
 
 # 🔍 Scan a ROM directory — Scouting the dungeon

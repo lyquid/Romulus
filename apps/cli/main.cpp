@@ -1,24 +1,112 @@
 #include "romulus/core/logging.hpp"
 #include "romulus/core/types.hpp"
+#include "romulus/scanner/archive_service.hpp"
 #include "romulus/service/romulus_service.hpp"
 
 #include <CLI/CLI.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
 
 constexpr std::string_view k_Version = "0.1.0";
 constexpr std::string_view k_DefaultDb = "romulus.db";
 
-auto get_db_path(const std::string& db_flag) -> std::filesystem::path {
+auto get_executable_dir(const char* argv0) -> std::filesystem::path {
+  std::error_code error;
+  auto absolute_path = std::filesystem::absolute(argv0, error);
+  if (error) {
+    return std::filesystem::current_path();
+  }
+
+  auto canonical_path = std::filesystem::weakly_canonical(absolute_path, error);
+  if (error) {
+    return absolute_path.parent_path();
+  }
+
+  return canonical_path.parent_path();
+}
+
+auto get_db_path(const std::string& db_flag, const std::filesystem::path& executable_dir)
+    -> std::filesystem::path {
   if (!db_flag.empty()) {
     return db_flag;
   }
   // Default: next to the executable
-  return k_DefaultDb;
+  return executable_dir / k_DefaultDb;
+}
+
+auto to_lower(std::string value) -> std::string {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  return value;
+}
+
+auto is_dat_candidate(const std::filesystem::path& path) -> bool {
+  const auto extension = to_lower(path.extension().string());
+  return extension == ".dat" || extension == ".xml" ||
+         romulus::scanner::ArchiveService::is_archive(path);
+}
+
+auto describe_candidates(const std::vector<std::filesystem::path>& paths) -> std::string {
+  std::ostringstream stream;
+  for (std::size_t index = 0; index < paths.size(); ++index) {
+    if (index > 0) {
+      stream << ", ";
+    }
+    stream << paths.at(index).filename().string();
+  }
+  return stream.str();
+}
+
+auto resolve_bundled_dat_path(const std::filesystem::path& executable_dir)
+    -> romulus::core::Result<std::filesystem::path> {
+  const auto dats_dir = executable_dir / "dats";
+  if (!std::filesystem::exists(dats_dir) || !std::filesystem::is_directory(dats_dir)) {
+    return std::unexpected(romulus::core::Error{romulus::core::ErrorCode::DirectoryNotFound,
+                                                "Bundled DAT directory not found: " +
+                                                    dats_dir.string()});
+  }
+
+  std::vector<std::filesystem::path> candidates;
+  for (const auto& entry : std::filesystem::directory_iterator(dats_dir)) {
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+    if (is_dat_candidate(entry.path())) {
+      candidates.push_back(entry.path());
+    }
+  }
+
+  if (candidates.empty()) {
+    return std::unexpected(romulus::core::Error{romulus::core::ErrorCode::FileNotFound,
+                                                "No bundled DAT artifacts found in: " +
+                                                    dats_dir.string()});
+  }
+
+  if (candidates.size() > 1) {
+    return std::unexpected(romulus::core::Error{
+        romulus::core::ErrorCode::InvalidArgument,
+        "Multiple bundled DAT artifacts found in '" + dats_dir.string() + "': " +
+            describe_candidates(candidates)});
+  }
+
+  return candidates.front();
+}
+
+auto resolve_import_path(const std::string& import_path,
+                         const std::filesystem::path& executable_dir)
+    -> romulus::core::Result<std::filesystem::path> {
+  if (!import_path.empty()) {
+    return std::filesystem::path{import_path};
+  }
+  return resolve_bundled_dat_path(executable_dir);
 }
 
 } // namespace
@@ -39,7 +127,7 @@ int main(int argc, char** argv) {
   // ── import-dat ─────────────────────────────────────────────
   auto* cmd_import = app.add_subcommand("import-dat", "Import a No-Intro DAT file");
   std::string import_path;
-  cmd_import->add_option("path", import_path, "Path to .dat file")->required();
+  cmd_import->add_option("path", import_path, "Path to DAT or DAT archive");
 
   // ── scan ───────────────────────────────────────────────────
   auto* cmd_scan = app.add_subcommand("scan", "Scan a directory for ROM files");
@@ -86,14 +174,21 @@ int main(int argc, char** argv) {
   // Initialize logging
   romulus::core::init_logging(log_level);
 
-  auto db_path = get_db_path(db_path_str);
+  const auto executable_dir = get_executable_dir(argv[0]);
+  auto db_path = get_db_path(db_path_str, executable_dir);
 
   try {
     romulus::service::RomulusService svc(db_path);
 
     // ── import-dat ───────────────────────────────────────────
     if (cmd_import->parsed()) {
-      auto result = svc.import_dat(import_path);
+      auto resolved_path = resolve_import_path(import_path, executable_dir);
+      if (!resolved_path) {
+        std::cerr << "Error: " << resolved_path.error().message << "\n";
+        return 1;
+      }
+
+      auto result = svc.import_dat(*resolved_path);
       if (!result) {
         std::cerr << "Error: " << result.error().message << "\n";
         return 1;

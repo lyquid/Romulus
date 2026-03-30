@@ -64,7 +64,7 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
       .system_id = *system_id,
       .name = dat_file->header.name,
       .version = dat_file->header.version,
-      .source_url = path.string(),
+      .source_url = validated->string(),
       .checksum = *checksum,
       .imported_at = {},
   };

@@ -13,11 +13,12 @@ namespace romulus::dat {
 using romulus::core::Result;
 
 /// Parses LogiqX-format XML DAT files used by No-Intro.
+/// Supports plain `.dat` / `.xml` files and archives containing a single DAT entry.
 /// Extracts system info, game entries, and ROM metadata with hashes.
 class DatParser final {
 public:
   /// Parses a DAT file and returns the complete structured representation.
-  /// @param dat_path Path to the .dat XML file.
+  /// @param dat_path Path to the DAT artifact on disk.
   /// @return Parsed DatFile containing header + all games/ROMs.
   [[nodiscard]] auto parse(const std::filesystem::path& dat_path) -> Result<core::DatFile>;
 

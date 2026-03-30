@@ -1,23 +1,117 @@
 #include "romulus/dat/dat_parser.hpp"
 
 #include "romulus/core/logging.hpp"
+#include "romulus/scanner/archive_service.hpp"
 
 #include <pugixml.hpp>
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <string>
+#include <vector>
 
 namespace romulus::dat {
 
-auto DatParser::parse(const std::filesystem::path& dat_path) -> Result<core::DatFile> {
-  pugi::xml_document doc;
-  pugi::xml_parse_result result = doc.load_file(dat_path.c_str());
+namespace {
 
+auto to_lower(std::string value) -> std::string {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  return value;
+}
+
+auto is_dat_entry(const std::string& entry_name) -> bool {
+  const auto extension = to_lower(std::filesystem::path{entry_name}.extension().string());
+  return extension == ".dat" || extension == ".xml";
+}
+
+auto collect_archive_dat_entries(const std::filesystem::path& dat_path)
+    -> Result<std::vector<core::ArchiveEntry>> {
+  auto entries = scanner::ArchiveService::list_entries(dat_path);
+  if (!entries) {
+    return std::unexpected(entries.error());
+  }
+
+  std::vector<core::ArchiveEntry> dat_entries;
+  for (const auto& entry : *entries) {
+    if (is_dat_entry(entry.name)) {
+      dat_entries.push_back(entry);
+    }
+  }
+
+  return dat_entries;
+}
+
+auto load_document_from_archive(const std::filesystem::path& dat_path,
+                                pugi::xml_document& doc) -> Result<std::string> {
+  auto dat_entries = collect_archive_dat_entries(dat_path);
+  if (!dat_entries) {
+    return std::unexpected(dat_entries.error());
+  }
+
+  if (dat_entries->empty()) {
+    return std::unexpected(core::Error{core::ErrorCode::DatInvalidFormat,
+                                       "Archive does not contain a DAT/XML entry: " +
+                                           dat_path.string()});
+  }
+
+  if (dat_entries->size() > 1) {
+    std::string message = "Archive contains multiple DAT/XML entries: ";
+    for (std::size_t index = 0; index < dat_entries->size(); ++index) {
+      if (index > 0) {
+        message += ", ";
+      }
+      message += dat_entries->at(index).name;
+    }
+    message += " in " + dat_path.string();
+    return std::unexpected(core::Error{core::ErrorCode::DatInvalidFormat, std::move(message)});
+  }
+
+  std::string xml_content;
+  auto stream = scanner::ArchiveService::stream_entry(
+      dat_path, dat_entries->front().name, [&xml_content](const std::byte* data, std::size_t size) {
+        xml_content.append(reinterpret_cast<const char*>(data), size);
+      });
+  if (!stream) {
+    return std::unexpected(stream.error());
+  }
+
+  const auto result = doc.load_buffer(xml_content.data(), xml_content.size());
+  if (!result) {
+    return std::unexpected(core::Error{core::ErrorCode::DatParseError,
+                                       "Failed to parse XML '" + dat_path.string() + "::" +
+                                           dat_entries->front().name + "': " +
+                                           result.description()});
+  }
+
+  return dat_entries->front().name;
+}
+
+auto load_document(const std::filesystem::path& dat_path, pugi::xml_document& doc)
+    -> Result<std::string> {
+  if (scanner::ArchiveService::is_archive(dat_path)) {
+    return load_document_from_archive(dat_path, doc);
+  }
+
+  const auto result = doc.load_file(dat_path.c_str());
   if (!result) {
     return std::unexpected(
         core::Error{core::ErrorCode::DatParseError,
                     "Failed to parse XML '" + dat_path.string() + "': " + result.description()});
+  }
+
+  return dat_path.filename().string();
+}
+
+} // namespace
+
+auto DatParser::parse(const std::filesystem::path& dat_path) -> Result<core::DatFile> {
+  pugi::xml_document doc;
+  auto loaded = load_document(dat_path, doc);
+  if (!loaded) {
+    return std::unexpected(loaded.error());
   }
 
   auto datafile = doc.child("datafile");
@@ -38,7 +132,10 @@ auto DatParser::parse(const std::filesystem::path& dat_path) -> Result<core::Dat
     return std::unexpected(header.error());
   }
 
-  ROMULUS_INFO("Parsing DAT: name='{}', version='{}'", header->name, header->version);
+  ROMULUS_INFO("Parsing DAT '{}' : name='{}', version='{}'",
+               *loaded,
+               header->name,
+               header->version);
 
   // Parse all games
   core::DatFile dat_file;
