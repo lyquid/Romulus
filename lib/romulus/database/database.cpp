@@ -407,7 +407,7 @@ auto Database::insert_system(const core::SystemInfo& system) -> Result<std::int6
     stmt->bind_text(1, system.name);
     stmt->bind_text(2, system.short_name);
     stmt->bind_text(3, system.extensions);
-    stmt->step();
+    static_cast<void>(stmt->step());
 
     return last_insert_id();
 }
@@ -460,7 +460,7 @@ auto Database::get_or_create_system(std::string_view name) -> Result<std::int64_
         return found->value().id;
     }
 
-    core::SystemInfo sys{.name = std::string(name)};
+    core::SystemInfo sys{.name = std::string(name), .short_name = {}, .extensions = {}};
     return insert_system(sys);
 }
 
@@ -480,7 +480,7 @@ auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::in
     stmt->bind_text(3, dat.version);
     stmt->bind_text(4, dat.source_url);
     stmt->bind_text(5, dat.checksum);
-    stmt->step();
+    static_cast<void>(stmt->step());
 
     return last_insert_id();
 }
@@ -550,7 +550,7 @@ auto Database::insert_game(const core::GameInfo& game) -> Result<std::int64_t>
     stmt->bind_text(1, game.name);
     stmt->bind_int64(2, game.system_id);
     stmt->bind_int64(3, game.dat_version_id);
-    stmt->step();
+    static_cast<void>(stmt->step());
 
     auto id = last_insert_id();
     if (id == 0)
@@ -586,8 +586,10 @@ auto Database::get_games_by_dat_version(std::int64_t dat_version_id)
         games.push_back({
             .id = stmt->column_int64(0),
             .name = stmt->column_text(1),
+            .description = {},
             .system_id = stmt->column_int64(2),
             .dat_version_id = stmt->column_int64(3),
+            .roms = {},
         });
     }
     return games;
@@ -611,7 +613,7 @@ auto Database::insert_rom(const core::RomInfo& rom) -> Result<std::int64_t>
     stmt->bind_text(5, rom.md5);
     stmt->bind_text(6, rom.sha1);
     stmt->bind_text(7, rom.region);
-    stmt->step();
+    static_cast<void>(stmt->step());
 
     return last_insert_id();
 }
@@ -742,7 +744,7 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t>
     stmt->bind_text(3, file.crc32);
     stmt->bind_text(4, file.md5);
     stmt->bind_text(5, file.sha1);
-    stmt->step();
+    static_cast<void>(stmt->step());
 
     // Get the id (either inserted or updated)
     auto find = prepare("SELECT id FROM files WHERE path = ?1");
@@ -829,11 +831,11 @@ auto Database::remove_missing_files(const std::vector<std::string>& existing_pat
         if (!found)
         {
             del_matches->bind_int64(1, file.id);
-            del_matches->step();
+            static_cast<void>(del_matches->step());
             del_matches->reset();
 
             del_stmt->bind_int64(1, file.id);
-            del_stmt->step();
+            static_cast<void>(del_stmt->step());
             del_stmt->reset();
             ++removed;
         }
@@ -855,7 +857,7 @@ auto Database::insert_file_match(const core::MatchResult& match) -> Result<void>
     stmt->bind_int64(1, match.file_id);
     stmt->bind_int64(2, match.rom_id);
     stmt->bind_text(3, match_type_to_string(match.match_type));
-    stmt->step();
+    static_cast<void>(stmt->step());
 
     return {};
 }
@@ -923,7 +925,7 @@ auto Database::upsert_rom_status(std::int64_t rom_id, core::RomStatusType status
 
     stmt->bind_int64(1, rom_id);
     stmt->bind_text(2, status_to_string(status));
-    stmt->step();
+    static_cast<void>(stmt->step());
 
     return {};
 }

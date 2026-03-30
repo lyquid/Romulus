@@ -3,7 +3,7 @@
 # that CLI, API server, and tests link against.
 
 # ── Find dependencies ─────────────────────────────────────────
-find_package(unofficial-sqlite3 CONFIG REQUIRED)
+find_package(SQLite3 REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(pugixml CONFIG REQUIRED)
 find_package(LibArchive REQUIRED)
@@ -53,7 +53,7 @@ target_link_libraries(romulus_lib
     PUBLIC
         spdlog::spdlog
     PRIVATE
-        unofficial::sqlite3::sqlite3
+        SQLite::SQLite3
         pugixml::pugixml
         LibArchive::LibArchive
         OpenSSL::SSL

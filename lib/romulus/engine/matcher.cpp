@@ -3,6 +3,8 @@
 #include "romulus/core/logging.hpp"
 #include "romulus/database/database.hpp"
 
+#include <algorithm>
+
 namespace romulus::engine {
 
 auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::MatchResult>> {

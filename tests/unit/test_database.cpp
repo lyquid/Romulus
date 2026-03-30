@@ -65,15 +65,19 @@ TEST_F(DatabaseTest, InsertAndRetrieveRom) {
     .system_id = *sys_id,
     .name = "Test System",
     .version = "1.0",
+    .source_url = {},
     .checksum = "abc123",
+    .imported_at = {},
   };
   auto dat_id = db_->insert_dat_version(dat);
   ASSERT_TRUE(dat_id.has_value());
 
   romulus::core::GameInfo game{
     .name = "Test Game",
+    .description = {},
     .system_id = *sys_id,
     .dat_version_id = *dat_id,
+    .roms = {},
   };
   auto game_id = db_->insert_game(game);
   ASSERT_TRUE(game_id.has_value());
@@ -104,6 +108,7 @@ TEST_F(DatabaseTest, UpsertFileUpdatesExisting) {
     .crc32 = "aabbccdd",
     .md5 = "12345678901234567890123456789012",
     .sha1 = "1234567890123456789012345678901234567890",
+    .last_scanned = {},
   };
 
   auto id1 = db_->upsert_file(file);
@@ -123,7 +128,7 @@ TEST_F(DatabaseTest, UpsertFileUpdatesExisting) {
 TEST_F(DatabaseTest, TransactionRollsBackOnScopeExit) {
   {
     auto txn = db_->begin_transaction();
-    db_->get_or_create_system("Should Be Rolled Back");
+    static_cast<void>(db_->get_or_create_system("Should Be Rolled Back"));
     // txn goes out of scope without commit -> rollback
   }
 
@@ -135,7 +140,7 @@ TEST_F(DatabaseTest, TransactionRollsBackOnScopeExit) {
 TEST_F(DatabaseTest, TransactionCommits) {
   {
     auto txn = db_->begin_transaction();
-    db_->get_or_create_system("Should Persist");
+    static_cast<void>(db_->get_or_create_system("Should Persist"));
     txn.commit();
   }
 

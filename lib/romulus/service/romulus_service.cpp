@@ -67,6 +67,7 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
     .version = dat_file->header.version,
     .source_url = path.string(),
     .checksum = *checksum,
+    .imported_at = {},
   };
 
   auto dat_id = db_->insert_dat_version(dat_version);
@@ -81,8 +82,10 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
   for (const auto& game : dat_file->games) {
     core::GameInfo game_entry{
       .name = game.name,
+      .description = {},
       .system_id = *system_id,
       .dat_version_id = *dat_id,
+      .roms = {},
     };
 
     auto game_id = db_->insert_game(game_entry);

@@ -40,8 +40,8 @@ TEST_F(DatUpdateTest, ImportingSameDatTwiceIsIdempotent) {
 TEST_F(DatUpdateTest, SystemCountDoesNotIncreaseOnReimport) {
   romulus::service::RomulusService svc(db_path_);
 
-  svc.import_dat(k_FixturesDir / "sample.dat");
-  svc.import_dat(k_FixturesDir / "sample.dat");
+  static_cast<void>(svc.import_dat(k_FixturesDir / "sample.dat"));
+  static_cast<void>(svc.import_dat(k_FixturesDir / "sample.dat"));
 
   auto systems = svc.list_systems();
   ASSERT_TRUE(systems.has_value());

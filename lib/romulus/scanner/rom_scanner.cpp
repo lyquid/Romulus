@@ -185,6 +185,7 @@ auto RomScanner::scan(
       .crc32 = digest->crc32,
       .md5 = digest->md5,
       .sha1 = digest->sha1,
+      .last_scanned = {},
       .is_archive_entry = !job.entry_name.empty(),
     };
 
