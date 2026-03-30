@@ -128,7 +128,7 @@ TEST_F(DatabaseTest, UpsertFileUpdatesExisting) {
 TEST_F(DatabaseTest, TransactionRollsBackOnScopeExit) {
   {
     auto txn = db_->begin_transaction();
-    static_cast<void>(db_->get_or_create_system("Should Be Rolled Back"));
+    auto id = db_->get_or_create_system("Should Be Rolled Back");
     // txn goes out of scope without commit -> rollback
   }
 
@@ -140,7 +140,7 @@ TEST_F(DatabaseTest, TransactionRollsBackOnScopeExit) {
 TEST_F(DatabaseTest, TransactionCommits) {
   {
     auto txn = db_->begin_transaction();
-    static_cast<void>(db_->get_or_create_system("Should Persist"));
+    auto id = db_->get_or_create_system("Should Persist");
     txn.commit();
   }
 

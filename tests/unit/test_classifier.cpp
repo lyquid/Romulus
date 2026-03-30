@@ -41,19 +41,19 @@ protected:
     romulus::core::RomInfo rom1{
       .game_id = *game_id, .name = "matched.bin", .size = 100,
       .crc32 = "11111111", .md5 = "m1", .sha1 = "s1", .region = {}};
-    static_cast<void>(db_->insert_rom(rom1));
+    auto rom1_id = db_->insert_rom(rom1);
 
     // ROM without a matching file
     romulus::core::RomInfo rom2{
       .game_id = *game_id, .name = "missing.bin", .size = 200,
       .crc32 = "22222222", .md5 = "m2", .sha1 = "s2", .region = {}};
-    static_cast<void>(db_->insert_rom(rom2));
+    auto rom2_id = db_->insert_rom(rom2);
 
     // File that matches rom1
     romulus::core::FileInfo file{
       .path = "/roms/matched.bin", .size = 100,
       .crc32 = "11111111", .md5 = "m1", .sha1 = "s1", .last_scanned = {}};
-    static_cast<void>(db_->upsert_file(file));
+    auto file_id = db_->upsert_file(file);
   }
 
   std::filesystem::path db_path_;

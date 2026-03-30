@@ -40,19 +40,19 @@ protected:
     romulus::core::RomInfo rom{
       .game_id = *game_id, .name = "test.bin", .size = 100,
       .crc32 = "aabb0011", .md5 = "md5hash", .sha1 = "sha1hash", .region = {}};
-    static_cast<void>(db_->insert_rom(rom));
+    auto rom_id = db_->insert_rom(rom);
 
     // Insert a matching file (exact match)
     romulus::core::FileInfo file{
       .path = "/roms/test.bin", .size = 100,
       .crc32 = "aabb0011", .md5 = "md5hash", .sha1 = "sha1hash", .last_scanned = {}};
-    static_cast<void>(db_->upsert_file(file));
+    auto file_id = db_->upsert_file(file);
 
     // Insert a non-matching file
     romulus::core::FileInfo other{
       .path = "/roms/unknown.bin", .size = 200,
       .crc32 = "00000000", .md5 = "nomatch", .sha1 = "nomatch", .last_scanned = {}};
-    static_cast<void>(db_->upsert_file(other));
+    auto other_id = db_->upsert_file(other);
   }
 
   std::filesystem::path db_path_;

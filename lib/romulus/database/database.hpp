@@ -46,6 +46,9 @@ public:
     /// Steps the statement. Returns true if a row is available (SQLITE_ROW).
     [[nodiscard]] auto step() -> bool;
 
+    /// Executes a non-query statement (INSERT/UPDATE/DELETE) discarding the row result.
+    void execute();
+
     /// Resets the statement for reuse with new bindings.
     void reset();
 

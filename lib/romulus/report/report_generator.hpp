@@ -45,6 +45,18 @@ private:
     -> Result<std::string>;
   [[nodiscard]] static auto missing_json(database::Database& db, std::optional<std::int64_t> sys)
     -> Result<std::string>;
+  [[nodiscard]] static auto duplicates_text(database::Database& db, std::optional<std::int64_t> sys)
+    -> Result<std::string>;
+  [[nodiscard]] static auto duplicates_csv(database::Database& db, std::optional<std::int64_t> sys)
+    -> Result<std::string>;
+  [[nodiscard]] static auto duplicates_json(database::Database& db, std::optional<std::int64_t> sys)
+    -> Result<std::string>;
+  [[nodiscard]] static auto unverified_text(database::Database& db, std::optional<std::int64_t> sys)
+    -> Result<std::string>;
+  [[nodiscard]] static auto unverified_csv(database::Database& db, std::optional<std::int64_t> sys)
+    -> Result<std::string>;
+  [[nodiscard]] static auto unverified_json(database::Database& db, std::optional<std::int64_t> sys)
+    -> Result<std::string>;
 };
 
 } // namespace romulus::report

@@ -30,10 +30,19 @@ auto ReportGenerator::generate(
     }
     break;
   case core::ReportType::Duplicates:
+    switch (format) {
+    case core::ReportFormat::Text: return duplicates_text(db, system_id);
+    case core::ReportFormat::Csv: return duplicates_csv(db, system_id);
+    case core::ReportFormat::Json: return duplicates_json(db, system_id);
+    }
+    break;
   case core::ReportType::Unverified:
-    return std::unexpected(core::Error{
-      core::ErrorCode::InvalidArgument,
-      "Report type not yet implemented"});
+    switch (format) {
+    case core::ReportFormat::Text: return unverified_text(db, system_id);
+    case core::ReportFormat::Csv: return unverified_csv(db, system_id);
+    case core::ReportFormat::Json: return unverified_json(db, system_id);
+    }
+    break;
   }
 
   return std::unexpected(core::Error{
@@ -171,6 +180,155 @@ auto ReportGenerator::missing_json(
       {"rom", rom.rom_name},
       {"sha1", rom.sha1},
     });
+  }
+
+  return j.dump(2);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Duplicate File Reports
+// ═══════════════════════════════════════════════════════════════
+
+auto ReportGenerator::duplicates_text(
+  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+  auto dupes = db.get_duplicate_files(sys);
+  if (!dupes) {
+    return std::unexpected(dupes.error());
+  }
+
+  std::ostringstream out;
+  out << "\n═══ Duplicate Files (" << dupes->size() << ") ═══\n\n";
+
+  std::string current_rom;
+  for (const auto& d : *dupes) {
+    if (d.rom_name != current_rom) {
+      current_rom = d.rom_name;
+      out << "── " << d.game_name << " / " << d.rom_name << " ──\n";
+    }
+    out << "  " << d.file_path << "\n";
+  }
+
+  if (dupes->empty()) {
+    out << "  No duplicates found.\n";
+  }
+
+  return out.str();
+}
+
+auto ReportGenerator::duplicates_csv(
+  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+  auto dupes = db.get_duplicate_files(sys);
+  if (!dupes) {
+    return std::unexpected(dupes.error());
+  }
+
+  std::ostringstream out;
+  out << "file_path,rom_name,game_name\n";
+  for (const auto& d : *dupes) {
+    out << d.file_path << ","
+        << d.rom_name << ","
+        << d.game_name << "\n";
+  }
+
+  return out.str();
+}
+
+auto ReportGenerator::duplicates_json(
+  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+  auto dupes = db.get_duplicate_files(sys);
+  if (!dupes) {
+    return std::unexpected(dupes.error());
+  }
+
+  nlohmann::json j = nlohmann::json::array();
+  for (const auto& d : *dupes) {
+    j.push_back({
+      {"file_path", d.file_path},
+      {"rom_name", d.rom_name},
+      {"game_name", d.game_name},
+    });
+  }
+
+  return j.dump(2);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Unverified File Reports
+// ═══════════════════════════════════════════════════════════════
+
+auto ReportGenerator::unverified_text(
+  database::Database& db, std::optional<std::int64_t> /*sys*/) -> Result<std::string> {
+  auto all_files = db.get_all_files();
+  if (!all_files) {
+    return std::unexpected(all_files.error());
+  }
+
+  std::ostringstream out;
+  std::vector<core::FileInfo> unverified;
+
+  for (const auto& file : *all_files) {
+    auto matches = db.get_matches_for_file(file.id);
+    if (!matches || matches->empty()) {
+      unverified.push_back(file);
+    }
+  }
+
+  out << "\n═══ Unverified Files (" << unverified.size() << ") ═══\n\n";
+  for (const auto& f : unverified) {
+    out << "  " << f.path << " (" << f.size << " bytes)\n";
+  }
+
+  if (unverified.empty()) {
+    out << "  All files are verified.\n";
+  }
+
+  return out.str();
+}
+
+auto ReportGenerator::unverified_csv(
+  database::Database& db, std::optional<std::int64_t> /*sys*/) -> Result<std::string> {
+  auto all_files = db.get_all_files();
+  if (!all_files) {
+    return std::unexpected(all_files.error());
+  }
+
+  std::ostringstream out;
+  out << "path,size,crc32,md5,sha1\n";
+
+  for (const auto& file : *all_files) {
+    auto matches = db.get_matches_for_file(file.id);
+    if (!matches || matches->empty()) {
+      out << file.path << ","
+          << file.size << ","
+          << file.crc32 << ","
+          << file.md5 << ","
+          << file.sha1 << "\n";
+    }
+  }
+
+  return out.str();
+}
+
+auto ReportGenerator::unverified_json(
+  database::Database& db, std::optional<std::int64_t> /*sys*/) -> Result<std::string> {
+  auto all_files = db.get_all_files();
+  if (!all_files) {
+    return std::unexpected(all_files.error());
+  }
+
+  nlohmann::json j = nlohmann::json::array();
+
+  for (const auto& file : *all_files) {
+    auto matches = db.get_matches_for_file(file.id);
+    if (!matches || matches->empty()) {
+      j.push_back({
+        {"path", file.path},
+        {"size", file.size},
+        {"crc32", file.crc32},
+        {"md5", file.md5},
+        {"sha1", file.sha1},
+      });
+    }
   }
 
   return j.dump(2);
