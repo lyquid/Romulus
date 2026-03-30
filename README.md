@@ -25,7 +25,7 @@ ROMULUS takes your DAT files and ROM directories, then tells you exactly what yo
 
 ```bash
 romulus import-dat "Nintendo - Game Boy (20240101).dat"
-romulus scan C:\ROMs\GameBoy
+romulus scan /path/to/roms/GameBoy
 romulus verify
 romulus report summary
 ```
@@ -66,7 +66,7 @@ romulus report summary
 
 ```
 lib/romulus/          → 🧩 Core C++ library (all business logic)
-apps/cli/             → 🖥️  CLI frontend (this is romulus.exe)
+apps/cli/             → 🖥️  CLI frontend (builds the `romulus` command)
 apps/api/  (future)   → 🌐 REST API server for web frontend
 web/       (future)   → ⚛️  React/TypeScript web interface
 ```
@@ -90,10 +90,10 @@ Before you can save the princess, you'll need:
 cmake --preset dev
 
 # ▶️  BUILD
-cmake --build build
+cmake --build --preset dev
 
 # 🧪 Run tests — Don't skip these or the final boss wins
-ctest --test-dir build --output-on-failure
+ctest --preset dev
 ```
 
 ### 🏁 Release Build (Final Stage)
