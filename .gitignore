@@ -12,6 +12,7 @@ vcpkg-cache/
 .vs/
 .vscode/
 .idea/
+*.code-workspace
 *.sln
 *.vcxproj*
 *.user
