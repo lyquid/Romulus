@@ -5,6 +5,17 @@
 All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [Unreleased]
+
+### 🔧 Refactoring
+
+- **CLI**: Replaced all `std::cout`/`std::cerr` with `std::print`/`std::print(stderr, ...)` from C++23 `<print>`; removed `#include <iostream>`
+
+### 🏗️ Build System
+
+- Upgraded CI GCC build from GCC 13 → GCC 14 to support `<print>` (added in libstdc++ 14)
+- Upgraded CI Clang build from libstdc++-13-dev → libstdc++-14-dev and updated `--gcc-install-dir` to `/14`
+
 ## [0.1.0] — 2026-03-30
 
 ### ⚡ Features
@@ -22,7 +33,7 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 - CMake 3.25+ with C++23 standard requirement
 - vcpkg manifest with 8 dependencies (sqlite3, spdlog, pugixml, cli11, libarchive, openssl, nlohmann-json, gtest)
-- CMake presets for dev/release/CI (MSVC, GCC 13, Clang 17)
+- CMake presets for dev/release/CI (MSVC, GCC 14, Clang 17)
 - Compiler warnings module (`romulus_set_warnings`) with `-Werror`/`/WX`
 - clang-tidy integration (optional)
 - CI pipeline (GitHub Actions) with build matrix and format checks

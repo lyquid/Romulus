@@ -7,7 +7,7 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <iostream>
+#include <print>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -69,9 +69,9 @@ auto resolve_bundled_dat_path(const std::filesystem::path& executable_dir)
     -> romulus::core::Result<std::filesystem::path> {
   const auto dats_dir = executable_dir / "dats";
   if (!std::filesystem::exists(dats_dir) || !std::filesystem::is_directory(dats_dir)) {
-    return std::unexpected(romulus::core::Error{romulus::core::ErrorCode::DirectoryNotFound,
-                                                "Bundled DAT directory not found: " +
-                                                    dats_dir.string()});
+    return std::unexpected(
+        romulus::core::Error{romulus::core::ErrorCode::DirectoryNotFound,
+                             "Bundled DAT directory not found: " + dats_dir.string()});
   }
 
   std::vector<std::filesystem::path> candidates;
@@ -85,16 +85,16 @@ auto resolve_bundled_dat_path(const std::filesystem::path& executable_dir)
   }
 
   if (candidates.empty()) {
-    return std::unexpected(romulus::core::Error{romulus::core::ErrorCode::FileNotFound,
-                                                "No bundled DAT artifacts found in: " +
-                                                    dats_dir.string()});
+    return std::unexpected(
+        romulus::core::Error{romulus::core::ErrorCode::FileNotFound,
+                             "No bundled DAT artifacts found in: " + dats_dir.string()});
   }
 
   if (candidates.size() > 1) {
-    return std::unexpected(romulus::core::Error{
-        romulus::core::ErrorCode::InvalidArgument,
-        "Multiple bundled DAT artifacts found in '" + dats_dir.string() + "': " +
-            describe_candidates(candidates)});
+    return std::unexpected(romulus::core::Error{romulus::core::ErrorCode::InvalidArgument,
+                                                "Multiple bundled DAT artifacts found in '" +
+                                                    dats_dir.string() +
+                                                    "': " + describe_candidates(candidates)});
   }
 
   return candidates.front();
@@ -184,16 +184,16 @@ int main(int argc, char** argv) {
     if (cmd_import->parsed()) {
       auto resolved_path = resolve_import_path(import_path, executable_dir);
       if (!resolved_path) {
-        std::cerr << "Error: " << resolved_path.error().message << "\n";
+        std::print(stderr, "Error: {}\n", resolved_path.error().message);
         return 1;
       }
 
       auto result = svc.import_dat(*resolved_path);
       if (!result) {
-        std::cerr << "Error: " << result.error().message << "\n";
+        std::print(stderr, "Error: {}\n", result.error().message);
         return 1;
       }
-      std::cout << "Imported DAT: " << result->name << " v" << result->version << "\n";
+      std::print("Imported DAT: {} v{}\n", result->name, result->version);
     }
 
     // ── scan ─────────────────────────────────────────────────
@@ -202,12 +202,14 @@ int main(int argc, char** argv) {
           scan_extensions.empty() ? std::nullopt : std::optional<std::string>{scan_extensions};
       auto result = svc.scan_directory(scan_dir, ext);
       if (!result) {
-        std::cerr << "Error: " << result.error().message << "\n";
+        std::print(stderr, "Error: {}\n", result.error().message);
         return 1;
       }
-      std::cout << "Scan complete: " << result->files_scanned << " files, " << result->files_hashed
-                << " hashed, " << result->files_skipped << " skipped, "
-                << result->archives_processed << " archives\n";
+      std::print("Scan complete: {} files, {} hashed, {} skipped, {} archives\n",
+                 result->files_scanned,
+                 result->files_hashed,
+                 result->files_skipped,
+                 result->archives_processed);
     }
 
     // ── verify ───────────────────────────────────────────────
@@ -215,26 +217,26 @@ int main(int argc, char** argv) {
       auto sys = verify_system.empty() ? std::nullopt : std::optional{verify_system};
       auto result = svc.verify(sys);
       if (!result) {
-        std::cerr << "Error: " << result.error().message << "\n";
+        std::print(stderr, "Error: {}\n", result.error().message);
         return 1;
       }
-      std::cout << "Verification complete.\n";
+      std::print("Verification complete.\n");
     }
 
     // ── sync ─────────────────────────────────────────────────
     else if (cmd_sync->parsed()) {
       auto result = svc.full_sync(sync_dat, sync_dir);
       if (!result) {
-        std::cerr << "Error: " << result.error().message << "\n";
+        std::print(stderr, "Error: {}\n", result.error().message);
         return 1;
       }
-      std::cout << "Full sync complete.\n";
+      std::print("Full sync complete.\n");
 
       // Print summary
       auto summary = svc.generate_report(romulus::core::ReportType::Summary,
                                          romulus::core::ReportFormat::Text);
       if (summary) {
-        std::cout << *summary;
+        std::print("{}", *summary);
       }
     }
 
@@ -255,29 +257,26 @@ int main(int argc, char** argv) {
       auto sys = report_system.empty() ? std::nullopt : std::optional{report_system};
       auto result = svc.generate_report(type, fmt, sys);
       if (!result) {
-        std::cerr << "Error: " << result.error().message << "\n";
+        std::print(stderr, "Error: {}\n", result.error().message);
         return 1;
       }
-      std::cout << *result;
+      std::print("{}", *result);
     }
 
     // ── systems ──────────────────────────────────────────────
     else if (cmd_systems->parsed()) {
       auto result = svc.list_systems();
       if (!result) {
-        std::cerr << "Error: " << result.error().message << "\n";
+        std::print(stderr, "Error: {}\n", result.error().message);
         return 1;
       }
       if (result->empty()) {
-        std::cout << "No systems registered. Import a DAT file first.\n";
+        std::print("No systems registered. Import a DAT file first.\n");
       } else {
-        std::cout << "Known systems:\n";
+        std::print("Known systems:\n");
         for (const auto& sys : *result) {
-          std::cout << "  " << sys.name;
-          if (!sys.short_name.empty()) {
-            std::cout << " (" << sys.short_name << ")";
-          }
-          std::cout << "\n";
+          std::print(
+              "  {}{}\n", sys.name, sys.short_name.empty() ? "" : " (" + sys.short_name + ")");
         }
       }
     }
@@ -288,14 +287,14 @@ int main(int argc, char** argv) {
       auto result = svc.generate_report(
           romulus::core::ReportType::Summary, romulus::core::ReportFormat::Text, sys);
       if (!result) {
-        std::cerr << "Error: " << result.error().message << "\n";
+        std::print(stderr, "Error: {}\n", result.error().message);
         return 1;
       }
-      std::cout << *result;
+      std::print("{}", *result);
     }
 
   } catch (const std::exception& e) {
-    std::cerr << "Fatal error: " << e.what() << "\n";
+    std::print(stderr, "Fatal error: {}\n", e.what());
     return 1;
   }
 

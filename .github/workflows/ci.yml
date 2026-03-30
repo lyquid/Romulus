@@ -57,23 +57,23 @@ jobs:
         with:
           vcpkgGitCommitId: "c82f74667287d3dc386bce81e44964370c91a289"
 
-      # GCC 13+ for C++23 support
-      - name: Install GCC 13
+      # GCC 14+ for C++23 <print> support
+      - name: Install GCC 14
         if: matrix.compiler == 'gcc'
         run: |
           sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
           sudo apt-get update
-          sudo apt-get install -y gcc-13 g++-13
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 130
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 130
+          sudo apt-get install -y gcc-14 g++-14
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 140
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 140
 
-      # Clang 17+ for C++23 support (needs GCC 13 libstdc++ for std::expected)
+      # Clang 17+ for C++23 support (needs GCC 14 libstdc++ for std::print)
       - name: Install Clang 17
         if: matrix.compiler == 'clang'
         run: |
           sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
           sudo apt-get update
-          sudo apt-get install -y g++-13 libstdc++-13-dev
+          sudo apt-get install -y g++-14 libstdc++-14-dev
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 17
@@ -140,7 +140,7 @@ jobs:
         run: |
           sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
           sudo apt-get update
-          sudo apt-get install -y g++-13 libstdc++-13-dev
+          sudo apt-get install -y g++-14 libstdc++-14-dev
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 17
