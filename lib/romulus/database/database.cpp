@@ -78,7 +78,7 @@ auto PreparedStatement::step() -> bool
 
 void PreparedStatement::execute()
 {
-    [[maybe_unused]] bool had_row = step();
+    [[maybe_unused]] bool result = step();
 }
 
 void PreparedStatement::reset()
@@ -1086,6 +1086,36 @@ auto Database::get_duplicate_files(std::optional<std::int64_t> system_id)
         });
     }
     return dupes;
+}
+
+auto Database::get_unverified_files(std::optional<std::int64_t> /*system_id*/)
+    -> Result<std::vector<core::FileInfo>>
+{
+    // Use LEFT JOIN to find files with no matches in a single query
+    std::string sql =
+        "SELECT f.id, f.path, f.size, f.crc32, f.md5, f.sha1, f.last_scanned "
+        "FROM files f "
+        "LEFT JOIN file_matches fm ON f.id = fm.file_id "
+        "WHERE fm.file_id IS NULL "
+        "ORDER BY f.path";
+
+    auto stmt = prepare(sql);
+    if (!stmt) return std::unexpected(stmt.error());
+
+    std::vector<core::FileInfo> unverified;
+    while (stmt->step())
+    {
+        unverified.push_back({
+            .id = stmt->column_int64(0),
+            .path = stmt->column_text(1),
+            .size = stmt->column_int64(2),
+            .crc32 = stmt->column_text(3),
+            .md5 = stmt->column_text(4),
+            .sha1 = stmt->column_text(5),
+            .last_scanned = stmt->column_text(6),
+        });
+    }
+    return unverified;
 }
 
 } // namespace romulus::database

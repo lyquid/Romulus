@@ -257,28 +257,19 @@ auto ReportGenerator::duplicates_json(
 // ═══════════════════════════════════════════════════════════════
 
 auto ReportGenerator::unverified_text(
-  database::Database& db, std::optional<std::int64_t> /*sys*/) -> Result<std::string> {
-  auto all_files = db.get_all_files();
-  if (!all_files) {
-    return std::unexpected(all_files.error());
+  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+  auto unverified = db.get_unverified_files(sys);
+  if (!unverified) {
+    return std::unexpected(unverified.error());
   }
 
   std::ostringstream out;
-  std::vector<core::FileInfo> unverified;
-
-  for (const auto& file : *all_files) {
-    auto matches = db.get_matches_for_file(file.id);
-    if (!matches || matches->empty()) {
-      unverified.push_back(file);
-    }
-  }
-
-  out << "\n═══ Unverified Files (" << unverified.size() << ") ═══\n\n";
-  for (const auto& f : unverified) {
+  out << "\n═══ Unverified Files (" << unverified->size() << ") ═══\n\n";
+  for (const auto& f : *unverified) {
     out << "  " << f.path << " (" << f.size << " bytes)\n";
   }
 
-  if (unverified.empty()) {
+  if (unverified->empty()) {
     out << "  All files are verified.\n";
   }
 
@@ -286,49 +277,43 @@ auto ReportGenerator::unverified_text(
 }
 
 auto ReportGenerator::unverified_csv(
-  database::Database& db, std::optional<std::int64_t> /*sys*/) -> Result<std::string> {
-  auto all_files = db.get_all_files();
-  if (!all_files) {
-    return std::unexpected(all_files.error());
+  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+  auto unverified = db.get_unverified_files(sys);
+  if (!unverified) {
+    return std::unexpected(unverified.error());
   }
 
   std::ostringstream out;
   out << "path,size,crc32,md5,sha1\n";
 
-  for (const auto& file : *all_files) {
-    auto matches = db.get_matches_for_file(file.id);
-    if (!matches || matches->empty()) {
-      out << file.path << ","
-          << file.size << ","
-          << file.crc32 << ","
-          << file.md5 << ","
-          << file.sha1 << "\n";
-    }
+  for (const auto& f : *unverified) {
+    out << f.path << ","
+        << f.size << ","
+        << f.crc32 << ","
+        << f.md5 << ","
+        << f.sha1 << "\n";
   }
 
   return out.str();
 }
 
 auto ReportGenerator::unverified_json(
-  database::Database& db, std::optional<std::int64_t> /*sys*/) -> Result<std::string> {
-  auto all_files = db.get_all_files();
-  if (!all_files) {
-    return std::unexpected(all_files.error());
+  database::Database& db, std::optional<std::int64_t> sys) -> Result<std::string> {
+  auto unverified = db.get_unverified_files(sys);
+  if (!unverified) {
+    return std::unexpected(unverified.error());
   }
 
   nlohmann::json j = nlohmann::json::array();
 
-  for (const auto& file : *all_files) {
-    auto matches = db.get_matches_for_file(file.id);
-    if (!matches || matches->empty()) {
-      j.push_back({
-        {"path", file.path},
-        {"size", file.size},
-        {"crc32", file.crc32},
-        {"md5", file.md5},
-        {"sha1", file.sha1},
-      });
-    }
+  for (const auto& f : *unverified) {
+    j.push_back({
+      {"path", f.path},
+      {"size", f.size},
+      {"crc32", f.crc32},
+      {"md5", f.md5},
+      {"sha1", f.sha1},
+    });
   }
 
   return j.dump(2);

@@ -167,6 +167,8 @@ public:
         -> Result<std::vector<core::MissingRom>>;
     [[nodiscard]] auto get_duplicate_files(std::optional<std::int64_t> system_id = {})
         -> Result<std::vector<core::DuplicateFile>>;
+    [[nodiscard]] auto get_unverified_files(std::optional<std::int64_t> system_id = {})
+        -> Result<std::vector<core::FileInfo>>;
 
     // ── Utilities ────────────────────────────────────────────
 
