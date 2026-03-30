@@ -3,6 +3,8 @@
 #include "romulus/core/logging.hpp"
 #include "romulus/database/database.hpp"
 
+#include <algorithm>
+
 namespace romulus::engine {
 
 auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::MatchResult>> {
@@ -89,13 +91,12 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
 
   txn.commit();
 
-  auto matched = std::ranges::count_if(results, [](const auto& r) {
-    return r.match_type != core::MatchType::NoMatch;
-  });
+  auto matched = std::ranges::count_if(
+      results, [](const auto& r) { return r.match_type != core::MatchType::NoMatch; });
 
-  ROMULUS_INFO(
-    "Matching complete: {} matched, {} unmatched",
-    matched, results.size() - static_cast<std::size_t>(matched));
+  ROMULUS_INFO("Matching complete: {} matched, {} unmatched",
+               matched,
+               results.size() - static_cast<std::size_t>(matched));
 
   return results;
 }

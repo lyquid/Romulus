@@ -5,9 +5,8 @@
 
 namespace romulus::engine {
 
-auto Classifier::classify_all(
-  database::Database& db,
-  std::optional<std::int64_t> system_id) -> Result<void> {
+auto Classifier::classify_all(database::Database& db,
+                              std::optional<std::int64_t> system_id) -> Result<void> {
   // Get all systems to process
   std::vector<core::SystemInfo> systems_to_process;
 
@@ -82,18 +81,18 @@ auto Classifier::classify_all(
 
       auto result = db.upsert_rom_status(rom.id, status);
       if (!result) {
-        ROMULUS_WARN(
-          "Failed to update status for ROM '{}': {}",
-          rom.name, result.error().message);
+        ROMULUS_WARN("Failed to update status for ROM '{}': {}", rom.name, result.error().message);
       }
     }
   }
 
   txn.commit();
 
-  ROMULUS_INFO(
-    "Classification complete: {} verified, {} missing, {} unverified, {} mismatch",
-    verified, missing, unverified, mismatch);
+  ROMULUS_INFO("Classification complete: {} verified, {} missing, {} unverified, {} mismatch",
+               verified,
+               missing,
+               unverified,
+               mismatch);
 
   return {};
 }

@@ -14,7 +14,7 @@
 namespace romulus::service {
 
 RomulusService::RomulusService(const std::filesystem::path& db_path)
-  : db_(std::make_unique<database::Database>(db_path)) {
+    : db_(std::make_unique<database::Database>(db_path)) {
   ROMULUS_INFO("ROMULUS service initialized");
 }
 
@@ -49,8 +49,7 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
   // Check if already imported
   auto existing = db_->find_dat_version(dat_file->header.name, dat_file->header.version);
   if (existing && existing->has_value()) {
-    ROMULUS_INFO(
-      "DAT already imported: '{}' v{}", dat_file->header.name, dat_file->header.version);
+    ROMULUS_INFO("DAT already imported: '{}' v{}", dat_file->header.name, dat_file->header.version);
     return existing->value();
   }
 
@@ -62,11 +61,12 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 
   // Store DAT version
   core::DatVersion dat_version{
-    .system_id = *system_id,
-    .name = dat_file->header.name,
-    .version = dat_file->header.version,
-    .source_url = path.string(),
-    .checksum = *checksum,
+      .system_id = *system_id,
+      .name = dat_file->header.name,
+      .version = dat_file->header.version,
+      .source_url = path.string(),
+      .checksum = *checksum,
+      .imported_at = {},
   };
 
   auto dat_id = db_->insert_dat_version(dat_version);
@@ -80,9 +80,11 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 
   for (const auto& game : dat_file->games) {
     core::GameInfo game_entry{
-      .name = game.name,
-      .system_id = *system_id,
-      .dat_version_id = *dat_id,
+        .name = game.name,
+        .description = {},
+        .system_id = *system_id,
+        .dat_version_id = *dat_id,
+        .roms = {},
     };
 
     auto game_id = db_->insert_game(game_entry);
@@ -93,13 +95,13 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 
     for (const auto& rom : game.roms) {
       core::RomInfo rom_entry{
-        .game_id = *game_id,
-        .name = rom.name,
-        .size = rom.size,
-        .crc32 = rom.crc32,
-        .md5 = rom.md5,
-        .sha1 = rom.sha1,
-        .region = rom.region,
+          .game_id = *game_id,
+          .name = rom.name,
+          .size = rom.size,
+          .crc32 = rom.crc32,
+          .md5 = rom.md5,
+          .sha1 = rom.sha1,
+          .region = rom.region,
       };
 
       auto rom_id = db_->insert_rom(rom_entry);
@@ -111,9 +113,10 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 
   txn.commit();
 
-  ROMULUS_INFO(
-    "Imported DAT: '{}' v{} — {} games",
-    dat_file->header.name, dat_file->header.version, dat_file->games.size());
+  ROMULUS_INFO("Imported DAT: '{}' v{} — {} games",
+               dat_file->header.name,
+               dat_file->header.version,
+               dat_file->games.size());
 
   return dat_version;
 }
@@ -122,9 +125,9 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 // Scan Operations
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::scan_directory(
-  const std::filesystem::path& dir,
-  std::optional<std::string> extensions) -> Result<core::ScanReport> {
+auto RomulusService::scan_directory(const std::filesystem::path& dir,
+                                    std::optional<std::string> extensions)
+    -> Result<core::ScanReport> {
   return scanner::RomScanner::scan(dir, *db_, std::move(extensions));
 }
 
@@ -144,9 +147,8 @@ auto RomulusService::verify(std::optional<std::string> system) -> Result<void> {
   return engine::Classifier::classify_all(*db_, *sys_id);
 }
 
-auto RomulusService::full_sync(
-  const std::filesystem::path& dat_path,
-  const std::filesystem::path& rom_dir) -> Result<void> {
+auto RomulusService::full_sync(const std::filesystem::path& dat_path,
+                               const std::filesystem::path& rom_dir) -> Result<void> {
   ROMULUS_INFO("Starting full sync: DAT={}, ROM dir={}", dat_path.string(), rom_dir.string());
 
   // 1. Import DAT
@@ -176,7 +178,7 @@ auto RomulusService::full_sync(
 // ═══════════════════════════════════════════════════════════════
 
 auto RomulusService::get_summary(std::optional<std::string> system)
-  -> Result<core::CollectionSummary> {
+    -> Result<core::CollectionSummary> {
   auto sys_id = resolve_system_id(system);
   if (!sys_id) {
     return std::unexpected(sys_id.error());
@@ -189,7 +191,7 @@ auto RomulusService::list_systems() -> Result<std::vector<core::SystemInfo>> {
 }
 
 auto RomulusService::get_missing_roms(std::optional<std::string> system)
-  -> Result<std::vector<core::MissingRom>> {
+    -> Result<std::vector<core::MissingRom>> {
   auto sys_id = resolve_system_id(system);
   if (!sys_id) {
     return std::unexpected(sys_id.error());
@@ -201,10 +203,9 @@ auto RomulusService::get_missing_roms(std::optional<std::string> system)
 // Reports
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::generate_report(
-  core::ReportType type,
-  core::ReportFormat format,
-  std::optional<std::string> system) -> Result<std::string> {
+auto RomulusService::generate_report(core::ReportType type,
+                                     core::ReportFormat format,
+                                     std::optional<std::string> system) -> Result<std::string> {
   auto sys_id = resolve_system_id(system);
   if (!sys_id) {
     return std::unexpected(sys_id.error());
@@ -217,7 +218,7 @@ auto RomulusService::generate_report(
 // ═══════════════════════════════════════════════════════════════
 
 auto RomulusService::resolve_system_id(const std::optional<std::string>& system)
-  -> Result<std::optional<std::int64_t>> {
+    -> Result<std::optional<std::int64_t>> {
   if (!system.has_value()) {
     return std::nullopt;
   }
@@ -227,9 +228,8 @@ auto RomulusService::resolve_system_id(const std::optional<std::string>& system)
     return std::unexpected(sys.error());
   }
   if (!sys->has_value()) {
-    return std::unexpected(core::Error{
-      core::ErrorCode::NotFound,
-      "System not found: '" + *system + "'"});
+    return std::unexpected(
+        core::Error{core::ErrorCode::NotFound, "System not found: '" + *system + "'"});
   }
 
   return sys->value().id;

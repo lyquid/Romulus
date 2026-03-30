@@ -24,7 +24,7 @@ public:
   /// @param db Database containing files and ROMs.
   /// @return Vector of match results stored in file_matches table.
   [[nodiscard]] static auto match_all(database::Database& db)
-    -> Result<std::vector<core::MatchResult>>;
+      -> Result<std::vector<core::MatchResult>>;
 };
 
 } // namespace romulus::engine

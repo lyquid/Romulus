@@ -26,25 +26,37 @@ public:
   /// @param format Output format (text, csv, json).
   /// @param system_id Optional system filter.
   /// @return Formatted report string.
-  [[nodiscard]] static auto generate(
-    database::Database& db,
-    core::ReportType type,
-    core::ReportFormat format,
-    std::optional<std::int64_t> system_id = {}) -> Result<std::string>;
+  [[nodiscard]] static auto generate(database::Database& db,
+                                     core::ReportType type,
+                                     core::ReportFormat format,
+                                     std::optional<std::int64_t> system_id = {})
+      -> Result<std::string>;
 
 private:
-  [[nodiscard]] static auto summary_text(database::Database& db, std::optional<std::int64_t> sys)
-    -> Result<std::string>;
-  [[nodiscard]] static auto summary_csv(database::Database& db, std::optional<std::int64_t> sys)
-    -> Result<std::string>;
-  [[nodiscard]] static auto summary_json(database::Database& db, std::optional<std::int64_t> sys)
-    -> Result<std::string>;
-  [[nodiscard]] static auto missing_text(database::Database& db, std::optional<std::int64_t> sys)
-    -> Result<std::string>;
-  [[nodiscard]] static auto missing_csv(database::Database& db, std::optional<std::int64_t> sys)
-    -> Result<std::string>;
-  [[nodiscard]] static auto missing_json(database::Database& db, std::optional<std::int64_t> sys)
-    -> Result<std::string>;
+  [[nodiscard]] static auto summary_text(database::Database& db,
+                                         std::optional<std::int64_t> sys) -> Result<std::string>;
+  [[nodiscard]] static auto summary_csv(database::Database& db,
+                                        std::optional<std::int64_t> sys) -> Result<std::string>;
+  [[nodiscard]] static auto summary_json(database::Database& db,
+                                         std::optional<std::int64_t> sys) -> Result<std::string>;
+  [[nodiscard]] static auto missing_text(database::Database& db,
+                                         std::optional<std::int64_t> sys) -> Result<std::string>;
+  [[nodiscard]] static auto missing_csv(database::Database& db,
+                                        std::optional<std::int64_t> sys) -> Result<std::string>;
+  [[nodiscard]] static auto missing_json(database::Database& db,
+                                         std::optional<std::int64_t> sys) -> Result<std::string>;
+  [[nodiscard]] static auto duplicates_text(database::Database& db,
+                                            std::optional<std::int64_t> sys) -> Result<std::string>;
+  [[nodiscard]] static auto duplicates_csv(database::Database& db,
+                                           std::optional<std::int64_t> sys) -> Result<std::string>;
+  [[nodiscard]] static auto duplicates_json(database::Database& db,
+                                            std::optional<std::int64_t> sys) -> Result<std::string>;
+  [[nodiscard]] static auto unverified_text(database::Database& db,
+                                            std::optional<std::int64_t> sys) -> Result<std::string>;
+  [[nodiscard]] static auto unverified_csv(database::Database& db,
+                                           std::optional<std::int64_t> sys) -> Result<std::string>;
+  [[nodiscard]] static auto unverified_json(database::Database& db,
+                                            std::optional<std::int64_t> sys) -> Result<std::string>;
 };
 
 } // namespace romulus::report

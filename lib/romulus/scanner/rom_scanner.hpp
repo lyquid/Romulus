@@ -29,19 +29,18 @@ public:
   /// @param extensions Optional comma-separated extension filter (e.g. ".nes,.gb").
   ///                   If empty, scans all known ROM and archive extensions.
   /// @return ScanReport with statistics.
-  [[nodiscard]] static auto scan(
-    const std::filesystem::path& directory,
-    database::Database& db,
-    std::optional<std::string> extensions = {}) -> Result<core::ScanReport>;
+  [[nodiscard]] static auto scan(const std::filesystem::path& directory,
+                                 database::Database& db,
+                                 std::optional<std::string> extensions = {})
+      -> Result<core::ScanReport>;
 
 private:
   /// Default ROM file extensions to scan for.
   static auto get_default_extensions() -> std::vector<std::string>;
 
   /// Checks if a file extension matches the filter.
-  [[nodiscard]] static auto matches_extension(
-    const std::filesystem::path& path,
-    const std::vector<std::string>& extensions) -> bool;
+  [[nodiscard]] static auto matches_extension(const std::filesystem::path& path,
+                                              const std::vector<std::string>& extensions) -> bool;
 };
 
 } // namespace romulus::scanner

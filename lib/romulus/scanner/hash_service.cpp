@@ -86,8 +86,7 @@ struct HashContext {
     auto to_hex = [](const unsigned char* data, unsigned int len) {
       std::ostringstream hex;
       for (unsigned int i = 0; i < len; ++i) {
-        hex << std::hex << std::setfill('0') << std::setw(2)
-            << static_cast<int>(data[i]);
+        hex << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(data[i]);
       }
       return hex.str();
     };
@@ -96,9 +95,9 @@ struct HashContext {
     crc_hex << std::hex << std::setfill('0') << std::setw(8) << crc32;
 
     return core::HashDigest{
-      .crc32 = crc_hex.str(),
-      .md5 = to_hex(md5_hash.data(), md5_len),
-      .sha1 = to_hex(sha1_hash.data(), sha1_len),
+        .crc32 = crc_hex.str(),
+        .md5 = to_hex(md5_hash.data(), md5_len),
+        .sha1 = to_hex(sha1_hash.data(), sha1_len),
     };
   }
 };
@@ -106,12 +105,11 @@ struct HashContext {
 } // namespace
 
 auto HashService::compute_hashes(const std::filesystem::path& file_path)
-  -> Result<core::HashDigest> {
+    -> Result<core::HashDigest> {
   std::ifstream file(file_path, std::ios::binary);
   if (!file.is_open()) {
-    return std::unexpected(core::Error{
-      core::ErrorCode::FileReadError,
-      "Cannot open file for hashing: " + file_path.string()});
+    return std::unexpected(core::Error{core::ErrorCode::FileReadError,
+                                       "Cannot open file for hashing: " + file_path.string()});
   }
 
   auto ctx = HashContext::create();
@@ -125,32 +123,35 @@ auto HashService::compute_hashes(const std::filesystem::path& file_path)
   }
 
   auto digest = ctx.finalize();
-  ROMULUS_DEBUG(
-    "Hashed '{}': CRC32={}, MD5={}, SHA1={}",
-    file_path.string(), digest.crc32, digest.md5, digest.sha1);
+  ROMULUS_DEBUG("Hashed '{}': CRC32={}, MD5={}, SHA1={}",
+                file_path.string(),
+                digest.crc32,
+                digest.md5,
+                digest.sha1);
 
   return digest;
 }
 
-auto HashService::compute_hashes_archive(
-  const std::filesystem::path& archive_path,
-  std::string_view entry_name) -> Result<core::HashDigest> {
+auto HashService::compute_hashes_archive(const std::filesystem::path& archive_path,
+                                         std::string_view entry_name) -> Result<core::HashDigest> {
   auto ctx = HashContext::create();
 
   auto result = ArchiveService::stream_entry(
-    archive_path, entry_name,
-    [&ctx](const std::byte* data, std::size_t size) {
-      ctx.update(data, size);
-    });
+      archive_path, entry_name, [&ctx](const std::byte* data, std::size_t size) {
+        ctx.update(data, size);
+      });
 
   if (!result) {
     return std::unexpected(result.error());
   }
 
   auto digest = ctx.finalize();
-  ROMULUS_DEBUG(
-    "Hashed '{}::{}': CRC32={}, MD5={}, SHA1={}",
-    archive_path.string(), entry_name, digest.crc32, digest.md5, digest.sha1);
+  ROMULUS_DEBUG("Hashed '{}::{}': CRC32={}, MD5={}, SHA1={}",
+                archive_path.string(),
+                entry_name,
+                digest.crc32,
+                digest.md5,
+                digest.sha1);
 
   return digest;
 }

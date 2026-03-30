@@ -26,31 +26,48 @@ protected:
 
   void seed_data() {
     auto sys_id = db_->get_or_create_system("Test System");
-    romulus::core::DatVersion dat{
-      .system_id = *sys_id, .name = "Test", .version = "1.0", .checksum = "abc"};
+    romulus::core::DatVersion dat{.system_id = *sys_id,
+                                  .name = "Test",
+                                  .version = "1.0",
+                                  .source_url = {},
+                                  .checksum = "abc",
+                                  .imported_at = {}};
     auto dat_id = db_->insert_dat_version(dat);
 
-    romulus::core::GameInfo game{
-      .name = "Test Game", .system_id = *sys_id, .dat_version_id = *dat_id};
+    romulus::core::GameInfo game{.name = "Test Game",
+                                 .description = {},
+                                 .system_id = *sys_id,
+                                 .dat_version_id = *dat_id,
+                                 .roms = {}};
     auto game_id = db_->insert_game(game);
 
     // Insert a ROM
-    romulus::core::RomInfo rom{
-      .game_id = *game_id, .name = "test.bin", .size = 100,
-      .crc32 = "aabb0011", .md5 = "md5hash", .sha1 = "sha1hash"};
-    db_->insert_rom(rom);
+    romulus::core::RomInfo rom{.game_id = *game_id,
+                               .name = "test.bin",
+                               .size = 100,
+                               .crc32 = "aabb0011",
+                               .md5 = "md5hash",
+                               .sha1 = "sha1hash",
+                               .region = {}};
+    auto rom_id = db_->insert_rom(rom);
 
     // Insert a matching file (exact match)
-    romulus::core::FileInfo file{
-      .path = "/roms/test.bin", .size = 100,
-      .crc32 = "aabb0011", .md5 = "md5hash", .sha1 = "sha1hash"};
-    db_->upsert_file(file);
+    romulus::core::FileInfo file{.path = "/roms/test.bin",
+                                 .size = 100,
+                                 .crc32 = "aabb0011",
+                                 .md5 = "md5hash",
+                                 .sha1 = "sha1hash",
+                                 .last_scanned = {}};
+    auto file_id = db_->upsert_file(file);
 
     // Insert a non-matching file
-    romulus::core::FileInfo other{
-      .path = "/roms/unknown.bin", .size = 200,
-      .crc32 = "00000000", .md5 = "nomatch", .sha1 = "nomatch"};
-    db_->upsert_file(other);
+    romulus::core::FileInfo other{.path = "/roms/unknown.bin",
+                                  .size = 200,
+                                  .crc32 = "00000000",
+                                  .md5 = "nomatch",
+                                  .sha1 = "nomatch",
+                                  .last_scanned = {}};
+    auto other_id = db_->upsert_file(other);
   }
 
   std::filesystem::path db_path_;

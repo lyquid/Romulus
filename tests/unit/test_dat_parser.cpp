@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
 
 namespace {
 
@@ -38,7 +39,7 @@ TEST(DatParser, ParsesRomHashesCorrectly) {
   const auto& rom = result->games[0].roms[0];
   EXPECT_EQ(rom.name, "Test Game Alpha (World).bin");
   EXPECT_EQ(rom.size, 1024);
-  EXPECT_EQ(rom.crc32, "d87f7e0c");  // Normalized to lowercase
+  EXPECT_EQ(rom.crc32, "d87f7e0c"); // Normalized to lowercase
   EXPECT_EQ(rom.sha1, "6367c48dd193d56ea7b0baad25b19455e529f5ee");
 }
 

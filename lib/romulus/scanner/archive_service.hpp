@@ -32,17 +32,16 @@ public:
   /// @param path Path to the archive file.
   /// @return Vector of archive entries with name and uncompressed size.
   [[nodiscard]] static auto list_entries(const std::filesystem::path& path)
-    -> Result<std::vector<core::ArchiveEntry>>;
+      -> Result<std::vector<core::ArchiveEntry>>;
 
   /// Streams a specific entry's data in chunks to the callback.
   /// Used by HashService to hash archive contents without extraction.
   /// @param path Path to the archive file.
   /// @param entry_name Name of the entry within the archive.
   /// @param callback Called with each chunk of data.
-  [[nodiscard]] static auto stream_entry(
-    const std::filesystem::path& path,
-    std::string_view entry_name,
-    const StreamCallback& callback) -> Result<void>;
+  [[nodiscard]] static auto stream_entry(const std::filesystem::path& path,
+                                         std::string_view entry_name,
+                                         const StreamCallback& callback) -> Result<void>;
 };
 
 } // namespace romulus::scanner

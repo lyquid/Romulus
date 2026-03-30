@@ -3,7 +3,11 @@
 # that CLI, API server, and tests link against.
 
 # ── Find dependencies ─────────────────────────────────────────
-find_package(unofficial-sqlite3 CONFIG REQUIRED)
+# Try vcpkg sqlite3 first, fall back to system FindSQLite3
+find_package(unofficial-sqlite3 CONFIG QUIET)
+if(NOT unofficial-sqlite3_FOUND)
+    find_package(SQLite3 REQUIRED)
+endif()
 find_package(spdlog CONFIG REQUIRED)
 find_package(pugixml CONFIG REQUIRED)
 find_package(LibArchive REQUIRED)
@@ -53,7 +57,7 @@ target_link_libraries(romulus_lib
     PUBLIC
         spdlog::spdlog
     PRIVATE
-        unofficial::sqlite3::sqlite3
+        $<IF:$<TARGET_EXISTS:unofficial::sqlite3::sqlite3>,unofficial::sqlite3::sqlite3,SQLite::SQLite3>
         pugixml::pugixml
         LibArchive::LibArchive
         OpenSSL::SSL
