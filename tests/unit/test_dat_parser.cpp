@@ -113,4 +113,79 @@ TEST(DatParser, ParsesRepoArchiveDat) {
   EXPECT_FALSE(result->games.empty());
 }
 
+TEST(DatParser, ParsesHeaderDatId) {
+  romulus::dat::DatParser parser;
+  auto result = parser.parse(k_FixturesDir / "sample.dat");
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+
+  EXPECT_EQ(result->header.dat_id, "99");
+}
+
+TEST(DatParser, ParsesGameDatIdAndCloneOf) {
+  romulus::dat::DatParser parser;
+  auto result = parser.parse(k_FixturesDir / "sample.dat");
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+
+  // Game Alpha — has id, no cloneofid
+  EXPECT_EQ(result->games[0].dat_game_id, "0001");
+  EXPECT_TRUE(result->games[0].clone_of.empty());
+
+  // Game Beta — has id, no cloneofid
+  EXPECT_EQ(result->games[1].dat_game_id, "0002");
+  EXPECT_TRUE(result->games[1].clone_of.empty());
+
+  // Game Gamma — has id and cloneofid
+  EXPECT_EQ(result->games[2].dat_game_id, "0003");
+  EXPECT_EQ(result->games[2].clone_of, "0001");
+}
+
+TEST(DatParser, ParsesGameCategory) {
+  romulus::dat::DatParser parser;
+  auto result = parser.parse(k_FixturesDir / "sample.dat");
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+
+  EXPECT_EQ(result->games[0].category, "Games");
+  EXPECT_EQ(result->games[1].category, "Games");
+  EXPECT_EQ(result->games[2].category, "Games");
+}
+
+TEST(DatParser, ParsesRomSha256) {
+  romulus::dat::DatParser parser;
+  auto result = parser.parse(k_FixturesDir / "sample.dat");
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+
+  EXPECT_EQ(result->games[0].roms[0].sha256, "abc123def456");
+  EXPECT_EQ(result->games[1].roms[0].sha256, "789ghi012jkl");
+  EXPECT_TRUE(result->games[2].roms[0].sha256.empty());
+}
+
+TEST(DatParser, ParsesRomStatusAndSerial) {
+  romulus::dat::DatParser parser;
+  auto result = parser.parse(k_FixturesDir / "sample.dat");
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+
+  // Alpha — no status/serial
+  EXPECT_TRUE(result->games[0].roms[0].status.empty());
+  EXPECT_TRUE(result->games[0].roms[0].serial.empty());
+
+  // Beta — has status and serial
+  EXPECT_EQ(result->games[1].roms[0].status, "verified");
+  EXPECT_EQ(result->games[1].roms[0].serial, "TST-001");
+
+  // Gamma — has status but no serial
+  EXPECT_EQ(result->games[2].roms[0].status, "verified");
+  EXPECT_TRUE(result->games[2].roms[0].serial.empty());
+}
+
+TEST(DatParser, ParsesRomHeader) {
+  romulus::dat::DatParser parser;
+  auto result = parser.parse(k_FixturesDir / "sample.dat");
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+
+  // Only Gamma has a header field
+  EXPECT_TRUE(result->games[0].roms[0].header.empty());
+  EXPECT_TRUE(result->games[1].roms[0].header.empty());
+  EXPECT_EQ(result->games[2].roms[0].header, "4E 45 53 1A");
+}
+
 } // namespace

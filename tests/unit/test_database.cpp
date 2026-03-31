@@ -158,4 +158,126 @@ TEST_F(DatabaseTest, TransactionCommits) {
   EXPECT_TRUE(found->has_value());
 }
 
+TEST_F(DatabaseTest, InsertAndRetrieveGameWithCloneOf) {
+  auto sys_id = db_->get_or_create_system("Test System");
+  ASSERT_TRUE(sys_id.has_value());
+
+  romulus::core::DatVersion dat{
+      .dat_id = "17",
+      .system_id = *sys_id,
+      .name = "Test System",
+      .version = "1.0",
+      .source_url = {},
+      .checksum = "abc123",
+      .imported_at = {},
+  };
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  // Insert parent game
+  romulus::core::GameInfo parent{
+      .dat_game_id = "0001",
+      .name = "Parent Game (USA)",
+      .description = "Parent Game (USA)",
+      .clone_of = {},
+      .category = "Games",
+      .game_id_text = {},
+      .system_id = *sys_id,
+      .dat_version_id = *dat_id,
+      .roms = {},
+  };
+  auto parent_id = db_->insert_game(parent);
+  ASSERT_TRUE(parent_id.has_value());
+
+  // Insert clone game
+  romulus::core::GameInfo clone{
+      .dat_game_id = "0002",
+      .name = "Clone Game (Japan)",
+      .description = "Clone Game (Japan)",
+      .clone_of = "0001",
+      .category = "Games",
+      .game_id_text = {},
+      .system_id = *sys_id,
+      .dat_version_id = *dat_id,
+      .roms = {},
+  };
+  auto clone_id = db_->insert_game(clone);
+  ASSERT_TRUE(clone_id.has_value());
+
+  // Retrieve and verify
+  auto games = db_->get_games_by_dat_version(*dat_id);
+  ASSERT_TRUE(games.has_value());
+  ASSERT_EQ(games->size(), 2);
+
+  // Find the parent and clone
+  const auto& g1 = (*games)[0];
+  const auto& g2 = (*games)[1];
+
+  EXPECT_EQ(g1.dat_game_id, "0001");
+  EXPECT_EQ(g1.name, "Parent Game (USA)");
+  EXPECT_EQ(g1.category, "Games");
+  EXPECT_TRUE(g1.clone_of.empty());
+
+  EXPECT_EQ(g2.dat_game_id, "0002");
+  EXPECT_EQ(g2.name, "Clone Game (Japan)");
+  EXPECT_EQ(g2.clone_of, "0001");
+  EXPECT_EQ(g2.category, "Games");
+}
+
+TEST_F(DatabaseTest, InsertAndRetrieveRomWithExtendedFields) {
+  auto sys_id = db_->get_or_create_system("Test System");
+  ASSERT_TRUE(sys_id.has_value());
+
+  romulus::core::DatVersion dat{
+      .dat_id = {},
+      .system_id = *sys_id,
+      .name = "Test System",
+      .version = "2.0",
+      .source_url = {},
+      .checksum = "def456",
+      .imported_at = {},
+  };
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  romulus::core::GameInfo game{
+      .dat_game_id = "0001",
+      .name = "NES Game",
+      .description = "NES Game",
+      .clone_of = {},
+      .category = "Games",
+      .game_id_text = {},
+      .system_id = *sys_id,
+      .dat_version_id = *dat_id,
+      .roms = {},
+  };
+  auto game_id = db_->insert_game(game);
+  ASSERT_TRUE(game_id.has_value());
+
+  romulus::core::RomInfo rom{
+      .game_id = *game_id,
+      .name = "test.nes",
+      .size = 1024,
+      .crc32 = "aabbccdd",
+      .md5 = "md5hash",
+      .sha1 = "sha1hash",
+      .sha256 = "sha256hash",
+      .region = "USA",
+      .status = "verified",
+      .serial = "TST-001",
+      .header = "4E 45 53 1A",
+  };
+  auto rom_id = db_->insert_rom(rom);
+  ASSERT_TRUE(rom_id.has_value());
+
+  auto found = db_->find_rom_by_sha1("sha1hash");
+  ASSERT_TRUE(found.has_value());
+  ASSERT_TRUE(found->has_value());
+  EXPECT_EQ(found->value().name, "test.nes");
+  EXPECT_EQ(found->value().sha256, "sha256hash");
+  EXPECT_EQ(found->value().status, "verified");
+  EXPECT_EQ(found->value().serial, "TST-001");
+  EXPECT_EQ(found->value().header, "4E 45 53 1A");
+}
+
 } // namespace

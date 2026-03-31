@@ -7,6 +7,17 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ⚡ Features
+
+- **DAT Parser**: Extract all fields from No-Intro DAT files — `<game id>`, `cloneofid`, `<category>`, `<game_id>`, `<header><id>`, and ROM attributes `sha256`, `status`, `serial`, `header`
+- **Database**: Add `clone_of`, `dat_game_id`, `category`, `game_id_text`, `description` columns to `games` table; add `sha256`, `status`, `serial`, `header` columns to `roms` table; add `dat_id` to `dat_versions`; add indexes for `dat_game_id` and `clone_of`
+- **Types**: Expand `GameInfo`, `RomInfo`, `DatVersion`, and `DatHeader` data structures with new fields to faithfully capture all data from each system's DAT file
+
+### 🧪 Testing
+
+- Added 8 new tests for new DAT fields: header dat_id, game id/cloneofid, category, ROM sha256/status/serial/header, and database round-trip for clone_of and extended ROM fields
+- Updated test fixture `sample.dat` with id, cloneofid, category, sha256, status, serial, and header attributes
+
 ### 🔧 Refactoring
 
 - **CLI**: Replaced all `std::cout`/`std::cerr` with `std::print`/`std::print(stderr, ...)` from C++23 `<print>`; removed `#include <iostream>`
