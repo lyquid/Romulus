@@ -14,7 +14,11 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 ### 🏗️ Build System
 
 - Upgraded CI GCC build from GCC 13 → GCC 14 to support `<print>` (added in libstdc++ 14)
-- Upgraded CI Clang build from libstdc++-13-dev → libstdc++-14-dev and updated `--gcc-install-dir` to `/14`
+- Upgraded CI Clang build from Clang 17 → Clang 18 for better C++23 `std::expected` support on Ubuntu 24.04
+- Updated CI clang-format check from clang-format-17 → clang-format-18 to match Clang toolchain version
+- Updated vcpkg baseline from `c82f74667...` → `c3867e714...` (2026.03.18 release) to fix Windows/MSVC CLI11 build failure caused by outdated msys2 runtime package
+- Fixed semantic-release: added missing `conventional-changelog-conventionalcommits` to extra_plugins in release workflow
+- Applied clang-format-18 to all source files to fix CI formatting violations
 
 ## [0.1.0] — 2026-03-30
 

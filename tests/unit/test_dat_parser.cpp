@@ -101,8 +101,8 @@ TEST(DatParser, ReturnsErrorForMalformedXml) {
 
 TEST(DatParser, ParsesRepoArchiveDat) {
   const auto bundled_dat = find_repo_dat();
-  ASSERT_TRUE(bundled_dat.has_value()) << "Repository DAT artifact not found in "
-                                       << k_RepoDatsDir.string();
+  ASSERT_TRUE(bundled_dat.has_value())
+      << "Repository DAT artifact not found in " << k_RepoDatsDir.string();
 
   romulus::dat::DatParser parser;
   auto result = parser.parse(*bundled_dat);

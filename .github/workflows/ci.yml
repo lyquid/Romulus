@@ -55,7 +55,7 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: "c82f74667287d3dc386bce81e44964370c91a289"
+          vcpkgGitCommitId: "c3867e714dd3a51c272826eea77267876517ed99"
 
       # GCC 14+ for C++23 <print> support
       - name: Install GCC 14
@@ -67,8 +67,8 @@ jobs:
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 140
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 140
 
-      # Clang 17+ for C++23 support (needs GCC 14 libstdc++ for std::print)
-      - name: Install Clang 17
+      # Clang 18+ for C++23 support (needs GCC 14 libstdc++ for std::expected / std::print)
+      - name: Install Clang 18
         if: matrix.compiler == 'clang'
         run: |
           sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
@@ -76,9 +76,9 @@ jobs:
           sudo apt-get install -y g++-14 libstdc++-14-dev
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 17
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-17 170
-          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-17 170
+          sudo ./llvm.sh 18
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 180
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 180
 
       - name: Configure CMake
         run: cmake --preset ${{ matrix.cmake-preset }}
@@ -103,9 +103,9 @@ jobs:
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 17
-          sudo apt-get install -y clang-format-17
-          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-17 170
+          sudo ./llvm.sh 18
+          sudo apt-get install -y clang-format-18
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-18 180
 
       - name: Check formatting
         run: |
@@ -136,23 +136,23 @@ jobs:
           restore-keys: |
             vcpkg-ubuntu-latest-clang-
 
-      - name: Install Clang 17
+      - name: Install Clang 18
         run: |
           sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
           sudo apt-get update
           sudo apt-get install -y g++-14 libstdc++-14-dev
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 17
-          sudo apt-get install -y clang-tidy-17
-          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-17 170
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-17 170
-          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-17 170
+          sudo ./llvm.sh 18
+          sudo apt-get install -y clang-tidy-18
+          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-18 180
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 180
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 180
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: "c82f74667287d3dc386bce81e44964370c91a289"
+          vcpkgGitCommitId: "c3867e714dd3a51c272826eea77267876517ed99"
 
       - name: Configure CMake
         run: cmake --preset ci-linux-clang -DROMULUS_ENABLE_CLANG_TIDY=ON

@@ -52,9 +52,9 @@ auto load_document_from_archive(const std::filesystem::path& dat_path,
   }
 
   if (dat_entries->empty()) {
-    return std::unexpected(core::Error{core::ErrorCode::DatInvalidFormat,
-                                       "Archive does not contain a DAT/XML entry: " +
-                                           dat_path.string()});
+    return std::unexpected(
+        core::Error{core::ErrorCode::DatInvalidFormat,
+                    "Archive does not contain a DAT/XML entry: " + dat_path.string()});
   }
 
   if (dat_entries->size() > 1) {
@@ -81,16 +81,16 @@ auto load_document_from_archive(const std::filesystem::path& dat_path,
   const auto result = doc.load_buffer(xml_content.data(), xml_content.size());
   if (!result) {
     return std::unexpected(core::Error{core::ErrorCode::DatParseError,
-                                       "Failed to parse XML '" + dat_path.string() + "::" +
-                                           dat_entries->front().name + "': " +
-                                           result.description()});
+                                       "Failed to parse XML '" + dat_path.string() +
+                                           "::" + dat_entries->front().name +
+                                           "': " + result.description()});
   }
 
   return dat_entries->front().name;
 }
 
-auto load_document(const std::filesystem::path& dat_path, pugi::xml_document& doc)
-    -> Result<std::string> {
+auto load_document(const std::filesystem::path& dat_path,
+                   pugi::xml_document& doc) -> Result<std::string> {
   if (scanner::ArchiveService::is_archive(dat_path)) {
     return load_document_from_archive(dat_path, doc);
   }
@@ -132,10 +132,8 @@ auto DatParser::parse(const std::filesystem::path& dat_path) -> Result<core::Dat
     return std::unexpected(header.error());
   }
 
-  ROMULUS_INFO("Parsing DAT '{}' : name='{}', version='{}'",
-               *loaded,
-               header->name,
-               header->version);
+  ROMULUS_INFO(
+      "Parsing DAT '{}' : name='{}', version='{}'", *loaded, header->name, header->version);
 
   // Parse all games
   core::DatFile dat_file;
