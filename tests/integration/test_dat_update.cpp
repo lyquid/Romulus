@@ -1,5 +1,5 @@
-#include "romulus/service/romulus_service.hpp"
 #include "romulus/scanner/archive_service.hpp"
+#include "romulus/service/romulus_service.hpp"
 
 #include <gtest/gtest.h>
 
@@ -73,8 +73,8 @@ TEST_F(DatUpdateTest, SystemCountDoesNotIncreaseOnReimport) {
 
 TEST_F(DatUpdateTest, RepoArchiveImportIsIdempotent) {
   const auto bundled_dat = find_repo_dat();
-  ASSERT_TRUE(bundled_dat.has_value()) << "Repository DAT artifact not found in "
-                                       << k_RepoDatsDir.string();
+  ASSERT_TRUE(bundled_dat.has_value())
+      << "Repository DAT artifact not found in " << k_RepoDatsDir.string();
 
   romulus::service::RomulusService svc(db_path_);
 

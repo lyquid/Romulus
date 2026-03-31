@@ -40,6 +40,7 @@ jobs:
         with:
           semantic_version: 24
           extra_plugins: |
+            conventional-changelog-conventionalcommits
             @semantic-release/commit-analyzer
             @semantic-release/release-notes-generator
             @semantic-release/changelog
@@ -107,7 +108,7 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: "c82f74667287d3dc386bce81e44964370c91a289"
+          vcpkgGitCommitId: "c3867e714dd3a51c272826eea77267876517ed99"
 
       - name: Configure CMake
         run: >

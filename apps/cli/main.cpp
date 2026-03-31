@@ -33,8 +33,8 @@ auto get_executable_dir(const char* argv0) -> std::filesystem::path {
   return canonical_path.parent_path();
 }
 
-auto get_db_path(const std::string& db_flag, const std::filesystem::path& executable_dir)
-    -> std::filesystem::path {
+auto get_db_path(const std::string& db_flag,
+                 const std::filesystem::path& executable_dir) -> std::filesystem::path {
   if (!db_flag.empty()) {
     return db_flag;
   }
