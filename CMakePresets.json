@@ -85,7 +85,7 @@
                 "BUILD_TESTING": "ON",
                 "CMAKE_C_COMPILER": "clang",
                 "CMAKE_CXX_COMPILER": "clang++",
-                "CMAKE_CXX_FLAGS": "--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13"
+                "CMAKE_CXX_FLAGS": "--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/14"
             },
             "condition": {
                 "type": "equals",
