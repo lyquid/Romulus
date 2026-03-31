@@ -27,7 +27,8 @@ protected:
 
   void seed_data() {
     auto sys_id = db_->get_or_create_system("Test System");
-    romulus::core::DatVersion dat{.system_id = *sys_id,
+    romulus::core::DatVersion dat{.dat_id = {},
+                                  .system_id = *sys_id,
                                   .name = "Test",
                                   .version = "1.0",
                                   .source_url = {},
@@ -35,8 +36,12 @@ protected:
                                   .imported_at = {}};
     auto dat_id = db_->insert_dat_version(dat);
 
-    romulus::core::GameInfo game{.name = "Game A",
+    romulus::core::GameInfo game{.dat_game_id = {},
+                                 .name = "Game A",
                                  .description = {},
+                                 .clone_of = {},
+                                 .category = {},
+                                 .game_id_text = {},
                                  .system_id = *sys_id,
                                  .dat_version_id = *dat_id,
                                  .roms = {}};
@@ -49,7 +54,11 @@ protected:
                                 .crc32 = "11111111",
                                 .md5 = "m1",
                                 .sha1 = "s1",
-                                .region = {}};
+                                .sha256 = {},
+                                .region = {},
+                                .status = {},
+                                .serial = {},
+                                .header = {}};
     auto rom1_id = db_->insert_rom(rom1);
 
     // ROM without a matching file
@@ -59,7 +68,11 @@ protected:
                                 .crc32 = "22222222",
                                 .md5 = "m2",
                                 .sha1 = "s2",
-                                .region = {}};
+                                .sha256 = {},
+                                .region = {},
+                                .status = {},
+                                .serial = {},
+                                .header = {}};
     auto rom2_id = db_->insert_rom(rom2);
 
     // File that matches rom1

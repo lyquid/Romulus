@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS systems (
 
 CREATE TABLE IF NOT EXISTS dat_versions (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    dat_id        TEXT,
     system_id     INTEGER NOT NULL REFERENCES systems(id),
     name          TEXT NOT NULL,
     version       TEXT NOT NULL,
@@ -156,7 +157,12 @@ CREATE TABLE IF NOT EXISTS dat_versions (
 
 CREATE TABLE IF NOT EXISTS games (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    dat_game_id     TEXT,
     name            TEXT NOT NULL,
+    description     TEXT,
+    clone_of        TEXT,
+    category        TEXT,
+    game_id_text    TEXT,
     system_id       INTEGER NOT NULL REFERENCES systems(id),
     dat_version_id  INTEGER NOT NULL REFERENCES dat_versions(id),
     UNIQUE(name, system_id, dat_version_id)
@@ -170,7 +176,11 @@ CREATE TABLE IF NOT EXISTS roms (
     crc32    TEXT,
     md5      TEXT,
     sha1     TEXT,
-    region   TEXT
+    sha256   TEXT,
+    region   TEXT,
+    status   TEXT,
+    serial   TEXT,
+    header   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS files (
@@ -200,9 +210,12 @@ CREATE TABLE IF NOT EXISTS rom_status (
 CREATE INDEX IF NOT EXISTS idx_roms_sha1 ON roms(sha1);
 CREATE INDEX IF NOT EXISTS idx_roms_md5 ON roms(md5);
 CREATE INDEX IF NOT EXISTS idx_roms_crc32 ON roms(crc32);
+CREATE INDEX IF NOT EXISTS idx_roms_sha256 ON roms(sha256);
 CREATE INDEX IF NOT EXISTS idx_files_sha1 ON files(sha1);
 CREATE INDEX IF NOT EXISTS idx_files_crc32 ON files(crc32);
 CREATE INDEX IF NOT EXISTS idx_rom_status_status ON rom_status(status);
+CREATE INDEX IF NOT EXISTS idx_games_dat_game_id ON games(dat_game_id);
+CREATE INDEX IF NOT EXISTS idx_games_clone_of ON games(clone_of);
 )SQL";
 
 auto match_type_to_string(core::MatchType type) -> std::string_view {
@@ -434,17 +447,19 @@ auto Database::get_or_create_system(std::string_view name) -> Result<std::int64_
 // ═══════════════════════════════════════════════════════════════
 
 auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::int64_t> {
-  auto stmt = prepare("INSERT INTO dat_versions (system_id, name, version, source_url, checksum) "
-                      "VALUES (?1, ?2, ?3, ?4, ?5)");
+  auto stmt =
+      prepare("INSERT INTO dat_versions (dat_id, system_id, name, version, source_url, checksum) "
+              "VALUES (?1, ?2, ?3, ?4, ?5, ?6)");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_int64(1, dat.system_id);
-  stmt->bind_text(2, dat.name);
-  stmt->bind_text(3, dat.version);
-  stmt->bind_text(4, dat.source_url);
-  stmt->bind_text(5, dat.checksum);
+  stmt->bind_text(1, dat.dat_id);
+  stmt->bind_int64(2, dat.system_id);
+  stmt->bind_text(3, dat.name);
+  stmt->bind_text(4, dat.version);
+  stmt->bind_text(5, dat.source_url);
+  stmt->bind_text(6, dat.checksum);
   stmt->execute();
 
   return last_insert_id();
@@ -452,8 +467,9 @@ auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::in
 
 auto Database::find_dat_version(std::string_view name, std::string_view version)
     -> Result<std::optional<core::DatVersion>> {
-  auto stmt = prepare("SELECT id, system_id, name, version, source_url, checksum, imported_at "
-                      "FROM dat_versions WHERE name = ?1 AND version = ?2");
+  auto stmt =
+      prepare("SELECT id, dat_id, system_id, name, version, source_url, checksum, imported_at "
+              "FROM dat_versions WHERE name = ?1 AND version = ?2");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -466,19 +482,21 @@ auto Database::find_dat_version(std::string_view name, std::string_view version)
 
   return core::DatVersion{
       .id = stmt->column_int64(0),
-      .system_id = stmt->column_int64(1),
-      .name = stmt->column_text(2),
-      .version = stmt->column_text(3),
-      .source_url = stmt->column_text(4),
-      .checksum = stmt->column_text(5),
-      .imported_at = stmt->column_text(6),
+      .dat_id = stmt->column_text(1),
+      .system_id = stmt->column_int64(2),
+      .name = stmt->column_text(3),
+      .version = stmt->column_text(4),
+      .source_url = stmt->column_text(5),
+      .checksum = stmt->column_text(6),
+      .imported_at = stmt->column_text(7),
   };
 }
 
 auto Database::get_latest_dat_version(std::int64_t system_id)
     -> Result<std::optional<core::DatVersion>> {
-  auto stmt = prepare("SELECT id, system_id, name, version, source_url, checksum, imported_at "
-                      "FROM dat_versions WHERE system_id = ?1 ORDER BY imported_at DESC LIMIT 1");
+  auto stmt =
+      prepare("SELECT id, dat_id, system_id, name, version, source_url, checksum, imported_at "
+              "FROM dat_versions WHERE system_id = ?1 ORDER BY imported_at DESC LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -490,12 +508,13 @@ auto Database::get_latest_dat_version(std::int64_t system_id)
 
   return core::DatVersion{
       .id = stmt->column_int64(0),
-      .system_id = stmt->column_int64(1),
-      .name = stmt->column_text(2),
-      .version = stmt->column_text(3),
-      .source_url = stmt->column_text(4),
-      .checksum = stmt->column_text(5),
-      .imported_at = stmt->column_text(6),
+      .dat_id = stmt->column_text(1),
+      .system_id = stmt->column_int64(2),
+      .name = stmt->column_text(3),
+      .version = stmt->column_text(4),
+      .source_url = stmt->column_text(5),
+      .checksum = stmt->column_text(6),
+      .imported_at = stmt->column_text(7),
   };
 }
 
@@ -504,15 +523,23 @@ auto Database::get_latest_dat_version(std::int64_t system_id)
 // ═══════════════════════════════════════════════════════════════
 
 auto Database::insert_game(const core::GameInfo& game) -> Result<std::int64_t> {
-  auto stmt = prepare("INSERT OR IGNORE INTO games (name, system_id, dat_version_id) "
-                      "VALUES (?1, ?2, ?3)");
+  auto stmt = prepare(
+      "INSERT OR IGNORE INTO games "
+      "(dat_game_id, name, description, clone_of, category, game_id_text, system_id, "
+      "dat_version_id) "
+      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_text(1, game.name);
-  stmt->bind_int64(2, game.system_id);
-  stmt->bind_int64(3, game.dat_version_id);
+  stmt->bind_text(1, game.dat_game_id);
+  stmt->bind_text(2, game.name);
+  stmt->bind_text(3, game.description);
+  stmt->bind_text(4, game.clone_of);
+  stmt->bind_text(5, game.category);
+  stmt->bind_text(6, game.game_id_text);
+  stmt->bind_int64(7, game.system_id);
+  stmt->bind_int64(8, game.dat_version_id);
   stmt->execute();
 
   auto id = last_insert_id();
@@ -536,8 +563,9 @@ auto Database::insert_game(const core::GameInfo& game) -> Result<std::int64_t> {
 
 auto Database::get_games_by_dat_version(std::int64_t dat_version_id)
     -> Result<std::vector<core::GameInfo>> {
-  auto stmt =
-      prepare("SELECT id, name, system_id, dat_version_id FROM games WHERE dat_version_id = ?1");
+  auto stmt = prepare(
+      "SELECT id, dat_game_id, name, description, clone_of, category, game_id_text, "
+      "system_id, dat_version_id FROM games WHERE dat_version_id = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -548,10 +576,14 @@ auto Database::get_games_by_dat_version(std::int64_t dat_version_id)
   while (stmt->step()) {
     games.push_back({
         .id = stmt->column_int64(0),
-        .name = stmt->column_text(1),
-        .description = {},
-        .system_id = stmt->column_int64(2),
-        .dat_version_id = stmt->column_int64(3),
+        .dat_game_id = stmt->column_text(1),
+        .name = stmt->column_text(2),
+        .description = stmt->column_text(3),
+        .clone_of = stmt->column_text(4),
+        .category = stmt->column_text(5),
+        .game_id_text = stmt->column_text(6),
+        .system_id = stmt->column_int64(7),
+        .dat_version_id = stmt->column_int64(8),
         .roms = {},
     });
   }
@@ -563,8 +595,10 @@ auto Database::get_games_by_dat_version(std::int64_t dat_version_id)
 // ═══════════════════════════════════════════════════════════════
 
 auto Database::insert_rom(const core::RomInfo& rom) -> Result<std::int64_t> {
-  auto stmt = prepare("INSERT INTO roms (game_id, name, size, crc32, md5, sha1, region) "
-                      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)");
+  auto stmt =
+      prepare("INSERT INTO roms (game_id, name, size, crc32, md5, sha1, sha256, region, status, "
+              "serial, header) "
+              "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -575,15 +609,20 @@ auto Database::insert_rom(const core::RomInfo& rom) -> Result<std::int64_t> {
   stmt->bind_text(4, rom.crc32);
   stmt->bind_text(5, rom.md5);
   stmt->bind_text(6, rom.sha1);
-  stmt->bind_text(7, rom.region);
+  stmt->bind_text(7, rom.sha256);
+  stmt->bind_text(8, rom.region);
+  stmt->bind_text(9, rom.status);
+  stmt->bind_text(10, rom.serial);
+  stmt->bind_text(11, rom.header);
   stmt->execute();
 
   return last_insert_id();
 }
 
 auto Database::find_rom_by_sha1(std::string_view sha1) -> Result<std::optional<core::RomInfo>> {
-  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, region "
-                      "FROM roms WHERE sha1 = ?1 LIMIT 1");
+  auto stmt =
+      prepare("SELECT id, game_id, name, size, crc32, md5, sha1, sha256, region, status, serial, "
+              "header FROM roms WHERE sha1 = ?1 LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -601,13 +640,18 @@ auto Database::find_rom_by_sha1(std::string_view sha1) -> Result<std::optional<c
       .crc32 = stmt->column_text(4),
       .md5 = stmt->column_text(5),
       .sha1 = stmt->column_text(6),
-      .region = stmt->column_text(7),
+      .sha256 = stmt->column_text(7),
+      .region = stmt->column_text(8),
+      .status = stmt->column_text(9),
+      .serial = stmt->column_text(10),
+      .header = stmt->column_text(11),
   };
 }
 
 auto Database::find_rom_by_md5(std::string_view md5) -> Result<std::optional<core::RomInfo>> {
-  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, region "
-                      "FROM roms WHERE md5 = ?1 LIMIT 1");
+  auto stmt =
+      prepare("SELECT id, game_id, name, size, crc32, md5, sha1, sha256, region, status, serial, "
+              "header FROM roms WHERE md5 = ?1 LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -625,13 +669,18 @@ auto Database::find_rom_by_md5(std::string_view md5) -> Result<std::optional<cor
       .crc32 = stmt->column_text(4),
       .md5 = stmt->column_text(5),
       .sha1 = stmt->column_text(6),
-      .region = stmt->column_text(7),
+      .sha256 = stmt->column_text(7),
+      .region = stmt->column_text(8),
+      .status = stmt->column_text(9),
+      .serial = stmt->column_text(10),
+      .header = stmt->column_text(11),
   };
 }
 
 auto Database::find_rom_by_crc32(std::string_view crc32) -> Result<std::vector<core::RomInfo>> {
-  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, region "
-                      "FROM roms WHERE crc32 = ?1");
+  auto stmt =
+      prepare("SELECT id, game_id, name, size, crc32, md5, sha1, sha256, region, status, serial, "
+              "header FROM roms WHERE crc32 = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -648,7 +697,11 @@ auto Database::find_rom_by_crc32(std::string_view crc32) -> Result<std::vector<c
         .crc32 = stmt->column_text(4),
         .md5 = stmt->column_text(5),
         .sha1 = stmt->column_text(6),
-        .region = stmt->column_text(7),
+        .sha256 = stmt->column_text(7),
+        .region = stmt->column_text(8),
+        .status = stmt->column_text(9),
+        .serial = stmt->column_text(10),
+        .header = stmt->column_text(11),
     });
   }
   return roms;
@@ -656,9 +709,11 @@ auto Database::find_rom_by_crc32(std::string_view crc32) -> Result<std::vector<c
 
 auto Database::get_all_roms_for_system(std::int64_t system_id)
     -> Result<std::vector<core::RomInfo>> {
-  auto stmt = prepare("SELECT r.id, r.game_id, r.name, r.size, r.crc32, r.md5, r.sha1, r.region "
-                      "FROM roms r JOIN games g ON r.game_id = g.id "
-                      "WHERE g.system_id = ?1");
+  auto stmt = prepare(
+      "SELECT r.id, r.game_id, r.name, r.size, r.crc32, r.md5, r.sha1, r.sha256, r.region, "
+      "r.status, r.serial, r.header "
+      "FROM roms r JOIN games g ON r.game_id = g.id "
+      "WHERE g.system_id = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -675,7 +730,11 @@ auto Database::get_all_roms_for_system(std::int64_t system_id)
         .crc32 = stmt->column_text(4),
         .md5 = stmt->column_text(5),
         .sha1 = stmt->column_text(6),
-        .region = stmt->column_text(7),
+        .sha256 = stmt->column_text(7),
+        .region = stmt->column_text(8),
+        .status = stmt->column_text(9),
+        .serial = stmt->column_text(10),
+        .header = stmt->column_text(11),
     });
   }
   return roms;

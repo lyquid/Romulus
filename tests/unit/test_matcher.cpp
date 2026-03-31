@@ -26,7 +26,8 @@ protected:
 
   void seed_data() {
     auto sys_id = db_->get_or_create_system("Test System");
-    romulus::core::DatVersion dat{.system_id = *sys_id,
+    romulus::core::DatVersion dat{.dat_id = {},
+                                  .system_id = *sys_id,
                                   .name = "Test",
                                   .version = "1.0",
                                   .source_url = {},
@@ -34,8 +35,12 @@ protected:
                                   .imported_at = {}};
     auto dat_id = db_->insert_dat_version(dat);
 
-    romulus::core::GameInfo game{.name = "Test Game",
+    romulus::core::GameInfo game{.dat_game_id = {},
+                                 .name = "Test Game",
                                  .description = {},
+                                 .clone_of = {},
+                                 .category = {},
+                                 .game_id_text = {},
                                  .system_id = *sys_id,
                                  .dat_version_id = *dat_id,
                                  .roms = {}};
@@ -48,7 +53,11 @@ protected:
                                .crc32 = "aabb0011",
                                .md5 = "md5hash",
                                .sha1 = "sha1hash",
-                               .region = {}};
+                               .sha256 = {},
+                               .region = {},
+                               .status = {},
+                               .serial = {},
+                               .header = {}};
     auto rom_id = db_->insert_rom(rom);
 
     // Insert a matching file (exact match)

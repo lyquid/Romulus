@@ -34,6 +34,7 @@ struct SystemInfo {
 /// Metadata about an imported DAT file version.
 struct DatVersion {
   std::int64_t id = 0;
+  std::string dat_id;     ///< No-Intro system ID from DAT header <id> element
   std::int64_t system_id = 0;
   std::string name;
   std::string version;
@@ -53,14 +54,22 @@ struct RomInfo {
   std::string crc32;
   std::string md5;
   std::string sha1;
+  std::string sha256;  ///< SHA-256 hash from DAT (optional, system-dependent)
   std::string region;
+  std::string status;  ///< Verification status from DAT (e.g. "verified")
+  std::string serial;  ///< Serial number from DAT (optional, system-dependent)
+  std::string header;  ///< Header data from DAT (optional, e.g. NES iNES header)
 };
 
 /// A game entry from a DAT file, containing one or more ROMs.
 struct GameInfo {
   std::int64_t id = 0;
+  std::string dat_game_id;   ///< The ID from the DAT file's <game id="..."> attribute
   std::string name;
   std::string description;
+  std::string clone_of;      ///< DAT-provided clone reference (from cloneofid attribute)
+  std::string category;      ///< Game category from <category> element (e.g. "Games")
+  std::string game_id_text;  ///< Text from <game_id> element (e.g. 3DS title ID)
   std::int64_t system_id = 0;
   std::int64_t dat_version_id = 0;
   std::vector<RomInfo> roms;
@@ -70,6 +79,7 @@ struct GameInfo {
 
 /// Header metadata parsed from a DAT file's <header> element.
 struct DatHeader {
+  std::string dat_id;      ///< No-Intro system ID from <id> (e.g. "17" for Sega 32X)
   std::string name;        ///< System name from <name>
   std::string description; ///< From <description>
   std::string version;     ///< From <version>

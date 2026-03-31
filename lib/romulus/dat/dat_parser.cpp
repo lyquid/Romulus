@@ -157,6 +157,7 @@ auto DatParser::parse_header(const void* node_ptr) -> Result<core::DatHeader> {
   const auto& node = *static_cast<const pugi::xml_node*>(node_ptr);
 
   core::DatHeader header;
+  header.dat_id = node.child_value("id");
   header.name = node.child_value("name");
   header.description = node.child_value("description");
   header.version = node.child_value("version");
@@ -176,8 +177,12 @@ auto DatParser::parse_game(const void* node_ptr) -> Result<core::GameInfo> {
   const auto& node = *static_cast<const pugi::xml_node*>(node_ptr);
 
   core::GameInfo game;
+  game.dat_game_id = node.attribute("id").as_string();
   game.name = node.attribute("name").as_string();
   game.description = node.child_value("description");
+  game.clone_of = node.attribute("cloneofid").as_string();
+  game.category = node.child_value("category");
+  game.game_id_text = node.child_value("game_id");
 
   if (game.name.empty()) {
     return std::unexpected(
@@ -192,6 +197,10 @@ auto DatParser::parse_game(const void* node_ptr) -> Result<core::GameInfo> {
     rom.crc32 = normalize_hash(rom_node.attribute("crc").as_string());
     rom.md5 = normalize_hash(rom_node.attribute("md5").as_string());
     rom.sha1 = normalize_hash(rom_node.attribute("sha1").as_string());
+    rom.sha256 = normalize_hash(rom_node.attribute("sha256").as_string());
+    rom.status = rom_node.attribute("status").as_string();
+    rom.serial = rom_node.attribute("serial").as_string();
+    rom.header = rom_node.attribute("header").as_string();
 
     // Try to extract region from the game name (e.g. "(USA)" or "(Europe)")
     auto name_str = game.name;

@@ -62,6 +62,7 @@ TEST_F(DatabaseTest, InsertAndRetrieveRom) {
   ASSERT_TRUE(sys_id.has_value());
 
   romulus::core::DatVersion dat{
+      .dat_id = {},
       .system_id = *sys_id,
       .name = "Test System",
       .version = "1.0",
@@ -73,8 +74,12 @@ TEST_F(DatabaseTest, InsertAndRetrieveRom) {
   ASSERT_TRUE(dat_id.has_value());
 
   romulus::core::GameInfo game{
+      .dat_game_id = {},
       .name = "Test Game",
       .description = {},
+      .clone_of = {},
+      .category = {},
+      .game_id_text = {},
       .system_id = *sys_id,
       .dat_version_id = *dat_id,
       .roms = {},
@@ -89,7 +94,11 @@ TEST_F(DatabaseTest, InsertAndRetrieveRom) {
       .crc32 = "deadbeef",
       .md5 = "d41d8cd98f00b204e9800998ecf8427e",
       .sha1 = "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+      .sha256 = {},
       .region = "USA",
+      .status = {},
+      .serial = {},
+      .header = {},
   };
   auto rom_id = db_->insert_rom(rom);
   ASSERT_TRUE(rom_id.has_value());

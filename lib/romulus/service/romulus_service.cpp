@@ -61,6 +61,7 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 
   // Store DAT version
   core::DatVersion dat_version{
+      .dat_id = dat_file->header.dat_id,
       .system_id = *system_id,
       .name = dat_file->header.name,
       .version = dat_file->header.version,
@@ -80,8 +81,12 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 
   for (const auto& game : dat_file->games) {
     core::GameInfo game_entry{
+        .dat_game_id = game.dat_game_id,
         .name = game.name,
-        .description = {},
+        .description = game.description,
+        .clone_of = game.clone_of,
+        .category = game.category,
+        .game_id_text = game.game_id_text,
         .system_id = *system_id,
         .dat_version_id = *dat_id,
         .roms = {},
@@ -101,7 +106,11 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
           .crc32 = rom.crc32,
           .md5 = rom.md5,
           .sha1 = rom.sha1,
+          .sha256 = rom.sha256,
           .region = rom.region,
+          .status = rom.status,
+          .serial = rom.serial,
+          .header = rom.header,
       };
 
       auto rom_id = db_->insert_rom(rom_entry);
