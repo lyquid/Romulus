@@ -80,6 +80,16 @@ jobs:
           sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 180
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 180
 
+      # GLFW3 and the GUI require X11 + OpenGL dev headers on Linux.
+      # Install them here so vcpkg can build glfw3 successfully.
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxi-dev libgl-dev
+
       - name: Configure CMake
         run: cmake --preset ${{ matrix.cmake-preset }}
 
@@ -153,6 +163,13 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: "c3867e714dd3a51c272826eea77267876517ed99"
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxi-dev libgl-dev
 
       - name: Configure CMake
         run: cmake --preset ci-linux-clang -DROMULUS_ENABLE_CLANG_TIDY=ON

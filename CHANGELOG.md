@@ -37,6 +37,7 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 - Updated vcpkg baseline from `c82f74667...` → `c3867e714...` (2026.03.18 release) to fix Windows/MSVC CLI11 build failure caused by outdated msys2 runtime package
 - Fixed semantic-release: added missing `conventional-changelog-conventionalcommits` to extra_plugins in release workflow
 - Applied clang-format-18 to all source files to fix CI formatting violations
+- Fixed CI: added `libx11-dev`, `libxrandr-dev`, `libxinerama-dev`, `libxcursor-dev`, `libxi-dev`, and `libgl-dev` installation step for Ubuntu runners so that vcpkg can build `glfw3` (required by the GUI); both GCC and Clang Linux jobs and the clang-tidy job now install these system headers before CMake configuration
 
 ## [0.1.0] — 2026-03-30
 
