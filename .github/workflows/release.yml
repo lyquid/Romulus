@@ -105,6 +105,14 @@ jobs:
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 140
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 140
 
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxi-dev libgl-dev
+
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
