@@ -53,6 +53,10 @@ private:
   // ── Hash cell rendering (right-click to copy) ──────────
   void render_hash_cell(int column, const std::string& hash, const char* label);
 
+  // ── Table sorting ────────────────────────────────────────
+  /// Sorts files_ in place according to the current sort_col_ / sort_ascending_ state.
+  void apply_sort();
+
   // ── Action handlers (launch background tasks) ──────────
   void action_import_dat();
   void action_scan_folder();
@@ -98,6 +102,10 @@ private:
   // Toast notification state
   std::string toast_message_;
   float toast_timer_ = 0.0F;
+
+  // Files table sort state
+  int sort_col_ = -1;          ///< Active sort column index (-1 = unsorted)
+  bool sort_ascending_ = true; ///< true = ascending, false = descending
 };
 
 } // namespace romulus::gui

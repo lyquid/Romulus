@@ -18,6 +18,7 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 - **GUI**: Native file/folder picker dialogs via Browse buttons (Windows Shell API on Windows, zenity/kdialog on Linux)
 - **GUI**: Human-readable file sizes in the table (KB, MB, GB)
 - **GUI**: File table now shows Filename, Size, CRC32, MD5, SHA1, and SHA256 columns (removed Path column)
+- **GUI**: Sortable columns in the file table — click any column header to sort ascending/descending; sort order is preserved after data refresh
 - **Service**: Added `get_all_files()` and `purge_database()` methods to `RomulusService` for GUI data access and admin operations
 - **SHA256 Hashing**: Added SHA256 computation to the `HashService` (alongside the existing CRC32, MD5, and SHA1 pass); all four digests are now computed in a single I/O pass via OpenSSL EVP
 - **Database — SHA256 columns**: Added `sha256 TEXT UNIQUE` to the `roms` table and `sha256 TEXT NOT NULL` to the `files` table; both indexed for fast look-up; existing databases are upgraded automatically via `ALTER TABLE ADD COLUMN` on open
