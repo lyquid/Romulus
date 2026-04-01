@@ -122,7 +122,11 @@ cmake --preset dev -DROMULUS_ENABLE_GUI=OFF
 sudo apt install libimgui-dev libglfw3-dev libgl-dev libstb-dev
 ```
 
-Or via **vcpkg** (automatic with the manifest).
+Or via **vcpkg** (automatic with the manifest). Note that even with vcpkg, `glfw3` requires the following X11/OpenGL system headers to be installed — vcpkg does **not** provide these:
+
+```bash
+sudo apt install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl-dev
+```
 
 ```bash
 # Launch the GUI

@@ -80,8 +80,9 @@ jobs:
           sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 180
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 180
 
-      # GLFW3 and the GUI require X11 + OpenGL dev headers on Linux.
-      # Install them here so vcpkg can build glfw3 successfully.
+      # GLFW3 and the GUI require X11 + OpenGL development headers on Linux.
+      # vcpkg does NOT provide these system packages; they must be installed via the distro.
+      # This step mirrors what Linux developers need to do locally when building the GUI with vcpkg.
       - name: Install Linux system dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
