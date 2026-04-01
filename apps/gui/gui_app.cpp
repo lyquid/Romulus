@@ -42,6 +42,14 @@ constexpr float k_ToastHeight = 36.0F;
 constexpr float k_ToastMarginRight = 10.0F;
 constexpr float k_ToastMarginBottom = 50.0F;
 
+// Files table column indices
+constexpr int k_ColFilename = 0;
+constexpr int k_ColSize = 1;
+constexpr int k_ColCrc32 = 2;
+constexpr int k_ColMd5 = 3;
+constexpr int k_ColSha1 = 4;
+constexpr int k_ColSha256 = 5;
+
 void glfw_error_callback(int error, const char* description) {
   std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
 }
@@ -352,10 +360,11 @@ void GuiApp::render_files_panel() {
   if (ImGui::BeginTable("files_table",
                         k_ColumnCount,
                         ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
-                            ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp,
+                            ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp |
+                            ImGuiTableFlags_Sortable,
                         ImVec2(0, -30))) {
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Filename", ImGuiTableColumnFlags_None, 3.0F);
+    ImGui::TableSetupColumn("Filename", ImGuiTableColumnFlags_DefaultSort, 3.0F);
     ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_None, 1.0F);
     ImGui::TableSetupColumn("CRC32", ImGuiTableColumnFlags_None, 1.5F);
     ImGui::TableSetupColumn("MD5", ImGuiTableColumnFlags_None, 3.0F);
@@ -363,24 +372,38 @@ void GuiApp::render_files_panel() {
     ImGui::TableSetupColumn("SHA256", ImGuiTableColumnFlags_None, 4.0F);
     ImGui::TableHeadersRow();
 
+    // Apply any pending sort requested by the user clicking a column header.
+    if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
+      if (sort_specs->SpecsDirty) {
+        if (sort_specs->SpecsCount > 0) {
+          sort_col_ = sort_specs->Specs[0].ColumnIndex;
+          sort_ascending_ = (sort_specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
+        } else {
+          sort_col_ = -1;
+        }
+        apply_sort();
+        sort_specs->SpecsDirty = false;
+      }
+    }
+
     for (std::size_t i = 0; i < files_.size(); ++i) {
       const auto& file = files_[i];
       ImGui::TableNextRow();
       ImGui::PushID(static_cast<int>(i));
 
       // Filename
-      ImGui::TableSetColumnIndex(0);
+      ImGui::TableSetColumnIndex(k_ColFilename);
       ImGui::TextUnformatted(file.filename.c_str());
 
       // Size (human-readable)
-      ImGui::TableSetColumnIndex(1);
+      ImGui::TableSetColumnIndex(k_ColSize);
       ImGui::TextUnformatted(format_size(file.size).c_str());
 
       // Hash columns — right-click to copy
-      render_hash_cell(2, file.crc32, "CRC32");
-      render_hash_cell(3, file.md5, "MD5");
-      render_hash_cell(4, file.sha1, "SHA1");
-      render_hash_cell(5, file.sha256, "SHA256");
+      render_hash_cell(k_ColCrc32, file.crc32, "CRC32");
+      render_hash_cell(k_ColMd5, file.md5, "MD5");
+      render_hash_cell(k_ColSha1, file.sha1, "SHA1");
+      render_hash_cell(k_ColSha256, file.sha256, "SHA256");
 
       ImGui::PopID();
     }
@@ -398,6 +421,41 @@ void GuiApp::render_hash_cell(int column, const std::string& hash, const char* l
       show_toast(std::string(label) + " copied to clipboard");
     }
   }
+}
+
+void GuiApp::apply_sort() {
+  if (sort_col_ < 0 || files_.empty()) {
+    return;
+  }
+  const int col = sort_col_;
+  const bool asc = sort_ascending_;
+  std::stable_sort(
+      files_.begin(), files_.end(), [col, asc](const core::FileInfo& a, const core::FileInfo& b) {
+        bool less = false;
+        switch (col) {
+          case k_ColFilename:
+            less = a.filename < b.filename;
+            break;
+          case k_ColSize:
+            less = a.size < b.size;
+            break;
+          case k_ColCrc32:
+            less = a.crc32 < b.crc32;
+            break;
+          case k_ColMd5:
+            less = a.md5 < b.md5;
+            break;
+          case k_ColSha1:
+            less = a.sha1 < b.sha1;
+            break;
+          case k_ColSha256:
+            less = a.sha256 < b.sha256;
+            break;
+          default:
+            break;
+        }
+        return asc ? less : !less;
+      });
 }
 
 void GuiApp::render_status_bar() {
@@ -579,6 +637,7 @@ void GuiApp::refresh_files() {
   auto result = svc_.get_all_files();
   if (result) {
     files_ = std::move(*result);
+    apply_sort();
   } else {
     files_.clear();
     ROMULUS_WARN("Failed to refresh files: {}", result.error().message);
