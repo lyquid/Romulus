@@ -27,7 +27,31 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
   for (const auto& file : *files) {
     core::MatchResult match{.file_id = file.id};
 
-    // Priority 1: SHA1 match (strongest)
+    // Priority 1: SHA256 match (strongest — collision-resistant)
+    if (!file.sha256.empty()) {
+      auto rom = db.find_rom_by_sha256(file.sha256);
+      if (rom && rom->has_value()) {
+        bool sha1_match = file.sha1 == rom->value().sha1;
+        bool md5_match = file.md5 == rom->value().md5;
+        bool crc_match = file.crc32 == rom->value().crc32;
+
+        match.rom_id = rom->value().id;
+        if (sha1_match && md5_match && crc_match) {
+          match.match_type = core::MatchType::Exact;
+        } else {
+          match.match_type = core::MatchType::Sha256Only;
+        }
+
+        auto ins = db.insert_file_match(match);
+        if (!ins) {
+          ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
+        }
+        results.push_back(match);
+        continue;
+      }
+    }
+
+    // Priority 2: SHA1 match
     if (!file.sha1.empty()) {
       auto rom = db.find_rom_by_sha1(file.sha1);
       if (rom && rom->has_value()) {
@@ -51,7 +75,7 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
       }
     }
 
-    // Priority 2: MD5 match
+    // Priority 3: MD5 match
     if (!file.md5.empty()) {
       auto rom = db.find_rom_by_md5(file.md5);
       if (rom && rom->has_value()) {
@@ -67,7 +91,7 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
       }
     }
 
-    // Priority 3: CRC32 match (weakest, may have multiple)
+    // Priority 4: CRC32 match (weakest, may have multiple)
     if (!file.crc32.empty()) {
       auto roms = db.find_rom_by_crc32(file.crc32);
       if (roms && !roms->empty()) {

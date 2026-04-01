@@ -46,18 +46,21 @@ struct EvpCtxDeleter {
 };
 using EvpCtxPtr = std::unique_ptr<EVP_MD_CTX, EvpCtxDeleter>;
 
-/// Holds all three hash contexts for single-pass computation.
+/// Holds all four hash contexts for single-pass computation.
 struct HashContext {
   EvpCtxPtr md5_ctx;
   EvpCtxPtr sha1_ctx;
+  EvpCtxPtr sha256_ctx;
   std::uint32_t crc32 = 0xFFFFFFFFU;
 
   static auto create() -> HashContext {
     HashContext ctx;
     ctx.md5_ctx.reset(EVP_MD_CTX_new());
     ctx.sha1_ctx.reset(EVP_MD_CTX_new());
+    ctx.sha256_ctx.reset(EVP_MD_CTX_new());
     EVP_DigestInit_ex(ctx.md5_ctx.get(), EVP_md5(), nullptr);
     EVP_DigestInit_ex(ctx.sha1_ctx.get(), EVP_sha1(), nullptr);
+    EVP_DigestInit_ex(ctx.sha256_ctx.get(), EVP_sha256(), nullptr);
     return ctx;
   }
 
@@ -67,9 +70,10 @@ struct HashContext {
     for (std::size_t i = 0; i < size; ++i) {
       crc32 = k_Crc32Table[(crc32 ^ bytes[i]) & 0xFF] ^ (crc32 >> 8);
     }
-    // MD5 + SHA1
+    // MD5 + SHA1 + SHA256
     EVP_DigestUpdate(md5_ctx.get(), data, size);
     EVP_DigestUpdate(sha1_ctx.get(), data, size);
+    EVP_DigestUpdate(sha256_ctx.get(), data, size);
   }
 
   auto finalize() -> core::HashDigest {
@@ -77,11 +81,14 @@ struct HashContext {
 
     std::array<unsigned char, EVP_MAX_MD_SIZE> md5_hash{};
     std::array<unsigned char, EVP_MAX_MD_SIZE> sha1_hash{};
+    std::array<unsigned char, EVP_MAX_MD_SIZE> sha256_hash{};
     unsigned int md5_len = 0;
     unsigned int sha1_len = 0;
+    unsigned int sha256_len = 0;
 
     EVP_DigestFinal_ex(md5_ctx.get(), md5_hash.data(), &md5_len);
     EVP_DigestFinal_ex(sha1_ctx.get(), sha1_hash.data(), &sha1_len);
+    EVP_DigestFinal_ex(sha256_ctx.get(), sha256_hash.data(), &sha256_len);
 
     auto to_hex = [](const unsigned char* data, unsigned int len) {
       std::ostringstream hex;
@@ -98,6 +105,7 @@ struct HashContext {
         .crc32 = crc_hex.str(),
         .md5 = to_hex(md5_hash.data(), md5_len),
         .sha1 = to_hex(sha1_hash.data(), sha1_len),
+        .sha256 = to_hex(sha256_hash.data(), sha256_len),
     };
   }
 };
@@ -123,11 +131,12 @@ auto HashService::compute_hashes(const std::filesystem::path& file_path)
   }
 
   auto digest = ctx.finalize();
-  ROMULUS_DEBUG("Hashed '{}': CRC32={}, MD5={}, SHA1={}",
+  ROMULUS_DEBUG("Hashed '{}': CRC32={}, MD5={}, SHA1={}, SHA256={}",
                 file_path.string(),
                 digest.crc32,
                 digest.md5,
-                digest.sha1);
+                digest.sha1,
+                digest.sha256);
 
   return digest;
 }
@@ -146,12 +155,13 @@ auto HashService::compute_hashes_archive(const std::filesystem::path& archive_pa
   }
 
   auto digest = ctx.finalize();
-  ROMULUS_DEBUG("Hashed '{}::{}': CRC32={}, MD5={}, SHA1={}",
+  ROMULUS_DEBUG("Hashed '{}::{}': CRC32={}, MD5={}, SHA1={}, SHA256={}",
                 archive_path.string(),
                 entry_name,
                 digest.crc32,
                 digest.md5,
-                digest.sha1);
+                digest.sha1,
+                digest.sha256);
 
   return digest;
 }

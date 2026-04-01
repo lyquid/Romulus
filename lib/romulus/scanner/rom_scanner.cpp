@@ -192,14 +192,18 @@ auto RomScanner::scan(const std::filesystem::path& directory,
 
     // Store in DB
     core::FileInfo file_info{
+        .filename = job.entry_name.empty() ? job.real_path.filename().string() : job.entry_name,
         .path = job.virtual_path,
         .size = job.size,
         .crc32 = digest->crc32,
         .md5 = digest->md5,
         .sha1 = digest->sha1,
+        .sha256 = digest->sha256,
         .last_scanned = {},
         .is_archive_entry = !job.entry_name.empty(),
     };
+
+    ROMULUS_INFO("Hashed '{}': SHA256={}", job.virtual_path, digest->sha256);
 
     {
       std::lock_guard lock(db_mutex);

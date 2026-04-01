@@ -170,16 +170,19 @@ CREATE TABLE IF NOT EXISTS roms (
     crc32    TEXT,
     md5      TEXT,
     sha1     TEXT,
+    sha256   TEXT UNIQUE,
     region   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS files (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    filename      TEXT NOT NULL,
     path          TEXT NOT NULL UNIQUE,
     size          INTEGER NOT NULL,
     crc32         TEXT,
     md5           TEXT,
     sha1          TEXT,
+    sha256        TEXT NOT NULL,
     last_scanned  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -200,8 +203,10 @@ CREATE TABLE IF NOT EXISTS rom_status (
 CREATE INDEX IF NOT EXISTS idx_roms_sha1 ON roms(sha1);
 CREATE INDEX IF NOT EXISTS idx_roms_md5 ON roms(md5);
 CREATE INDEX IF NOT EXISTS idx_roms_crc32 ON roms(crc32);
+CREATE INDEX IF NOT EXISTS idx_roms_sha256 ON roms(sha256);
 CREATE INDEX IF NOT EXISTS idx_files_sha1 ON files(sha1);
 CREATE INDEX IF NOT EXISTS idx_files_crc32 ON files(crc32);
+CREATE INDEX IF NOT EXISTS idx_files_sha256 ON files(sha256);
 CREATE INDEX IF NOT EXISTS idx_rom_status_status ON rom_status(status);
 )SQL";
 
@@ -209,6 +214,8 @@ auto match_type_to_string(core::MatchType type) -> std::string_view {
   switch (type) {
     case core::MatchType::Exact:
       return "exact";
+    case core::MatchType::Sha256Only:
+      return "sha256_only";
     case core::MatchType::Sha1Only:
       return "sha1_only";
     case core::MatchType::Md5Only:
@@ -226,6 +233,9 @@ auto match_type_to_string(core::MatchType type) -> std::string_view {
 auto string_to_match_type(std::string_view str) -> core::MatchType {
   if (str == "exact") {
     return core::MatchType::Exact;
+  }
+  if (str == "sha256_only") {
+    return core::MatchType::Sha256Only;
   }
   if (str == "sha1_only") {
     return core::MatchType::Sha1Only;
@@ -327,6 +337,26 @@ void Database::run_migrations() {
     sqlite3_free(err_msg);
     throw std::runtime_error("Migration failed: " + err);
   }
+
+  // Upgrade existing databases: add new columns if they do not exist yet.
+  // Only the "duplicate column name" error is suppressed; all other errors are logged.
+  auto try_alter = [this](const char* sql) {
+    char* msg = nullptr;
+    int alter_rc = sqlite3_exec(db_, sql, nullptr, nullptr, &msg);
+    if (alter_rc != SQLITE_OK && msg != nullptr) {
+      std::string err(msg);
+      sqlite3_free(msg);
+      // SQLite reports "duplicate column name" as SQLITE_ERROR; treat it as a no-op.
+      if (err.find("duplicate column name") == std::string::npos) {
+        ROMULUS_WARN("Schema upgrade warning: {}", err);
+      }
+    }
+  };
+
+  try_alter("ALTER TABLE roms ADD COLUMN sha256 TEXT");
+  try_alter("ALTER TABLE files ADD COLUMN sha256 TEXT NOT NULL DEFAULT ''");
+  try_alter("ALTER TABLE files ADD COLUMN filename TEXT NOT NULL DEFAULT ''");
+
   ROMULUS_DEBUG("Database migrations applied successfully");
 }
 
@@ -563,8 +593,8 @@ auto Database::get_games_by_dat_version(std::int64_t dat_version_id)
 // ═══════════════════════════════════════════════════════════════
 
 auto Database::insert_rom(const core::RomInfo& rom) -> Result<std::int64_t> {
-  auto stmt = prepare("INSERT INTO roms (game_id, name, size, crc32, md5, sha1, region) "
-                      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)");
+  auto stmt = prepare("INSERT INTO roms (game_id, name, size, crc32, md5, sha1, sha256, region) "
+                      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -575,14 +605,19 @@ auto Database::insert_rom(const core::RomInfo& rom) -> Result<std::int64_t> {
   stmt->bind_text(4, rom.crc32);
   stmt->bind_text(5, rom.md5);
   stmt->bind_text(6, rom.sha1);
-  stmt->bind_text(7, rom.region);
+  if (rom.sha256.empty()) {
+    stmt->bind_null(7);
+  } else {
+    stmt->bind_text(7, rom.sha256);
+  }
+  stmt->bind_text(8, rom.region);
   stmt->execute();
 
   return last_insert_id();
 }
 
 auto Database::find_rom_by_sha1(std::string_view sha1) -> Result<std::optional<core::RomInfo>> {
-  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, region "
+  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, sha256, region "
                       "FROM roms WHERE sha1 = ?1 LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -601,12 +636,38 @@ auto Database::find_rom_by_sha1(std::string_view sha1) -> Result<std::optional<c
       .crc32 = stmt->column_text(4),
       .md5 = stmt->column_text(5),
       .sha1 = stmt->column_text(6),
-      .region = stmt->column_text(7),
+      .sha256 = stmt->column_text(7),
+      .region = stmt->column_text(8),
+  };
+}
+
+auto Database::find_rom_by_sha256(std::string_view sha256) -> Result<std::optional<core::RomInfo>> {
+  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, sha256, region "
+                      "FROM roms WHERE sha256 = ?1 LIMIT 1");
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+
+  stmt->bind_text(1, sha256);
+  if (!stmt->step()) {
+    return std::nullopt;
+  }
+
+  return core::RomInfo{
+      .id = stmt->column_int64(0),
+      .game_id = stmt->column_int64(1),
+      .name = stmt->column_text(2),
+      .size = stmt->column_int64(3),
+      .crc32 = stmt->column_text(4),
+      .md5 = stmt->column_text(5),
+      .sha1 = stmt->column_text(6),
+      .sha256 = stmt->column_text(7),
+      .region = stmt->column_text(8),
   };
 }
 
 auto Database::find_rom_by_md5(std::string_view md5) -> Result<std::optional<core::RomInfo>> {
-  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, region "
+  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, sha256, region "
                       "FROM roms WHERE md5 = ?1 LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -625,12 +686,13 @@ auto Database::find_rom_by_md5(std::string_view md5) -> Result<std::optional<cor
       .crc32 = stmt->column_text(4),
       .md5 = stmt->column_text(5),
       .sha1 = stmt->column_text(6),
-      .region = stmt->column_text(7),
+      .sha256 = stmt->column_text(7),
+      .region = stmt->column_text(8),
   };
 }
 
 auto Database::find_rom_by_crc32(std::string_view crc32) -> Result<std::vector<core::RomInfo>> {
-  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, region "
+  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, sha256, region "
                       "FROM roms WHERE crc32 = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -648,7 +710,8 @@ auto Database::find_rom_by_crc32(std::string_view crc32) -> Result<std::vector<c
         .crc32 = stmt->column_text(4),
         .md5 = stmt->column_text(5),
         .sha1 = stmt->column_text(6),
-        .region = stmt->column_text(7),
+        .sha256 = stmt->column_text(7),
+        .region = stmt->column_text(8),
     });
   }
   return roms;
@@ -656,7 +719,8 @@ auto Database::find_rom_by_crc32(std::string_view crc32) -> Result<std::vector<c
 
 auto Database::get_all_roms_for_system(std::int64_t system_id)
     -> Result<std::vector<core::RomInfo>> {
-  auto stmt = prepare("SELECT r.id, r.game_id, r.name, r.size, r.crc32, r.md5, r.sha1, r.region "
+  auto stmt = prepare("SELECT r.id, r.game_id, r.name, r.size, r.crc32, r.md5, r.sha1, r.sha256, "
+                      "r.region "
                       "FROM roms r JOIN games g ON r.game_id = g.id "
                       "WHERE g.system_id = ?1");
   if (!stmt) {
@@ -675,7 +739,8 @@ auto Database::get_all_roms_for_system(std::int64_t system_id)
         .crc32 = stmt->column_text(4),
         .md5 = stmt->column_text(5),
         .sha1 = stmt->column_text(6),
-        .region = stmt->column_text(7),
+        .sha256 = stmt->column_text(7),
+        .region = stmt->column_text(8),
     });
   }
   return roms;
@@ -686,20 +751,24 @@ auto Database::get_all_roms_for_system(std::int64_t system_id)
 // ═══════════════════════════════════════════════════════════════
 
 auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
-  auto stmt = prepare("INSERT INTO files (path, size, crc32, md5, sha1, last_scanned) "
-                      "VALUES (?1, ?2, ?3, ?4, ?5, datetime('now')) "
-                      "ON CONFLICT(path) DO UPDATE SET "
-                      "size = excluded.size, crc32 = excluded.crc32, md5 = excluded.md5, "
-                      "sha1 = excluded.sha1, last_scanned = datetime('now')");
+  auto stmt =
+      prepare("INSERT INTO files (filename, path, size, crc32, md5, sha1, sha256, last_scanned) "
+              "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now')) "
+              "ON CONFLICT(path) DO UPDATE SET "
+              "filename = excluded.filename, size = excluded.size, crc32 = excluded.crc32, "
+              "md5 = excluded.md5, sha1 = excluded.sha1, sha256 = excluded.sha256, "
+              "last_scanned = datetime('now')");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_text(1, file.path);
-  stmt->bind_int64(2, file.size);
-  stmt->bind_text(3, file.crc32);
-  stmt->bind_text(4, file.md5);
-  stmt->bind_text(5, file.sha1);
+  stmt->bind_text(1, file.filename);
+  stmt->bind_text(2, file.path);
+  stmt->bind_int64(3, file.size);
+  stmt->bind_text(4, file.crc32);
+  stmt->bind_text(5, file.md5);
+  stmt->bind_text(6, file.sha1);
+  stmt->bind_text(7, file.sha256);
   stmt->execute();
 
   // Get the id (either inserted or updated)
@@ -715,8 +784,8 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
 }
 
 auto Database::find_file_by_path(std::string_view path) -> Result<std::optional<core::FileInfo>> {
-  auto stmt =
-      prepare("SELECT id, path, size, crc32, md5, sha1, last_scanned FROM files WHERE path = ?1");
+  auto stmt = prepare("SELECT id, filename, path, size, crc32, md5, sha1, sha256, last_scanned "
+                      "FROM files WHERE path = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -728,17 +797,20 @@ auto Database::find_file_by_path(std::string_view path) -> Result<std::optional<
 
   return core::FileInfo{
       .id = stmt->column_int64(0),
-      .path = stmt->column_text(1),
-      .size = stmt->column_int64(2),
-      .crc32 = stmt->column_text(3),
-      .md5 = stmt->column_text(4),
-      .sha1 = stmt->column_text(5),
-      .last_scanned = stmt->column_text(6),
+      .filename = stmt->column_text(1),
+      .path = stmt->column_text(2),
+      .size = stmt->column_int64(3),
+      .crc32 = stmt->column_text(4),
+      .md5 = stmt->column_text(5),
+      .sha1 = stmt->column_text(6),
+      .sha256 = stmt->column_text(7),
+      .last_scanned = stmt->column_text(8),
   };
 }
 
 auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
-  auto stmt = prepare("SELECT id, path, size, crc32, md5, sha1, last_scanned FROM files");
+  auto stmt =
+      prepare("SELECT id, filename, path, size, crc32, md5, sha1, sha256, last_scanned FROM files");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -747,12 +819,14 @@ auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
   while (stmt->step()) {
     files.push_back({
         .id = stmt->column_int64(0),
-        .path = stmt->column_text(1),
-        .size = stmt->column_int64(2),
-        .crc32 = stmt->column_text(3),
-        .md5 = stmt->column_text(4),
-        .sha1 = stmt->column_text(5),
-        .last_scanned = stmt->column_text(6),
+        .filename = stmt->column_text(1),
+        .path = stmt->column_text(2),
+        .size = stmt->column_int64(3),
+        .crc32 = stmt->column_text(4),
+        .md5 = stmt->column_text(5),
+        .sha1 = stmt->column_text(6),
+        .sha256 = stmt->column_text(7),
+        .last_scanned = stmt->column_text(8),
     });
   }
   return files;
@@ -1024,11 +1098,12 @@ auto Database::get_duplicate_files(std::optional<std::int64_t> system_id)
 auto Database::get_unverified_files(std::optional<std::int64_t> /*system_id*/)
     -> Result<std::vector<core::FileInfo>> {
   // Use LEFT JOIN to find files with no matches in a single query
-  std::string sql = "SELECT f.id, f.path, f.size, f.crc32, f.md5, f.sha1, f.last_scanned "
-                    "FROM files f "
-                    "LEFT JOIN file_matches fm ON f.id = fm.file_id "
-                    "WHERE fm.file_id IS NULL "
-                    "ORDER BY f.path";
+  std::string sql =
+      "SELECT f.id, f.filename, f.path, f.size, f.crc32, f.md5, f.sha1, f.sha256, f.last_scanned "
+      "FROM files f "
+      "LEFT JOIN file_matches fm ON f.id = fm.file_id "
+      "WHERE fm.file_id IS NULL "
+      "ORDER BY f.path";
 
   auto stmt = prepare(sql);
   if (!stmt) {
@@ -1039,12 +1114,14 @@ auto Database::get_unverified_files(std::optional<std::int64_t> /*system_id*/)
   while (stmt->step()) {
     unverified.push_back({
         .id = stmt->column_int64(0),
-        .path = stmt->column_text(1),
-        .size = stmt->column_int64(2),
-        .crc32 = stmt->column_text(3),
-        .md5 = stmt->column_text(4),
-        .sha1 = stmt->column_text(5),
-        .last_scanned = stmt->column_text(6),
+        .filename = stmt->column_text(1),
+        .path = stmt->column_text(2),
+        .size = stmt->column_int64(3),
+        .crc32 = stmt->column_text(4),
+        .md5 = stmt->column_text(5),
+        .sha1 = stmt->column_text(6),
+        .sha256 = stmt->column_text(7),
+        .last_scanned = stmt->column_text(8),
     });
   }
   return unverified;

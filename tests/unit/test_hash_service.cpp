@@ -22,6 +22,7 @@ TEST(HashService, ComputesCorrectHashesForKnownContent) {
   EXPECT_FALSE(result->crc32.empty());
   EXPECT_FALSE(result->md5.empty());
   EXPECT_FALSE(result->sha1.empty());
+  EXPECT_FALSE(result->sha256.empty());
 
   // CRC32 should be 8 hex chars
   EXPECT_EQ(result->crc32.size(), 8);
@@ -29,6 +30,8 @@ TEST(HashService, ComputesCorrectHashesForKnownContent) {
   EXPECT_EQ(result->md5.size(), 32);
   // SHA1 should be 40 hex chars
   EXPECT_EQ(result->sha1.size(), 40);
+  // SHA256 should be 64 hex chars
+  EXPECT_EQ(result->sha256.size(), 64);
 
   std::filesystem::remove(temp);
 }
@@ -49,6 +52,7 @@ TEST(HashService, ProducesDeterministicHashes) {
   EXPECT_EQ(result1->crc32, result2->crc32);
   EXPECT_EQ(result1->md5, result2->md5);
   EXPECT_EQ(result1->sha1, result2->sha1);
+  EXPECT_EQ(result1->sha256, result2->sha256);
 
   std::filesystem::remove(temp);
 }
@@ -73,6 +77,7 @@ TEST(HashService, HandlesEmptyFile) {
   EXPECT_EQ(result->crc32.size(), 8);
   EXPECT_EQ(result->md5.size(), 32);
   EXPECT_EQ(result->sha1.size(), 40);
+  EXPECT_EQ(result->sha256.size(), 64);
 
   std::filesystem::remove(temp);
 }

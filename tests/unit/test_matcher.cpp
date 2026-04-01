@@ -48,24 +48,29 @@ protected:
                                .crc32 = "aabb0011",
                                .md5 = "md5hash",
                                .sha1 = "sha1hash",
+                               .sha256 = {},
                                .region = {}};
     auto rom_id = db_->insert_rom(rom);
 
     // Insert a matching file (exact match)
-    romulus::core::FileInfo file{.path = "/roms/test.bin",
+    romulus::core::FileInfo file{.filename = "test.bin",
+                                 .path = "/roms/test.bin",
                                  .size = 100,
                                  .crc32 = "aabb0011",
                                  .md5 = "md5hash",
                                  .sha1 = "sha1hash",
+                                 .sha256 = "sha256hash",
                                  .last_scanned = {}};
     auto file_id = db_->upsert_file(file);
 
     // Insert a non-matching file
-    romulus::core::FileInfo other{.path = "/roms/unknown.bin",
+    romulus::core::FileInfo other{.filename = "unknown.bin",
+                                  .path = "/roms/unknown.bin",
                                   .size = 200,
                                   .crc32 = "00000000",
                                   .md5 = "nomatch",
                                   .sha1 = "nomatch",
+                                  .sha256 = "sha256nomatch",
                                   .last_scanned = {}};
     auto other_id = db_->upsert_file(other);
   }

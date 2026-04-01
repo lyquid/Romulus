@@ -89,6 +89,7 @@ TEST_F(DatabaseTest, InsertAndRetrieveRom) {
       .crc32 = "deadbeef",
       .md5 = "d41d8cd98f00b204e9800998ecf8427e",
       .sha1 = "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+      .sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       .region = "USA",
   };
   auto rom_id = db_->insert_rom(rom);
@@ -99,15 +100,25 @@ TEST_F(DatabaseTest, InsertAndRetrieveRom) {
   ASSERT_TRUE(found->has_value());
   EXPECT_EQ(found->value().name, "test.bin");
   EXPECT_EQ(found->value().size, 1024);
+
+  auto found_by_sha256 =
+      db_->find_rom_by_sha256("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  ASSERT_TRUE(found_by_sha256.has_value());
+  ASSERT_TRUE(found_by_sha256->has_value());
+  EXPECT_EQ(found_by_sha256->value().name, "test.bin");
+  EXPECT_EQ(found_by_sha256->value().sha256,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
 }
 
 TEST_F(DatabaseTest, UpsertFileUpdatesExisting) {
   romulus::core::FileInfo file{
+      .filename = "test.bin",
       .path = "/roms/test.bin",
       .size = 1024,
       .crc32 = "aabbccdd",
       .md5 = "12345678901234567890123456789012",
       .sha1 = "1234567890123456789012345678901234567890",
+      .sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       .last_scanned = {},
   };
 

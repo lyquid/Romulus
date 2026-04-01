@@ -49,6 +49,7 @@ protected:
                                 .crc32 = "11111111",
                                 .md5 = "m1",
                                 .sha1 = "s1",
+                                .sha256 = {},
                                 .region = {}};
     auto rom1_id = db_->insert_rom(rom1);
 
@@ -59,15 +60,18 @@ protected:
                                 .crc32 = "22222222",
                                 .md5 = "m2",
                                 .sha1 = "s2",
+                                .sha256 = {},
                                 .region = {}};
     auto rom2_id = db_->insert_rom(rom2);
 
     // File that matches rom1
-    romulus::core::FileInfo file{.path = "/roms/matched.bin",
+    romulus::core::FileInfo file{.filename = "matched.bin",
+                                 .path = "/roms/matched.bin",
                                  .size = 100,
                                  .crc32 = "11111111",
                                  .md5 = "m1",
                                  .sha1 = "s1",
+                                 .sha256 = "sha256val",
                                  .last_scanned = {}};
     auto file_id = db_->upsert_file(file);
   }
