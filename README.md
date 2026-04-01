@@ -67,6 +67,7 @@ romulus report summary
 ```text
 lib/romulus/          → 🧩 Core C++ library (all business logic)
 apps/cli/             → 🖥️  CLI frontend (builds the `romulus` command)
+apps/gui/             → 🎮 ImGui + GLFW desktop GUI (optional, toggleable)
 apps/api/  (future)   → 🌐 REST API server for web frontend
 web/       (future)   → ⚛️  React/TypeScript web interface
 ```
@@ -107,6 +108,32 @@ cmake --build build --config Release
 ```
 
 > 💡 *Pro tip: Release builds are optimized for performance and size — production-ready binaries. Like cartridges with the save battery still intact, they just work.*
+
+### 🎮 GUI Build (Optional Boss Stage)
+
+The ImGui + GLFW desktop GUI is built by default. To disable it:
+
+```bash
+cmake --preset dev -DROMULUS_ENABLE_GUI=OFF
+```
+
+**System dependencies** (Ubuntu/Debian):
+```bash
+sudo apt install libimgui-dev libglfw3-dev libgl-dev libstb-dev
+```
+
+Or via **vcpkg** (automatic with the manifest).
+
+```bash
+# Launch the GUI
+./build/apps/gui/romulus-gui
+
+# Launch with a specific database
+./build/apps/gui/romulus-gui --db /path/to/romulus.db
+
+# Skip the GUI (headless mode)
+./build/apps/gui/romulus-gui --no-gui
+```
 
 ---
 
@@ -170,6 +197,7 @@ DAT Import → Scan → Hash → Match → Classify → Report
 | #️⃣ Hashing    | OpenSSL (MD5/SHA1) + constexpr CRC32 | The rogue           |
 | 📦 Archives   | libarchive (zip/7z/tar)           | Treasure chest handler    |
 | ⌨️ CLI        | CLI11                             | The bard (always talking) |
+| 🎮 GUI        | ImGui + GLFW + OpenGL3            | The enchanted mirror      |
 | 📝 Logging    | spdlog                            | The chronicler            |
 | 🔗 JSON       | nlohmann-json                     | The translator            |
 | 🧪 Testing    | Google Test                       | Quality assurance paladin |

@@ -9,6 +9,10 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ### ⚡ Features
 
+- **GUI**: Added modular ImGui + GLFW desktop GUI (`apps/gui/`) with DAT import, folder scanning, verification, database purge, collection summary display, and scrollable file table
+- **GUI**: Added `--no-gui` launch parameter to skip GUI initialization for headless operation
+- **GUI**: Added `ROMULUS_ENABLE_GUI` CMake option (default ON) to opt out of building the GUI
+- **Service**: Added `get_all_files()` and `execute_raw()` methods to `RomulusService` for GUI data access and admin operations
 - **SHA256 Hashing**: Added SHA256 computation to the `HashService` (alongside the existing CRC32, MD5, and SHA1 pass); all four digests are now computed in a single I/O pass via OpenSSL EVP
 - **Database — SHA256 columns**: Added `sha256 TEXT UNIQUE` to the `roms` table and `sha256 TEXT NOT NULL` to the `files` table; both indexed for fast look-up; existing databases are upgraded automatically via `ALTER TABLE ADD COLUMN` on open
 - **Database — `find_rom_by_sha256`**: New query method on `Database` and corresponding matcher priority (SHA256 takes precedence over SHA1 > MD5 > CRC32)
