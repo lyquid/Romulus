@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS roms (
     crc32    TEXT,
     md5      TEXT,
     sha1     TEXT,
-    sha256   TEXT UNIQUE,
+    sha256   TEXT,
     region   TEXT
 );
 
@@ -203,7 +203,7 @@ CREATE TABLE IF NOT EXISTS rom_status (
 CREATE INDEX IF NOT EXISTS idx_roms_sha1 ON roms(sha1);
 CREATE INDEX IF NOT EXISTS idx_roms_md5 ON roms(md5);
 CREATE INDEX IF NOT EXISTS idx_roms_crc32 ON roms(crc32);
-CREATE INDEX IF NOT EXISTS idx_roms_sha256 ON roms(sha256);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_roms_sha256 ON roms(sha256) WHERE sha256 IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_files_sha1 ON files(sha1);
 CREATE INDEX IF NOT EXISTS idx_files_crc32 ON files(crc32);
 CREATE INDEX IF NOT EXISTS idx_files_sha256 ON files(sha256);
@@ -330,6 +330,42 @@ void Database::configure_connection() {
 }
 
 void Database::run_migrations() {
+  // Upgrade existing databases: add new columns if they do not exist yet.
+  // These must run BEFORE k_Schema so that the CREATE INDEX statements referencing
+  // sha256/filename do not fail with "no such column" on pre-existing databases.
+  // Only "duplicate column name" errors are suppressed; all others emit a warning.
+  auto try_alter = [this](const char* sql) {
+    char* msg = nullptr;
+    int alter_rc = sqlite3_exec(db_, sql, nullptr, nullptr, &msg);
+    if (alter_rc != SQLITE_OK && msg != nullptr) {
+      std::string err(msg);
+      sqlite3_free(msg);
+      // SQLite reports "duplicate column name" when a column already exists; treat as no-op.
+      if (err.find("duplicate column name") != std::string::npos) {
+        return;
+      }
+      // Duplicate SHA256 values already in DB will block creating the unique index.
+      // SQLite uses "UNIQUE constraint failed" for both DML and index-creation failures.
+      // We check for the keywords broadly to cover all formulations.
+      if (err.find("UNIQUE constraint") != std::string::npos ||
+          err.find("unique constraint") != std::string::npos) {
+        ROMULUS_WARN("Schema upgrade warning: could not create unique index on roms.sha256 "
+                     "because duplicate SHA256 values already exist. "
+                     "SHA256 uniqueness will not be enforced until duplicates are resolved.");
+        return;
+      }
+      ROMULUS_WARN("Schema upgrade warning: {}", err);
+    }
+  };
+
+  try_alter("ALTER TABLE roms ADD COLUMN sha256 TEXT");
+  try_alter("ALTER TABLE files ADD COLUMN sha256 TEXT NOT NULL DEFAULT ''");
+  try_alter("ALTER TABLE files ADD COLUMN filename TEXT NOT NULL DEFAULT ''");
+  // Enforce uniqueness for upgraded databases (new DBs get it via k_Schema).
+  try_alter(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_roms_sha256 ON roms(sha256) WHERE sha256 IS NOT NULL");
+
+  // Apply the main schema (CREATE TABLE/INDEX IF NOT EXISTS — safe to run on any DB state).
   char* err_msg = nullptr;
   int rc = sqlite3_exec(db_, std::string(k_Schema).c_str(), nullptr, nullptr, &err_msg);
   if (rc != SQLITE_OK) {
@@ -337,25 +373,6 @@ void Database::run_migrations() {
     sqlite3_free(err_msg);
     throw std::runtime_error("Migration failed: " + err);
   }
-
-  // Upgrade existing databases: add new columns if they do not exist yet.
-  // Only the "duplicate column name" error is suppressed; all other errors are logged.
-  auto try_alter = [this](const char* sql) {
-    char* msg = nullptr;
-    int alter_rc = sqlite3_exec(db_, sql, nullptr, nullptr, &msg);
-    if (alter_rc != SQLITE_OK && msg != nullptr) {
-      std::string err(msg);
-      sqlite3_free(msg);
-      // SQLite reports "duplicate column name" as SQLITE_ERROR; treat it as a no-op.
-      if (err.find("duplicate column name") == std::string::npos) {
-        ROMULUS_WARN("Schema upgrade warning: {}", err);
-      }
-    }
-  };
-
-  try_alter("ALTER TABLE roms ADD COLUMN sha256 TEXT");
-  try_alter("ALTER TABLE files ADD COLUMN sha256 TEXT NOT NULL DEFAULT ''");
-  try_alter("ALTER TABLE files ADD COLUMN filename TEXT NOT NULL DEFAULT ''");
 
   ROMULUS_DEBUG("Database migrations applied successfully");
 }

@@ -53,14 +53,23 @@ struct HashContext {
   EvpCtxPtr sha256_ctx;
   std::uint32_t crc32 = 0xFFFFFFFFU;
 
-  static auto create() -> HashContext {
+  /// Creates and initialises all EVP digest contexts.
+  /// Returns an error if OpenSSL allocation or initialisation fails.
+  static auto create() -> core::Result<HashContext> {
     HashContext ctx;
     ctx.md5_ctx.reset(EVP_MD_CTX_new());
     ctx.sha1_ctx.reset(EVP_MD_CTX_new());
     ctx.sha256_ctx.reset(EVP_MD_CTX_new());
-    EVP_DigestInit_ex(ctx.md5_ctx.get(), EVP_md5(), nullptr);
-    EVP_DigestInit_ex(ctx.sha1_ctx.get(), EVP_sha1(), nullptr);
-    EVP_DigestInit_ex(ctx.sha256_ctx.get(), EVP_sha256(), nullptr);
+    if (!ctx.md5_ctx || !ctx.sha1_ctx || !ctx.sha256_ctx) {
+      return std::unexpected(
+          core::Error{core::ErrorCode::HashComputeError, "Failed to allocate OpenSSL EVP_MD_CTX"});
+    }
+    if (EVP_DigestInit_ex(ctx.md5_ctx.get(), EVP_md5(), nullptr) != 1 ||
+        EVP_DigestInit_ex(ctx.sha1_ctx.get(), EVP_sha1(), nullptr) != 1 ||
+        EVP_DigestInit_ex(ctx.sha256_ctx.get(), EVP_sha256(), nullptr) != 1) {
+      return std::unexpected(core::Error{core::ErrorCode::HashComputeError,
+                                         "Failed to initialise OpenSSL EVP digest"});
+    }
     return ctx;
   }
 
@@ -120,7 +129,11 @@ auto HashService::compute_hashes(const std::filesystem::path& file_path)
                                        "Cannot open file for hashing: " + file_path.string()});
   }
 
-  auto ctx = HashContext::create();
+  auto ctx_result = HashContext::create();
+  if (!ctx_result) {
+    return std::unexpected(ctx_result.error());
+  }
+  auto& ctx = *ctx_result;
   std::array<char, k_BufferSize> buffer{};
 
   while (file.read(buffer.data(), k_BufferSize) || file.gcount() > 0) {
@@ -143,7 +156,11 @@ auto HashService::compute_hashes(const std::filesystem::path& file_path)
 
 auto HashService::compute_hashes_archive(const std::filesystem::path& archive_path,
                                          std::string_view entry_name) -> Result<core::HashDigest> {
-  auto ctx = HashContext::create();
+  auto ctx_result = HashContext::create();
+  if (!ctx_result) {
+    return std::unexpected(ctx_result.error());
+  }
+  auto& ctx = *ctx_result;
 
   auto result = ArchiveService::stream_entry(
       archive_path, entry_name, [&ctx](const std::byte* data, std::size_t size) {

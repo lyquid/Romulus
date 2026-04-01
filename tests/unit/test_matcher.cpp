@@ -41,7 +41,7 @@ protected:
                                  .roms = {}};
     auto game_id = db_->insert_game(game);
 
-    // Insert a ROM
+    // ROM 1: SHA1/MD5/CRC32 known but no SHA256 in DAT
     romulus::core::RomInfo rom{.game_id = *game_id,
                                .name = "test.bin",
                                .size = 100,
@@ -50,9 +50,22 @@ protected:
                                .sha1 = "sha1hash",
                                .sha256 = {},
                                .region = {}};
-    auto rom_id = db_->insert_rom(rom);
+    ASSERT_TRUE(db_->insert_rom(rom).has_value());
 
-    // Insert a matching file (exact match)
+    // ROM 2: has a SHA256 in the DAT (e.g., enriched entry)
+    romulus::core::RomInfo rom_enriched{.game_id = *game_id,
+                                        .name = "with_sha256.bin",
+                                        .size = 200,
+                                        .crc32 = "ccdd0022",
+                                        .md5 = "md5_b",
+                                        .sha1 = "sha1_b",
+                                        .sha256 = "sha256_b",
+                                        .region = {}};
+    auto rom_enriched_id = db_->insert_rom(rom_enriched);
+    ASSERT_TRUE(rom_enriched_id.has_value());
+    rom_enriched_id_ = *rom_enriched_id;
+
+    // File 1: exact match against ROM 1 via SHA1+MD5+CRC32
     romulus::core::FileInfo file{.filename = "test.bin",
                                  .path = "/roms/test.bin",
                                  .size = 100,
@@ -61,9 +74,22 @@ protected:
                                  .sha1 = "sha1hash",
                                  .sha256 = "sha256hash",
                                  .last_scanned = {}};
-    auto file_id = db_->upsert_file(file);
+    ASSERT_TRUE(db_->upsert_file(file).has_value());
 
-    // Insert a non-matching file
+    // File 2: matches ROM 2 via SHA256 but lower hashes differ → Sha256Only
+    romulus::core::FileInfo file_sha256_only{.filename = "sha256_only.bin",
+                                             .path = "/roms/sha256_only.bin",
+                                             .size = 200,
+                                             .crc32 = "different_crc",
+                                             .md5 = "different_md5",
+                                             .sha1 = "different_sha1",
+                                             .sha256 = "sha256_b",
+                                             .last_scanned = {}};
+    auto sha256_only_id = db_->upsert_file(file_sha256_only);
+    ASSERT_TRUE(sha256_only_id.has_value());
+    sha256_only_file_id_ = *sha256_only_id;
+
+    // File 3: no match
     romulus::core::FileInfo other{.filename = "unknown.bin",
                                   .path = "/roms/unknown.bin",
                                   .size = 200,
@@ -72,11 +98,13 @@ protected:
                                   .sha1 = "nomatch",
                                   .sha256 = "sha256nomatch",
                                   .last_scanned = {}};
-    auto other_id = db_->upsert_file(other);
+    ASSERT_TRUE(db_->upsert_file(other).has_value());
   }
 
   std::filesystem::path db_path_;
   std::unique_ptr<romulus::database::Database> db_;
+  std::int64_t rom_enriched_id_ = 0;
+  std::int64_t sha256_only_file_id_ = 0;
 };
 
 TEST_F(MatcherTest, MatchesExactByAllHashes) {
@@ -103,6 +131,25 @@ TEST_F(MatcherTest, ReportsNoMatchForUnknownFile) {
     }
   }
   EXPECT_TRUE(found_no_match);
+}
+
+TEST_F(MatcherTest, MatchesSha256OnlyWhenLowerHashesDiffer) {
+  auto results = romulus::engine::Matcher::match_all(*db_);
+  ASSERT_TRUE(results.has_value()) << results.error().message;
+
+  // Locate the result for the file whose only match is via SHA256
+  const romulus::core::MatchResult* sha256_match = nullptr;
+  for (const auto& r : *results) {
+    if (r.match_type == romulus::core::MatchType::Sha256Only) {
+      sha256_match = &r;
+      break;
+    }
+  }
+
+  ASSERT_NE(sha256_match, nullptr) << "Expected a Sha256Only match result";
+  // The matched file should be the sha256_only.bin file and point to rom_enriched
+  EXPECT_EQ(sha256_match->file_id, sha256_only_file_id_);
+  EXPECT_EQ(sha256_match->rom_id, rom_enriched_id_);
 }
 
 } // namespace

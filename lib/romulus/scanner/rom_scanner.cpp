@@ -203,7 +203,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
         .is_archive_entry = !job.entry_name.empty(),
     };
 
-    ROMULUS_INFO("Hashed '{}': SHA256={}", job.virtual_path, digest->sha256);
+    ROMULUS_DEBUG("Hashed '{}': SHA256={}", job.virtual_path, digest->sha256);
 
     {
       std::lock_guard lock(db_mutex);
