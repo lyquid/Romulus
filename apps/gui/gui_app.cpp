@@ -37,6 +37,10 @@ constexpr auto* k_WindowTitle = "ROMULUS — ROM Collection Verifier";
 constexpr auto* k_GlslVersion = "#version 130";
 constexpr std::size_t k_PathBufferSize = 512;
 constexpr float k_ToastDuration = 2.5F;
+constexpr float k_ToastWidth = 310.0F;
+constexpr float k_ToastHeight = 36.0F;
+constexpr float k_ToastMarginRight = 10.0F;
+constexpr float k_ToastMarginBottom = 50.0F;
 
 void glfw_error_callback(int error, const char* description) {
   std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
@@ -419,9 +423,10 @@ void GuiApp::render_toast() {
   int fb_height = 0;
   glfwGetFramebufferSize(window_, &fb_width, &fb_height);
 
-  ImVec2 pos(static_cast<float>(fb_width) - 320.0F, static_cast<float>(fb_height) - 50.0F);
+  ImVec2 pos(static_cast<float>(fb_width) - k_ToastWidth - k_ToastMarginRight,
+             static_cast<float>(fb_height) - k_ToastMarginBottom);
   ImGui::SetNextWindowPos(pos);
-  ImGui::SetNextWindowSize(ImVec2(310, 36));
+  ImGui::SetNextWindowSize(ImVec2(k_ToastWidth, k_ToastHeight));
   ImGui::SetNextWindowBgAlpha(0.85F * alpha);
 
   ImGui::Begin("##toast",
