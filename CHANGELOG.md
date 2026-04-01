@@ -7,6 +7,14 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ⚡ Features
+
+- **SHA256 Hashing**: Added SHA256 computation to the `HashService` (alongside the existing CRC32, MD5, and SHA1 pass); all four digests are now computed in a single I/O pass via OpenSSL EVP
+- **Database — SHA256 columns**: Added `sha256 TEXT UNIQUE` to the `roms` table and `sha256 TEXT NOT NULL` to the `files` table; both indexed for fast look-up; existing databases are upgraded automatically via `ALTER TABLE ADD COLUMN` on open
+- **Database — `find_rom_by_sha256`**: New query method on `Database` and corresponding matcher priority (SHA256 takes precedence over SHA1 > MD5 > CRC32)
+- **Database — filename/path split**: Added `filename TEXT NOT NULL` column to the `files` table (stores just the file/entry name); `path` continues to store the unique full path; useful for display and search
+- **Scanner**: `FileInfo` is now populated with `sha256` and `filename` on every scan; SHA256 is logged at INFO level when a file is hashed
+
 ### 🔧 Refactoring
 
 - **CLI**: Replaced all `std::cout`/`std::cerr` with `std::print`/`std::print(stderr, ...)` from C++23 `<print>`; removed `#include <iostream>`

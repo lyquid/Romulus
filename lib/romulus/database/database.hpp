@@ -125,6 +125,8 @@ public:
   // ── ROMs ─────────────────────────────────────────────────
 
   [[nodiscard]] auto insert_rom(const core::RomInfo& rom) -> Result<std::int64_t>;
+  [[nodiscard]] auto find_rom_by_sha256(std::string_view sha256)
+      -> Result<std::optional<core::RomInfo>>;
   [[nodiscard]] auto find_rom_by_sha1(std::string_view sha1)
       -> Result<std::optional<core::RomInfo>>;
   [[nodiscard]] auto find_rom_by_md5(std::string_view md5) -> Result<std::optional<core::RomInfo>>;

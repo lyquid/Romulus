@@ -101,6 +101,7 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
           .crc32 = rom.crc32,
           .md5 = rom.md5,
           .sha1 = rom.sha1,
+          .sha256 = {},
           .region = rom.region,
       };
 

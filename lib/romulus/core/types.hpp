@@ -12,11 +12,12 @@ namespace romulus::core {
 
 // ── Hash Digest ──────────────────────────────────────────────
 
-/// CRC32 + MD5 + SHA1 hash triplet computed from a ROM file.
+/// CRC32 + MD5 + SHA1 + SHA256 hash set computed from a ROM file.
 struct HashDigest {
   std::string crc32;
   std::string md5;
   std::string sha1;
+  std::string sha256;
 };
 
 // ── System ───────────────────────────────────────────────────
@@ -53,6 +54,7 @@ struct RomInfo {
   std::string crc32;
   std::string md5;
   std::string sha1;
+  std::string sha256;
   std::string region;
 };
 
@@ -89,11 +91,13 @@ struct DatFile {
 /// A file discovered during filesystem scanning.
 struct FileInfo {
   std::int64_t id = 0;
-  std::string path; ///< Filesystem path (or archive_path::entry_name)
+  std::string filename; ///< Filename component (e.g. "game.rom")
+  std::string path;     ///< Full filesystem path (or archive_path::entry_name)
   std::int64_t size = 0;
   std::string crc32;
   std::string md5;
   std::string sha1;
+  std::string sha256;
   std::string last_scanned;
   bool is_archive_entry = false; ///< True if this file is inside an archive
 };
@@ -102,12 +106,13 @@ struct FileInfo {
 
 /// How a file was matched to a ROM.
 enum class MatchType {
-  Exact,     ///< CRC32 + MD5 + SHA1 all match
-  Sha1Only,  ///< Only SHA1 matches
-  Md5Only,   ///< Only MD5 matches
-  Crc32Only, ///< Only CRC32 matches
-  SizeOnly,  ///< Only file size matches
-  NoMatch,   ///< No match found
+  Exact,      ///< CRC32 + MD5 + SHA1 all match
+  Sha256Only, ///< Only SHA256 matches
+  Sha1Only,   ///< Only SHA1 matches
+  Md5Only,    ///< Only MD5 matches
+  Crc32Only,  ///< Only CRC32 matches
+  SizeOnly,   ///< Only file size matches
+  NoMatch,    ///< No match found
 };
 
 /// Result of matching a scanned file against the ROM database.
