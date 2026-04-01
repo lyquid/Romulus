@@ -60,6 +60,12 @@ public:
   [[nodiscard]] auto list_systems() -> Result<std::vector<core::SystemInfo>>;
   [[nodiscard]] auto get_missing_roms(std::optional<std::string> system = {})
       -> Result<std::vector<core::MissingRom>>;
+  [[nodiscard]] auto get_all_files() -> Result<std::vector<core::FileInfo>>;
+
+  // ── Admin ────────────────────────────────────────────────
+
+  /// Executes a raw SQL statement (for admin / purge operations).
+  [[nodiscard]] auto execute_raw(const std::string& sql) -> Result<void>;
 
   // ── Reports ──────────────────────────────────────────────
 

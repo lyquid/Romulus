@@ -200,6 +200,18 @@ auto RomulusService::get_missing_roms(std::optional<std::string> system)
   return db_->get_missing_roms(*sys_id);
 }
 
+auto RomulusService::get_all_files() -> Result<std::vector<core::FileInfo>> {
+  return db_->get_all_files();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Admin
+// ═══════════════════════════════════════════════════════════════
+
+auto RomulusService::execute_raw(const std::string& sql) -> Result<void> {
+  return db_->execute(sql);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Reports
 // ═══════════════════════════════════════════════════════════════
