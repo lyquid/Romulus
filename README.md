@@ -1,6 +1,6 @@
 # 🕹️ ROMULUS
 
-```
+```text
 ██████╗  ██████╗ ███╗   ███╗██╗   ██╗██╗     ██╗   ██╗███████╗
 ██╔══██╗██╔═══██╗████╗ ████║██║   ██║██║     ██║   ██║██╔════╝
 ██████╔╝██║   ██║██╔████╔██║██║   ██║██║     ██║   ██║███████╗
@@ -11,7 +11,7 @@
 
 > *Imposes order on chaos — and keeps a record of it.* 👾
 
-**ROMULUS** is a production-grade **C++23** backend system for verifying and cataloging video game ROM collections using [No-Intro](https://www.no-intro.org/) DAT files.
+**ROMULUS** is a **C++23** backend system for verifying and cataloging video game ROM collections using [No-Intro](https://www.no-intro.org/) DAT files.
 
 Because your collection deserves better than a folder named `roms_FINAL_v2_USE_THIS`.
 
@@ -30,7 +30,7 @@ romulus verify
 romulus report summary
 ```
 
-```
+```text
 ╔══════════════════════════════════════════════════╗
 ║       ROMULUS — Collection Summary  🏆           ║
 ╠══════════════════════════════════════════════════╣
@@ -51,7 +51,7 @@ romulus report summary
 > *Collect them all!*
 
 | Power-Up | Effect |
-|----------|--------|
+| ---------- | -------- |
 | 🗂️ **DAT Import** | Parses No-Intro LogiqX XML format — the sacred scrolls of preservation |
 | 🗜️ **Archive Support** | Reads zip/7z files without extracting to disk — no mess, no fuss |
 | ⚡ **Parallel Hashing** | CRC32 + MD5 + SHA1 in a single pass using all CPU cores — *TURBO MODE* |
@@ -64,7 +64,7 @@ romulus report summary
 
 ## 🗺️ Level Select (Architecture)
 
-```
+```text
 lib/romulus/          → 🧩 Core C++ library (all business logic)
 apps/cli/             → 🖥️  CLI frontend (builds the `romulus` command)
 apps/api/  (future)   → 🌐 REST API server for web frontend
@@ -145,7 +145,7 @@ romulus status
 
 Each stage processes ROMs sequentially — the output of one feeds the next, with verification results classified into one of the status categories shown.
 
-```
+```text
 DAT Import → Scan → Hash → Match → Classify → Report
     │          │       │       │        │          │
     ▼          ▼       ▼       ▼        ▼          ▼
@@ -161,18 +161,18 @@ DAT Import → Scan → Hash → Match → Classify → Report
 
 ## 🛠️ Tech Stack (The Party Members)
 
-| Component | Technology | Role |
-|-----------|-----------|------|
-| 💻 Language | C++23 | The hero of our story |
-| 🏗️ Build | CMake 3.25+ / vcpkg | Dungeon architect |
-| 🗄️ Database | SQLite3 (WAL mode) | The wizard's tome |
-| 📄 XML Parsing | pugixml | Scroll reader |
-| #️⃣ Hashing | OpenSSL (MD5/SHA1) + constexpr CRC32 | The rogue |
-| 📦 Archives | libarchive (zip/7z/tar) | Treasure chest handler |
-| ⌨️ CLI | CLI11 | The bard (always talking) |
-| 📝 Logging | spdlog | The chronicler |
-| 🔗 JSON | nlohmann-json | The translator |
-| 🧪 Testing | Google Test | Quality assurance paladin |
+| Component      | Technology                        | Role                      |
+| ------------- | -------------------------------  | ------------------------- |
+| 💻 Language   | C++23                             | The hero of our story     |
+| 🏗️ Build      | CMake 3.25+ / vcpkg               | Dungeon architect         |
+| 🗄️ Database   | SQLite3 (WAL mode)                | The wizard's tome         |
+| 📄 XML Parsing| pugixml                           | Scroll reader             |
+| #️⃣ Hashing    | OpenSSL (MD5/SHA1) + constexpr CRC32 | The rogue           |
+| 📦 Archives   | libarchive (zip/7z/tar)           | Treasure chest handler    |
+| ⌨️ CLI        | CLI11                             | The bard (always talking) |
+| 📝 Logging    | spdlog                            | The chronicler            |
+| 🔗 JSON       | nlohmann-json                     | The translator            |
+| 🧪 Testing    | Google Test                       | Quality assurance paladin |
 
 ---
 
@@ -191,24 +191,8 @@ Want to help shape this legendary artifact? Here's the Guild Code:
 
 ## 🔐 Secret Konami Cheat Code
 
-```
+```text
 ↑ ↑ ↓ ↓ ← → ← → B A
 ```
 
 *Doesn't actually do anything. But you tried it anyway, didn't you? Respect.* 🫡
-
----
-
-## 📜 License
-
-MIT — Free as in "free to finally organize your ROM folder."
-
----
-
-<div align="center">
-
-Made with ❤️, nostalgia, and an unhealthy number of cartridges.
-
-*Now go verify your collection, hero. The quest awaits.* 🗡️🛡️
-
-</div>

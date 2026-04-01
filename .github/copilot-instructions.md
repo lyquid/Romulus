@@ -1,5 +1,10 @@
 # ROMULUS — Copilot Instructions
 
+## Workflow Requirements (Repository Policy)
+
+- **Always read the `README.md` before making any code or documentation changes.**
+- **After making any changes, always update `CHANGELOG.md` and `README.md` if needed to reflect the changes.**
+
 > These instructions apply to all code generation in this repository.
 > Based on the **C++ Core Guidelines** (Stroustrup & Sutter) adapted for this project.
 
@@ -68,7 +73,7 @@ ROMULUS is a production-grade C++23 backend system for verifying and cataloging 
 // ✅ Good
 auto result = parse_dat(path);
 if (!result) {
-    return std::unexpected(result.error());
+  return std::unexpected(result.error());
 }
 const auto& dat = result.value();
 
@@ -95,14 +100,14 @@ int parse_dat(const Path& p, DatFile& out); // returns 0 on success
 // ✅ Good — RAII database handle
 class Database {
 public:
-    explicit Database(const std::filesystem::path& path);
-    ~Database(); // closes sqlite3*
-    Database(Database&&) noexcept;
-    Database& operator=(Database&&) noexcept;
-    Database(const Database&) = delete;
-    Database& operator=(const Database&) = delete;
+  explicit Database(const std::filesystem::path& path);
+  ~Database(); // closes sqlite3*
+  Database(Database&&) noexcept;
+  Database& operator=(Database&&) noexcept;
+  Database(const Database&) = delete;
+  Database& operator=(const Database&) = delete;
 private:
-    sqlite3* db_ = nullptr;   // raw ptr OK — Database owns the lifecycle via RAII
+  sqlite3* db_ = nullptr;   // raw ptr OK — Database owns the lifecycle via RAII
 };
 ```
 
@@ -143,18 +148,18 @@ bool compute_hashes(const std::filesystem::path& path, HashDigest* out);
 ```cpp
 // ✅ Struct for data
 struct HashDigest {
-    std::string crc32;
-    std::string md5;
-    std::string sha1;
+  std::string crc32;
+  std::string md5;
+  std::string sha1;
 };
 
 // ✅ Class for behavior with invariants
 class DatParser final {
 public:
-    [[nodiscard]] auto parse(const std::filesystem::path& dat_path) -> Result<DatFile>;
+  [[nodiscard]] auto parse(const std::filesystem::path& dat_path) -> Result<DatFile>;
 private:
-    auto parse_header(pugi::xml_node node) -> Result<DatHeader>;
-    auto parse_game(pugi::xml_node node) -> Result<GameInfo>;
+  auto parse_header(pugi::xml_node node) -> Result<DatHeader>;
+  auto parse_game(pugi::xml_node node) -> Result<GameInfo>;
 };
 ```
 
@@ -185,7 +190,7 @@ constexpr std::string_view k_AppName = "romulus";
 ```cpp
 // ✅ Good — ranges
 auto missing = roms | std::views::filter([](const auto& r) {
-    return r.status == RomStatus::Missing;
+  return r.status == RomStatus::Missing;
 });
 
 // ❌ Bad — raw loop with index
@@ -212,9 +217,9 @@ for (int i = 0; i < roms.size(); ++i) { ... }
 - Never log sensitive file paths in production without sanitization
 
 ```cpp
-spdlog::info("Imported DAT: system='{}', version='{}', games={}", 
+spdlog::info("Imported DAT: system='{}', version='{}', games={}",
              dat.system_name, dat.version, dat.games.size());
-spdlog::error("Hash mismatch for '{}': expected={}, got={}", 
+spdlog::error("Hash mismatch for '{}': expected={}, got={}",
               rom_name, expected_sha1, actual_sha1);
 ```
 
@@ -236,7 +241,7 @@ spdlog::error("Hash mismatch for '{}': expected={}, got={}",
 - One `CMakeLists.txt` per module directory
 - Use `target_*` commands (not global `include_directories`, `link_libraries`)
 - Never pollute the global scope
-- Use `target_compile_features(target PUBLIC cxx_std_23)` 
+- Use `target_compile_features(target PUBLIC cxx_std_23)`
 - Test targets are conditional: `if(BUILD_TESTING)`
 - All third-party dependencies come through vcpkg — never vendor or `FetchContent`
 

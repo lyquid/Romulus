@@ -1,17 +1,17 @@
 {
-    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-    "name": "romulus",
-    "version": "0.1.0",
-    "description": "Production-grade ROM collection verification system",
-    "license": "MIT",
-    "dependencies": [
-        "sqlite3",
-        "spdlog",
-        "pugixml",
-        "cli11",
-        "libarchive",
-        "openssl",
-        "nlohmann-json",
-        "gtest"
-    ]
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "romulus",
+  "version": "0.1.0",
+  "description": "ROM collection verification system",
+  "license": "MIT",
+  "dependencies": [
+    "sqlite3",
+    "spdlog",
+    "pugixml",
+    "cli11",
+    "libarchive",
+    "openssl",
+    "nlohmann-json",
+    "gtest"
+  ]
 }

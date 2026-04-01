@@ -4,7 +4,7 @@
 
 ## Overview
 
-ROMULUS is a production-grade C++23 backend system that tracks, verifies, and reports the state of ROM collections using No-Intro DAT files as the authoritative dataset. The system follows a pipeline architecture with SQLite as the single source of truth.
+ROMULUS is a C++23 backend system that tracks, verifies, and reports the state of ROM collections using No-Intro DAT files as the authoritative dataset. The system follows a pipeline architecture with SQLite as the single source of truth.
 
 ---
 
@@ -263,7 +263,7 @@ public:
     Result<DatVersion> fetch_and_import_dat(const std::string& url);
     Result<bool>       check_dat_update(const std::string& url);
 
-    // Scan operations  
+    // Scan operations
     Result<ScanReport>    scan_directory(const std::filesystem::path& dir,
                                         std::optional<std::string> system = {});
     Result<void>          verify(std::optional<std::string> system = {});
