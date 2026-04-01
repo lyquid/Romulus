@@ -1,5 +1,4 @@
 #include "gui_app.hpp"
-
 #include "romulus/core/logging.hpp"
 #include "romulus/service/romulus_service.hpp"
 

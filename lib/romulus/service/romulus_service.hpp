@@ -64,8 +64,8 @@ public:
 
   // ── Admin ────────────────────────────────────────────────
 
-  /// Executes a raw SQL statement (for admin / purge operations).
-  [[nodiscard]] auto execute_raw(const std::string& sql) -> Result<void>;
+  /// Atomically deletes all data from the database (all tables).
+  [[nodiscard]] auto purge_database() -> Result<void>;
 
   // ── Reports ──────────────────────────────────────────────
 

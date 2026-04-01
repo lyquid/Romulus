@@ -4,19 +4,22 @@
 
 // ImGui and backends — included as system headers to avoid third-party warnings.
 // The SYSTEM include paths are set in CMakeLists.txt.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wold-style-cast"
+#if defined(__GNUC__) || defined(__clang__)
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wold-style-cast"
+#endif
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
-#pragma GCC diagnostic pop
+#if defined(__GNUC__) || defined(__clang__)
+  #pragma GCC diagnostic pop
+#endif
 
 // GLFW must come after imgui backend headers
 // NOLINTNEXTLINE(misc-include-cleaner)
-#include <GLFW/glfw3.h>
-
 #include <algorithm>
 #include <cstdio>
+#include <GLFW/glfw3.h>
 #include <stdexcept>
 
 namespace romulus::gui {
@@ -122,13 +125,11 @@ void GuiApp::run() {
     int fb_width = 0;
     int fb_height = 0;
     glfwGetFramebufferSize(window_, &fb_width, &fb_height);
-    ImGui::SetNextWindowSize(
-        ImVec2(static_cast<float>(fb_width), static_cast<float>(fb_height)));
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(fb_width), static_cast<float>(fb_height)));
     ImGui::Begin("ROMULUS",
                  nullptr,
-                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-                     ImGuiWindowFlags_MenuBar);
+                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_MenuBar);
 
     render_main_menu_bar();
     render_actions_panel();
@@ -253,23 +254,20 @@ void GuiApp::render_summary_panel() {
 
     ImGui::Text("Missing:");
     ImGui::NextColumn();
-    ImGui::TextColored(ImVec4(1.0F, 0.5F, 0.0F, 1.0F),
-                       "%lld",
-                       static_cast<long long>(summary_.missing));
+    ImGui::TextColored(
+        ImVec4(1.0F, 0.5F, 0.0F, 1.0F), "%lld", static_cast<long long>(summary_.missing));
     ImGui::NextColumn();
 
     ImGui::Text("Unverified:");
     ImGui::NextColumn();
-    ImGui::TextColored(ImVec4(1.0F, 1.0F, 0.0F, 1.0F),
-                       "%lld",
-                       static_cast<long long>(summary_.unverified));
+    ImGui::TextColored(
+        ImVec4(1.0F, 1.0F, 0.0F, 1.0F), "%lld", static_cast<long long>(summary_.unverified));
     ImGui::NextColumn();
 
     ImGui::Text("Mismatch:");
     ImGui::NextColumn();
-    ImGui::TextColored(ImVec4(1.0F, 0.0F, 0.0F, 1.0F),
-                       "%lld",
-                       static_cast<long long>(summary_.mismatch));
+    ImGui::TextColored(
+        ImVec4(1.0F, 0.0F, 0.0F, 1.0F), "%lld", static_cast<long long>(summary_.mismatch));
     ImGui::NextColumn();
 
     ImGui::Columns(1);
@@ -281,12 +279,11 @@ void GuiApp::render_summary_panel() {
 void GuiApp::render_files_panel() {
   ImGui::Text("Scanned Files (%zu)", files_.size());
 
-  if (ImGui::BeginTable(
-          "files_table",
-          4,
-          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
-              ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp,
-          ImVec2(0, -30))) {
+  if (ImGui::BeginTable("files_table",
+                        4,
+                        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
+                            ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp,
+                        ImVec2(0, -30))) {
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableSetupColumn("Filename", ImGuiTableColumnFlags_None, 3.0F);
     ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_None, 5.0F);
@@ -350,7 +347,7 @@ void GuiApp::action_scan_folder() {
     return;
   }
   status_message_ = "Scan complete: " + std::to_string(result->files_scanned) + " files, " +
-                     std::to_string(result->files_hashed) + " hashed.";
+                    std::to_string(result->files_hashed) + " hashed.";
   refresh_files();
   refresh_summary();
 }
@@ -366,17 +363,10 @@ void GuiApp::action_verify() {
 }
 
 void GuiApp::action_purge_database() {
-  // Drop all data by executing DELETE on each table
-  static constexpr std::array k_Tables = {
-      "rom_status", "file_matches", "files", "roms", "games", "dat_versions", "systems",
-  };
-  for (const auto* table : k_Tables) {
-    auto result = svc_.execute_raw("DELETE FROM " + std::string(table));
-    if (!result) {
-      status_message_ = "Purge failed on table '" + std::string(table) + "': " +
-                         result.error().message;
-      return;
-    }
+  auto result = svc_.purge_database();
+  if (!result) {
+    status_message_ = "Purge failed: " + result.error().message;
+    return;
   }
   status_message_ = "Database purged.";
   refresh_files();

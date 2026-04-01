@@ -11,21 +11,26 @@ find_package(OpenGL REQUIRED)
 
 # ── ImGui backend sources ─────────────────────────────────────
 # ImGui backends are header+source that must be compiled into the
-# application. The system package ships them alongside the headers.
-# vcpkg imgui bundles them into the imgui target.
+# application. vcpkg imgui bundles them into the imgui target;
+# system packages ship them alongside the headers or in doc paths.
 
 set(IMGUI_BACKEND_SOURCES "")
 if(NOT imgui_FOUND)
-    # System package: compile backends from installed examples/doc
+    # System package: locate backend .cpp files.
+    # Check common locations: doc paths, share paths, etc.
     find_path(IMGUI_BACKENDS_SRC_DIR
         NAMES imgui_impl_glfw.cpp
         PATHS
             /usr/share/doc/libimgui-dev/examples/backends
             /usr/local/share/doc/libimgui-dev/examples/backends
-        NO_DEFAULT_PATH
+            /usr/share/imgui/backends
+            /usr/local/share/imgui/backends
+        PATH_SUFFIXES imgui/backends backends
     )
     if(NOT IMGUI_BACKENDS_SRC_DIR)
-        message(FATAL_ERROR "ImGui backend sources not found. Install libimgui-dev or use vcpkg.")
+        message(FATAL_ERROR
+            "ImGui backend sources not found. "
+            "Install libimgui-dev (Debian/Ubuntu) or use vcpkg.")
     endif()
     set(IMGUI_BACKEND_SOURCES
         ${IMGUI_BACKENDS_SRC_DIR}/imgui_impl_glfw.cpp
@@ -64,7 +69,14 @@ endif()
 if(imgui_FOUND)
     set(IMGUI_LIB imgui::imgui)
 else()
-    set(IMGUI_LIB imgui)
+    # Locate the system imgui library reliably
+    find_library(IMGUI_LIBRARY NAMES imgui)
+    if(NOT IMGUI_LIBRARY)
+        message(FATAL_ERROR
+            "System ImGui library not found. "
+            "Install libimgui-dev (Debian/Ubuntu) or use vcpkg.")
+    endif()
+    set(IMGUI_LIB ${IMGUI_LIBRARY})
 endif()
 
 target_link_libraries(romulus_gui
@@ -75,9 +87,18 @@ target_link_libraries(romulus_gui
         OpenGL::GL
 )
 
-# System imgui depends on libstb for font rendering
+# System imgui depends on stb headers for font rendering.
+# stb may be packaged as a shared library or header-only; handle both.
 if(NOT imgui_FOUND)
-    target_link_libraries(romulus_gui PRIVATE stb)
+    find_library(STB_LIBRARY NAMES stb QUIET)
+    if(STB_LIBRARY)
+        target_link_libraries(romulus_gui PRIVATE ${STB_LIBRARY})
+    else()
+        find_path(STB_INCLUDE_DIR NAMES stb_truetype.h PATH_SUFFIXES stb)
+        if(STB_INCLUDE_DIR)
+            target_include_directories(romulus_gui SYSTEM PRIVATE ${STB_INCLUDE_DIR})
+        endif()
+    endif()
 endif()
 
 # ── Warnings ───────────────────────────────────────────────────

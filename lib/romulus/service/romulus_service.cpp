@@ -9,6 +9,7 @@
 #include "romulus/report/report_generator.hpp"
 #include "romulus/scanner/rom_scanner.hpp"
 
+#include <array>
 #include <utility>
 
 namespace romulus::service {
@@ -208,8 +209,28 @@ auto RomulusService::get_all_files() -> Result<std::vector<core::FileInfo>> {
 // Admin
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::execute_raw(const std::string& sql) -> Result<void> {
-  return db_->execute(sql);
+auto RomulusService::purge_database() -> Result<void> {
+  static constexpr std::array k_Tables = {
+      "rom_status",
+      "file_matches",
+      "files",
+      "roms",
+      "games",
+      "dat_versions",
+      "systems",
+  };
+
+  auto txn = db_->begin_transaction();
+  for (const auto* table : k_Tables) {
+    auto result = db_->execute(std::string("DELETE FROM ") + table);
+    if (!result) {
+      return std::unexpected(result.error());
+    }
+  }
+  txn.commit();
+
+  ROMULUS_INFO("Database purged — all tables cleared");
+  return {};
 }
 
 // ═══════════════════════════════════════════════════════════════
