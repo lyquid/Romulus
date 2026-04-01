@@ -431,30 +431,23 @@ void GuiApp::apply_sort() {
   const bool asc = sort_ascending_;
   std::stable_sort(
       files_.begin(), files_.end(), [col, asc](const core::FileInfo& a, const core::FileInfo& b) {
-        bool less = false;
         switch (col) {
           case k_ColFilename:
-            less = a.filename < b.filename;
-            break;
+            return asc ? a.filename < b.filename : b.filename < a.filename;
           case k_ColSize:
-            less = a.size < b.size;
-            break;
+            return asc ? a.size < b.size : b.size < a.size;
           case k_ColCrc32:
-            less = a.crc32 < b.crc32;
-            break;
+            return asc ? a.crc32 < b.crc32 : b.crc32 < a.crc32;
           case k_ColMd5:
-            less = a.md5 < b.md5;
-            break;
+            return asc ? a.md5 < b.md5 : b.md5 < a.md5;
           case k_ColSha1:
-            less = a.sha1 < b.sha1;
-            break;
+            return asc ? a.sha1 < b.sha1 : b.sha1 < a.sha1;
           case k_ColSha256:
-            less = a.sha256 < b.sha256;
-            break;
+            return asc ? a.sha256 < b.sha256 : b.sha256 < a.sha256;
           default:
-            break;
+            // Unknown column: treat elements as equal (no reordering).
+            return false;
         }
-        return asc ? less : !less;
       });
 }
 
