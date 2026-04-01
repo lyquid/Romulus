@@ -42,6 +42,7 @@ endif()
 add_executable(romulus_gui
     main.cpp
     gui_app.cpp
+    file_dialog.cpp
     ${IMGUI_BACKEND_SOURCES}
 )
 
@@ -86,6 +87,11 @@ target_link_libraries(romulus_gui
         glfw
         OpenGL::GL
 )
+
+# Windows: link shell32/ole32/comdlg32 for native file dialogs
+if(WIN32)
+    target_link_libraries(romulus_gui PRIVATE shell32 ole32 comdlg32)
+endif()
 
 # System imgui depends on stb headers for font rendering.
 # stb may be packaged as a shared library or header-only; handle both.

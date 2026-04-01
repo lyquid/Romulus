@@ -1,5 +1,6 @@
 #include "gui_app.hpp"
 
+#include "file_dialog.hpp"
 #include "romulus/core/logging.hpp"
 
 // ImGui and backends — included as system headers to avoid third-party warnings.
@@ -18,22 +19,49 @@
 // GLFW must come after imgui backend headers
 // NOLINTNEXTLINE(misc-include-cleaner)
 #include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
+#include <future>
 #include <GLFW/glfw3.h>
 #include <stdexcept>
+#include <string>
 
 namespace romulus::gui {
 
 namespace {
 
-constexpr int k_WindowWidth = 1024;
+constexpr int k_WindowWidth = 1280;
 constexpr int k_WindowHeight = 720;
 constexpr auto* k_WindowTitle = "ROMULUS — ROM Collection Verifier";
 constexpr auto* k_GlslVersion = "#version 130";
 constexpr std::size_t k_PathBufferSize = 512;
+constexpr float k_ToastDuration = 2.5F;
 
 void glfw_error_callback(int error, const char* description) {
   std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
+}
+
+/// Formats a byte count as a human-readable string (B, KB, MB, GB).
+auto format_size(std::int64_t bytes) -> std::string {
+  constexpr std::int64_t k_Kilo = 1024;
+  constexpr std::int64_t k_Mega = 1024 * 1024;
+  constexpr std::int64_t k_Giga = 1024 * 1024 * 1024;
+
+  char buf[32];
+  if (bytes >= k_Giga) {
+    std::snprintf(
+        buf, sizeof(buf), "%.1f GB", static_cast<double>(bytes) / static_cast<double>(k_Giga));
+  } else if (bytes >= k_Mega) {
+    std::snprintf(
+        buf, sizeof(buf), "%.1f MB", static_cast<double>(bytes) / static_cast<double>(k_Mega));
+  } else if (bytes >= k_Kilo) {
+    std::snprintf(
+        buf, sizeof(buf), "%.1f KB", static_cast<double>(bytes) / static_cast<double>(k_Kilo));
+  } else {
+    std::snprintf(buf, sizeof(buf), "%lld B", static_cast<long long>(bytes));
+  }
+  return buf;
 }
 
 } // namespace
@@ -55,6 +83,10 @@ GuiApp::GuiApp(service::RomulusService& svc) : svc_(svc) {
 }
 
 GuiApp::~GuiApp() {
+  // Wait for any pending background task to finish before shutting down
+  if (pending_task_ && pending_task_->result.valid()) {
+    pending_task_->result.wait();
+  }
   shutdown();
 }
 
@@ -116,6 +148,9 @@ void GuiApp::run() {
   while (glfwWindowShouldClose(window_) == 0) {
     glfwPollEvents();
 
+    // Check if a background task has finished
+    check_pending_task();
+
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -164,6 +199,9 @@ void GuiApp::run() {
       ImGui::EndPopup();
     }
 
+    // Toast overlay (rendered last so it appears on top)
+    render_toast();
+
     // Render
     ImGui::Render();
     glClearColor(0.1F, 0.1F, 0.1F, 1.0F);
@@ -187,7 +225,7 @@ void GuiApp::render_main_menu_bar() {
       ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Database")) {
-      if (ImGui::MenuItem("Purge Database")) {
+      if (ImGui::MenuItem("Purge Database", nullptr, false, !is_busy())) {
         show_purge_confirm_ = true;
       }
       ImGui::EndMenu();
@@ -197,26 +235,52 @@ void GuiApp::render_main_menu_bar() {
 }
 
 void GuiApp::render_actions_panel() {
+  const bool busy = is_busy();
+
+  // ── DAT Import ──
   ImGui::Text("DAT Import");
-  ImGui::PushItemWidth(-120);
+  ImGui::PushItemWidth(-230);
   ImGui::InputText("##dat_path", dat_path_buf_.data(), dat_path_buf_.size());
   ImGui::PopItemWidth();
   ImGui::SameLine();
+  if (ImGui::Button("Browse##dat")) {
+    auto path = open_file_dialog();
+    if (!path.empty()) {
+      dat_path_buf_.assign(k_PathBufferSize, '\0');
+      std::copy_n(path.begin(), std::min(path.size(), k_PathBufferSize - 1), dat_path_buf_.begin());
+    }
+  }
+  ImGui::SameLine();
+  ImGui::BeginDisabled(busy);
   if (ImGui::Button("Import DAT")) {
     action_import_dat();
   }
+  ImGui::EndDisabled();
 
+  // ── ROM Directory ──
   ImGui::Spacing();
   ImGui::Text("ROM Directory");
-  ImGui::PushItemWidth(-120);
+  ImGui::PushItemWidth(-230);
   ImGui::InputText("##scan_dir", scan_dir_buf_.data(), scan_dir_buf_.size());
   ImGui::PopItemWidth();
   ImGui::SameLine();
+  if (ImGui::Button("Browse##dir")) {
+    auto path = open_folder_dialog();
+    if (!path.empty()) {
+      scan_dir_buf_.assign(k_PathBufferSize, '\0');
+      std::copy_n(path.begin(), std::min(path.size(), k_PathBufferSize - 1), scan_dir_buf_.begin());
+    }
+  }
+  ImGui::SameLine();
+  ImGui::BeginDisabled(busy);
   if (ImGui::Button("Scan Folder")) {
     action_scan_folder();
   }
+  ImGui::EndDisabled();
 
+  // ── Actions ──
   ImGui::Spacing();
+  ImGui::BeginDisabled(busy);
   if (ImGui::Button("Verify All")) {
     action_verify();
   }
@@ -226,6 +290,7 @@ void GuiApp::render_actions_panel() {
     refresh_summary();
     status_message_ = "Data refreshed.";
   }
+  ImGui::EndDisabled();
 }
 
 void GuiApp::render_summary_panel() {
@@ -279,98 +344,226 @@ void GuiApp::render_summary_panel() {
 void GuiApp::render_files_panel() {
   ImGui::Text("Scanned Files (%zu)", files_.size());
 
+  constexpr int k_ColumnCount = 6;
   if (ImGui::BeginTable("files_table",
-                        4,
+                        k_ColumnCount,
                         ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                             ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp,
                         ImVec2(0, -30))) {
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableSetupColumn("Filename", ImGuiTableColumnFlags_None, 3.0F);
-    ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_None, 5.0F);
     ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_None, 1.0F);
-    ImGui::TableSetupColumn("SHA1", ImGuiTableColumnFlags_None, 3.0F);
+    ImGui::TableSetupColumn("CRC32", ImGuiTableColumnFlags_None, 1.5F);
+    ImGui::TableSetupColumn("MD5", ImGuiTableColumnFlags_None, 3.0F);
+    ImGui::TableSetupColumn("SHA1", ImGuiTableColumnFlags_None, 3.5F);
+    ImGui::TableSetupColumn("SHA256", ImGuiTableColumnFlags_None, 4.0F);
     ImGui::TableHeadersRow();
 
-    for (const auto& file : files_) {
+    for (std::size_t i = 0; i < files_.size(); ++i) {
+      const auto& file = files_[i];
       ImGui::TableNextRow();
+      ImGui::PushID(static_cast<int>(i));
 
+      // Filename
       ImGui::TableSetColumnIndex(0);
       ImGui::TextUnformatted(file.filename.c_str());
 
+      // Size (human-readable)
       ImGui::TableSetColumnIndex(1);
-      ImGui::TextUnformatted(file.path.c_str());
+      ImGui::TextUnformatted(format_size(file.size).c_str());
 
-      ImGui::TableSetColumnIndex(2);
-      ImGui::Text("%lld", static_cast<long long>(file.size));
+      // Hash columns — right-click to copy
+      render_hash_cell(2, file.crc32, "CRC32");
+      render_hash_cell(3, file.md5, "MD5");
+      render_hash_cell(4, file.sha1, "SHA1");
+      render_hash_cell(5, file.sha256, "SHA256");
 
-      ImGui::TableSetColumnIndex(3);
-      ImGui::TextUnformatted(file.sha1.c_str());
+      ImGui::PopID();
     }
     ImGui::EndTable();
   }
 }
 
+void GuiApp::render_hash_cell(int column, const std::string& hash, const char* label) {
+  ImGui::TableSetColumnIndex(column);
+  ImGui::TextUnformatted(hash.c_str());
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Right-click to copy %s", label);
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+      glfwSetClipboardString(window_, hash.c_str());
+      show_toast(std::string(label) + " copied to clipboard");
+    }
+  }
+}
+
 void GuiApp::render_status_bar() {
-  ImGui::TextDisabled("%s", status_message_.c_str());
+  if (is_busy()) {
+    // Animated indeterminate progress bar
+    float time = static_cast<float>(ImGui::GetTime());
+    float progress = 0.5F + 0.5F * std::sin(time * 3.0F);
+    ImGui::ProgressBar(progress, ImVec2(-1, 0), status_message_.c_str());
+  } else {
+    ImGui::TextDisabled("%s", status_message_.c_str());
+  }
+}
+
+void GuiApp::render_toast() {
+  if (toast_timer_ <= 0.0F) {
+    return;
+  }
+
+  toast_timer_ -= ImGui::GetIO().DeltaTime;
+  float alpha = std::min(toast_timer_, 1.0F);
+
+  int fb_width = 0;
+  int fb_height = 0;
+  glfwGetFramebufferSize(window_, &fb_width, &fb_height);
+
+  ImVec2 pos(static_cast<float>(fb_width) - 320.0F, static_cast<float>(fb_height) - 50.0F);
+  ImGui::SetNextWindowPos(pos);
+  ImGui::SetNextWindowSize(ImVec2(310, 36));
+  ImGui::SetNextWindowBgAlpha(0.85F * alpha);
+
+  ImGui::Begin("##toast",
+               nullptr,
+               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing |
+                   ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs);
+  ImGui::TextColored(ImVec4(0.3F, 1.0F, 0.5F, alpha), "%s", toast_message_.c_str());
+  ImGui::End();
 }
 
 // ═════════════════════════════════════════════════════════════════
-// Actions
+// Actions (launch background tasks)
 // ═════════════════════════════════════════════════════════════════
 
 void GuiApp::action_import_dat() {
+  if (is_busy()) {
+    return;
+  }
+
   std::string path(dat_path_buf_.c_str());
   if (path.empty()) {
     status_message_ = "Error: DAT path is empty.";
     return;
   }
 
-  auto result = svc_.import_dat(std::filesystem::path(path));
-  if (!result) {
-    status_message_ = "Import failed: " + result.error().message;
-    return;
-  }
-  status_message_ = "Imported DAT: " + result->name + " v" + result->version;
-  refresh_summary();
+  status_message_ = "Importing DAT... Please wait.";
+  pending_task_ = PendingTask{
+      .result = std::async(std::launch::async,
+                           [this, p = std::filesystem::path(path)]() -> std::string {
+                             auto result = svc_.import_dat(p);
+                             if (!result) {
+                               return "Import failed: " + result.error().message;
+                             }
+                             return "Imported DAT: " + result->name + " v" + result->version;
+                           }),
+      .refresh_files = false,
+      .refresh_summary = true,
+  };
 }
 
 void GuiApp::action_scan_folder() {
+  if (is_busy()) {
+    return;
+  }
+
   std::string dir(scan_dir_buf_.c_str());
   if (dir.empty()) {
     status_message_ = "Error: Scan directory is empty.";
     return;
   }
 
-  auto result = svc_.scan_directory(std::filesystem::path(dir));
-  if (!result) {
-    status_message_ = "Scan failed: " + result.error().message;
-    return;
-  }
-  status_message_ = "Scan complete: " + std::to_string(result->files_scanned) + " files, " +
-                    std::to_string(result->files_hashed) + " hashed.";
-  refresh_files();
-  refresh_summary();
+  status_message_ = "Scanning folder... Please wait.";
+  pending_task_ = PendingTask{
+      .result = std::async(std::launch::async,
+                           [this, d = std::filesystem::path(dir)]() -> std::string {
+                             auto result = svc_.scan_directory(d);
+                             if (!result) {
+                               return "Scan failed: " + result.error().message;
+                             }
+                             return "Scan complete: " + std::to_string(result->files_scanned) +
+                                    " files, " + std::to_string(result->files_hashed) + " hashed.";
+                           }),
+      .refresh_files = true,
+      .refresh_summary = true,
+  };
 }
 
 void GuiApp::action_verify() {
-  auto result = svc_.verify();
-  if (!result) {
-    status_message_ = "Verification failed: " + result.error().message;
+  if (is_busy()) {
     return;
   }
-  status_message_ = "Verification complete.";
-  refresh_summary();
+
+  status_message_ = "Verifying... Please wait.";
+  pending_task_ = PendingTask{
+      .result = std::async(std::launch::async,
+                           [this]() -> std::string {
+                             auto result = svc_.verify();
+                             if (!result) {
+                               return "Verification failed: " + result.error().message;
+                             }
+                             return "Verification complete.";
+                           }),
+      .refresh_files = false,
+      .refresh_summary = true,
+  };
 }
 
 void GuiApp::action_purge_database() {
-  auto result = svc_.purge_database();
-  if (!result) {
-    status_message_ = "Purge failed: " + result.error().message;
+  if (is_busy()) {
     return;
   }
-  status_message_ = "Database purged.";
-  refresh_files();
-  refresh_summary();
+
+  status_message_ = "Purging database... Please wait.";
+  pending_task_ = PendingTask{
+      .result = std::async(std::launch::async,
+                           [this]() -> std::string {
+                             auto result = svc_.purge_database();
+                             if (!result) {
+                               return "Purge failed: " + result.error().message;
+                             }
+                             return "Database purged.";
+                           }),
+      .refresh_files = true,
+      .refresh_summary = true,
+  };
+}
+
+// ═════════════════════════════════════════════════════════════════
+// Background Task Management
+// ═════════════════════════════════════════════════════════════════
+
+void GuiApp::check_pending_task() {
+  if (!pending_task_ || !pending_task_->result.valid()) {
+    return;
+  }
+
+  if (pending_task_->result.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+    return;
+  }
+
+  // Task finished — collect the result on the main thread
+  try {
+    status_message_ = pending_task_->result.get();
+  } catch (const std::exception& e) {
+    status_message_ = std::string("Task error: ") + e.what();
+  }
+
+  bool should_refresh_files = pending_task_->refresh_files;
+  bool should_refresh_summary = pending_task_->refresh_summary;
+  pending_task_.reset();
+
+  if (should_refresh_files) {
+    refresh_files();
+  }
+  if (should_refresh_summary) {
+    refresh_summary();
+  }
+}
+
+auto GuiApp::is_busy() const -> bool {
+  return pending_task_.has_value() && pending_task_->result.valid();
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -396,6 +589,15 @@ void GuiApp::refresh_summary() {
     summary_ = {};
     has_summary_ = false;
   }
+}
+
+// ═════════════════════════════════════════════════════════════════
+// Toast Notification
+// ═════════════════════════════════════════════════════════════════
+
+void GuiApp::show_toast(const std::string& message) {
+  toast_message_ = message;
+  toast_timer_ = k_ToastDuration;
 }
 
 } // namespace romulus::gui

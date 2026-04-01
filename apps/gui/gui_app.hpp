@@ -8,6 +8,8 @@
 #include "romulus/service/romulus_service.hpp"
 
 #include <filesystem>
+#include <future>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,6 +19,8 @@ namespace romulus::gui {
 
 /// Self-contained ImGui + GLFW window that drives the ROMULUS GUI.
 /// Owns the GLFW window and ImGui context; the service is injected.
+/// Long-running operations (scan, import, verify) run on a background thread
+/// to keep the UI responsive.
 class GuiApp final {
 public:
   /// Initializes GLFW, creates a window, and sets up ImGui.
@@ -44,16 +48,27 @@ private:
   void render_files_panel();
   void render_summary_panel();
   void render_status_bar();
+  void render_toast();
 
-  // ── Action handlers ─────────────────────────────────────
+  // ── Hash cell rendering (right-click to copy) ──────────
+  void render_hash_cell(int column, const std::string& hash, const char* label);
+
+  // ── Action handlers (launch background tasks) ──────────
   void action_import_dat();
   void action_scan_folder();
   void action_verify();
   void action_purge_database();
 
+  // ── Background task management ─────────────────────────
+  void check_pending_task();
+  [[nodiscard]] auto is_busy() const -> bool;
+
   // ── Data refresh ────────────────────────────────────────
   void refresh_files();
   void refresh_summary();
+
+  // ── Toast notification ─────────────────────────────────
+  void show_toast(const std::string& message);
 
   // ── State ───────────────────────────────────────────────
   service::RomulusService& svc_;
@@ -71,6 +86,18 @@ private:
 
   // Confirmation dialog state
   bool show_purge_confirm_ = false;
+
+  // Background task state
+  struct PendingTask {
+    std::future<std::string> result;
+    bool refresh_files = false;
+    bool refresh_summary = false;
+  };
+  std::optional<PendingTask> pending_task_;
+
+  // Toast notification state
+  std::string toast_message_;
+  float toast_timer_ = 0.0F;
 };
 
 } // namespace romulus::gui

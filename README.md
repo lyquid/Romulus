@@ -135,6 +135,15 @@ Or via **vcpkg** (automatic with the manifest).
 ./build/apps/gui/romulus-gui --no-gui
 ```
 
+**GUI features:**
+- DAT import, folder scanning, verification, and database purge
+- Collection summary panel with color-coded stats
+- File table with Filename, Size, CRC32, MD5, SHA1, SHA256 columns
+- Right-click any hash to copy it to clipboard (with toast notification)
+- Browse buttons open native file/folder picker dialogs
+- Background threading keeps the UI responsive during long operations
+- Animated progress bar while tasks are running
+
 ---
 
 ## 🕹️ Controls (Usage)

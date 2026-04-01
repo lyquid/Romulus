@@ -229,6 +229,13 @@ auto RomulusService::purge_database() -> Result<void> {
   }
   txn.commit();
 
+  // Force WAL checkpoint so the main .db file reflects the purge immediately.
+  // Without this, data may still appear in the DB file until SQLite checkpoints.
+  auto wal = db_->execute("PRAGMA wal_checkpoint(TRUNCATE)");
+  if (!wal) {
+    ROMULUS_WARN("WAL checkpoint after purge failed: {}", wal.error().message);
+  }
+
   ROMULUS_INFO("Database purged — all tables cleared");
   return {};
 }
