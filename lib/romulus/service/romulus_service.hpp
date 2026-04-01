@@ -60,6 +60,12 @@ public:
   [[nodiscard]] auto list_systems() -> Result<std::vector<core::SystemInfo>>;
   [[nodiscard]] auto get_missing_roms(std::optional<std::string> system = {})
       -> Result<std::vector<core::MissingRom>>;
+  [[nodiscard]] auto get_all_files() -> Result<std::vector<core::FileInfo>>;
+
+  // ── Admin ────────────────────────────────────────────────
+
+  /// Atomically deletes all data from the database (all tables).
+  [[nodiscard]] auto purge_database() -> Result<void>;
 
   // ── Reports ──────────────────────────────────────────────
 

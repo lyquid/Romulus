@@ -12,6 +12,15 @@
     "libarchive",
     "openssl",
     "nlohmann-json",
-    "gtest"
+    "gtest",
+    {
+      "name": "imgui",
+      "features": ["glfw-binding", "opengl3-binding"],
+      "platform": "!android & !ios"
+    },
+    {
+      "name": "glfw3",
+      "platform": "!android & !ios"
+    }
   ]
 }

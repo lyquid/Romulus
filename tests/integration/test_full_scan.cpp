@@ -70,4 +70,50 @@ TEST_F(FullScanTest, ListSystemsAfterImport) {
   EXPECT_EQ(systems->front().name, "Test System - Sample");
 }
 
+TEST_F(FullScanTest, GetAllFilesReturnsScannedFiles) {
+  romulus::service::RomulusService svc(db_path_);
+
+  // Before scan, no files
+  auto files_before = svc.get_all_files();
+  ASSERT_TRUE(files_before.has_value()) << files_before.error().message;
+  EXPECT_TRUE(files_before->empty());
+
+  // Scan directory
+  auto scan = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan.has_value()) << scan.error().message;
+
+  // After scan, files are present
+  auto files_after = svc.get_all_files();
+  ASSERT_TRUE(files_after.has_value()) << files_after.error().message;
+  EXPECT_EQ(files_after->size(), scan->files_scanned);
+}
+
+TEST_F(FullScanTest, PurgeDatabaseClearsAllData) {
+  romulus::service::RomulusService svc(db_path_);
+
+  // Import and scan to populate DB
+  auto dat = svc.import_dat(k_FixturesDir / "sample.dat");
+  ASSERT_TRUE(dat.has_value()) << dat.error().message;
+  auto scan = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan.has_value()) << scan.error().message;
+
+  // Verify data exists
+  auto systems = svc.list_systems();
+  ASSERT_TRUE(systems.has_value());
+  EXPECT_FALSE(systems->empty());
+
+  // Purge
+  auto purge = svc.purge_database();
+  ASSERT_TRUE(purge.has_value()) << purge.error().message;
+
+  // Verify all data is gone
+  auto systems_after = svc.list_systems();
+  ASSERT_TRUE(systems_after.has_value());
+  EXPECT_TRUE(systems_after->empty());
+
+  auto files_after = svc.get_all_files();
+  ASSERT_TRUE(files_after.has_value());
+  EXPECT_TRUE(files_after->empty());
+}
+
 } // namespace

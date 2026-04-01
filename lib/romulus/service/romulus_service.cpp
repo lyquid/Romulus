@@ -9,6 +9,7 @@
 #include "romulus/report/report_generator.hpp"
 #include "romulus/scanner/rom_scanner.hpp"
 
+#include <array>
 #include <utility>
 
 namespace romulus::service {
@@ -198,6 +199,45 @@ auto RomulusService::get_missing_roms(std::optional<std::string> system)
     return std::unexpected(sys_id.error());
   }
   return db_->get_missing_roms(*sys_id);
+}
+
+auto RomulusService::get_all_files() -> Result<std::vector<core::FileInfo>> {
+  return db_->get_all_files();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Admin
+// ═══════════════════════════════════════════════════════════════
+
+auto RomulusService::purge_database() -> Result<void> {
+  static constexpr std::array k_Tables = {
+      "rom_status",
+      "file_matches",
+      "files",
+      "roms",
+      "games",
+      "dat_versions",
+      "systems",
+  };
+
+  auto txn = db_->begin_transaction();
+  for (const auto* table : k_Tables) {
+    auto result = db_->execute(std::string("DELETE FROM ") + table);
+    if (!result) {
+      return std::unexpected(result.error());
+    }
+  }
+  txn.commit();
+
+  // Force WAL checkpoint so the main .db file reflects the purge immediately.
+  // Without this, data may still appear in the DB file until SQLite checkpoints.
+  auto wal = db_->execute("PRAGMA wal_checkpoint(TRUNCATE)");
+  if (!wal) {
+    ROMULUS_WARN("WAL checkpoint after purge failed: {}", wal.error().message);
+  }
+
+  ROMULUS_INFO("Database purged — all tables cleared");
+  return {};
 }
 
 // ═══════════════════════════════════════════════════════════════

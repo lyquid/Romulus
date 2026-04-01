@@ -19,6 +19,7 @@ include(StaticAnalysis)
 
 # ── Build Options ─────────────────────────────────────────────
 option(ROMULUS_ENABLE_CLANG_TIDY "Enable clang-tidy static analysis" OFF)
+option(ROMULUS_ENABLE_GUI "Build the ImGui + GLFW GUI application" ON)
 option(BUILD_TESTING "Build unit and integration tests" ON)
 
 if(ROMULUS_ENABLE_CLANG_TIDY)
