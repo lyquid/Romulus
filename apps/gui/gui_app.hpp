@@ -46,6 +46,7 @@ private:
   void render_main_menu_bar();
   void render_actions_panel();
   void render_files_panel();
+  void render_systems_panel();
   void render_summary_panel();
   void render_status_bar();
   void render_toast();
@@ -69,6 +70,7 @@ private:
 
   // ── Data refresh ────────────────────────────────────────
   void refresh_files();
+  void refresh_systems();
   void refresh_summary();
 
   // ── Toast notification ─────────────────────────────────
@@ -84,6 +86,7 @@ private:
 
   // Cached data
   std::vector<core::FileInfo> files_;
+  std::vector<core::SystemInfo> systems_;
   core::CollectionSummary summary_{};
   std::string status_message_;
   bool has_summary_ = false;
@@ -96,6 +99,7 @@ private:
     std::future<std::string> result;
     bool refresh_files = false;
     bool refresh_summary = false;
+    bool refresh_systems = false;
   };
   std::optional<PendingTask> pending_task_;
 
