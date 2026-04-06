@@ -27,8 +27,11 @@ namespace romulus::gui {
 class GuiApp final {
 public:
   /// Initializes GLFW, creates a window, and sets up ImGui.
-  /// @param svc Reference to the ROMULUS service (must outlive GuiApp).
-  explicit GuiApp(service::RomulusService& svc);
+  /// @param svc     Reference to the ROMULUS service (must outlive GuiApp).
+  /// @param log_sink Pre-registered log sink that has already been added to the global
+  ///                 logger (so early startup messages are also captured). Ownership
+  ///                 is shared; GuiApp retains the sink only to read/clear entries.
+  explicit GuiApp(service::RomulusService& svc, std::shared_ptr<GuiLogSink> log_sink);
   ~GuiApp();
 
   GuiApp(const GuiApp&) = delete;

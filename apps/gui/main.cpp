@@ -1,10 +1,12 @@
 #include "gui_app.hpp"
+#include "gui_log_sink.hpp"
 #include "romulus/core/logging.hpp"
 #include "romulus/service/romulus_service.hpp"
 
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <string>
 
 namespace {
@@ -70,6 +72,11 @@ int main(int argc, char** argv) {
   auto log_level = parse_log_level(argc, argv);
   romulus::core::init_logging(log_level);
 
+  // Create the GUI log sink and register it *before* any ROMULUS_INFO calls so
+  // that startup messages (e.g. "Starting ROMULUS GUI...") appear in the Log tab.
+  auto log_sink = std::make_shared<romulus::gui::GuiLogSink>();
+  romulus::core::get_logger()->sinks().push_back(log_sink);
+
   if (parse_no_gui(argc, argv)) {
     ROMULUS_INFO("--no-gui flag detected. GUI will not launch.");
     std::cout << "ROMULUS service running in headless mode. GUI disabled.\n";
@@ -82,7 +89,7 @@ int main(int argc, char** argv) {
   try {
     std::filesystem::path db_file(db_path);
     romulus::service::RomulusService svc(db_file);
-    romulus::gui::GuiApp app(svc);
+    romulus::gui::GuiApp app(svc, std::move(log_sink));
     app.run();
   } catch (const std::exception& e) {
     ROMULUS_ERROR("Fatal error: {}", e.what());

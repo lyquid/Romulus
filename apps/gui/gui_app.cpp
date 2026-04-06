@@ -88,16 +88,13 @@ auto format_size(std::int64_t bytes) -> std::string {
 // Lifecycle
 // ═════════════════════════════════════════════════════════════════
 
-GuiApp::GuiApp(service::RomulusService& svc) : svc_(svc) {
+GuiApp::GuiApp(service::RomulusService& svc, std::shared_ptr<GuiLogSink> log_sink)
+    : svc_(svc), log_sink_(std::move(log_sink)) {
   dat_path_buf_.resize(k_PathBufferSize, '\0');
   scan_dir_buf_.resize(k_PathBufferSize, '\0');
 
   init_glfw();
   init_imgui();
-
-  // Register the in-memory log sink so the "Log" tab captures all log messages.
-  log_sink_ = std::make_shared<GuiLogSink>();
-  core::get_logger()->sinks().push_back(log_sink_);
 
   status_message_ = "Ready.";
   refresh_files();
@@ -480,8 +477,10 @@ void GuiApp::render_systems_panel() {
 
 void GuiApp::render_log_panel() {
   // Only copy the sink's buffer when new entries have been added.
+  bool had_new_entries = false;
   if (auto new_entries = log_sink_->get_entries_if_changed(log_generation_, log_generation_)) {
     log_entries_cache_ = std::move(*new_entries);
+    had_new_entries = true;
   }
 
   ImGui::Text("Log (%zu entries)", log_entries_cache_.size());
@@ -498,6 +497,11 @@ void GuiApp::render_log_panel() {
                         ImVec2(0, -k_ScrollbarReserve),
                         false,
                         ImGuiWindowFlags_HorizontalScrollbar)) {
+    // Capture the at-bottom state *before* rendering new lines: once new items are
+    // appended the scroll max grows, making GetScrollY() < GetScrollMaxY() even if
+    // the view was pinned to the bottom on the previous frame.
+    const bool was_at_bottom = ImGui::GetScrollY() >= (ImGui::GetScrollMaxY() - 1.0F);
+
     for (const auto& entry : log_entries_cache_) {
       // Colour-code by stored log level (no per-frame string searching needed).
       ImVec4 color = k_ColorLogDefault;
@@ -511,8 +515,8 @@ void GuiApp::render_log_panel() {
       ImGui::TextColored(color, "%s", entry.text.c_str());
     }
 
-    // Auto-scroll to the bottom whenever new entries arrive.
-    if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
+    // Scroll to the bottom only when new entries arrived and the user hadn't scrolled up.
+    if (had_new_entries && was_at_bottom) {
       ImGui::SetScrollHereY(1.0F);
     }
   }
