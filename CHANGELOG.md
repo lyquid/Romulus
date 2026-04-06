@@ -7,7 +7,14 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- **Scanner**: Fixed `ArchiveService::is_archive()` incorrectly classifying ZIP (and other archive) files whose names contain dots inside parentheses (e.g. version strings like `(v1.1)`) as non-archives. The naive stem-extension check was building a bogus double-extension such as `.1).zip`, which was not recognised, causing the ZIP container itself to be stored in the database and displayed in the "Local ROMs" list instead of the ROM it contains.
+
 ### ⚡ Features
+
+- **GUI**: Added "Log" tab — displays all ROMULUS log messages captured since the application started, colour-coded by severity (amber = warning, red = error/critical, grey = debug/trace). A **Clear** button removes all visible entries. The log auto-scrolls to the newest entry.
+
 
 - **GUI**: Added tabs to the main window — "Local ROMs" (scanned ROM files, renamed from "Scanned Files") and "Systems" (lists all systems imported from DAT files); each tab re-fetches its data fresh from the database on activation, and systems are also automatically refreshed after every DAT import and database purge
 - **GUI**: Added modular ImGui + GLFW desktop GUI (`apps/gui/`) with DAT import, folder scanning, verification, database purge, collection summary display, and scrollable file table

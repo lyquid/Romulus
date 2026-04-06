@@ -8,6 +8,7 @@ set(ROMULUS_REPO_DATS_DIR "${CMAKE_SOURCE_DIR}/dats")
 
 # ── Unit tests ────────────────────────────────────────────────
 set(UNIT_TEST_SOURCES
+    unit/test_archive_service.cpp
     unit/test_dat_parser.cpp
     unit/test_hash_service.cpp
     unit/test_matcher.cpp

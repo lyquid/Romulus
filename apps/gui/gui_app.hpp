@@ -4,11 +4,13 @@
 /// @brief Modular ImGui + GLFW GUI application for ROMULUS.
 /// Decoupled from the core service — can be swapped for a web UI or disabled entirely.
 
+#include "gui_log_sink.hpp"
 #include "romulus/core/types.hpp"
 #include "romulus/service/romulus_service.hpp"
 
 #include <filesystem>
 #include <future>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -48,6 +50,7 @@ private:
   void render_files_panel();
   void render_systems_panel();
   void render_summary_panel();
+  void render_log_panel();
   void render_status_bar();
   void render_toast();
 
@@ -79,6 +82,7 @@ private:
   // ── State ───────────────────────────────────────────────
   service::RomulusService& svc_;
   GLFWwindow* window_ = nullptr;
+  std::shared_ptr<GuiLogSink> log_sink_;
 
   // UI input buffers
   std::string dat_path_buf_;

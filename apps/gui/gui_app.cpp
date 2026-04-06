@@ -89,6 +89,10 @@ GuiApp::GuiApp(service::RomulusService& svc) : svc_(svc) {
   init_glfw();
   init_imgui();
 
+  // Register the in-memory log sink so the "Log" tab captures all log messages.
+  log_sink_ = std::make_shared<GuiLogSink>();
+  core::get_logger()->sinks().push_back(log_sink_);
+
   status_message_ = "Ready.";
   refresh_files();
   refresh_systems();
@@ -199,6 +203,10 @@ void GuiApp::run() {
           refresh_systems();
         }
         render_systems_panel();
+        ImGui::EndTabItem();
+      }
+      if (ImGui::BeginTabItem("Log")) {
+        render_log_panel();
         ImGui::EndTabItem();
       }
       ImGui::EndTabBar();
@@ -462,6 +470,43 @@ void GuiApp::render_systems_panel() {
     }
     ImGui::EndTable();
   }
+}
+
+void GuiApp::render_log_panel() {
+  auto entries = log_sink_->get_entries();
+  ImGui::Text("Log (%zu entries)", entries.size());
+  ImGui::SameLine();
+  if (ImGui::SmallButton("Clear")) {
+    log_sink_->clear();
+  }
+
+  constexpr float k_ScrollbarReserve = 30.0F;
+  if (ImGui::BeginChild("##log_scroll",
+                        ImVec2(0, -k_ScrollbarReserve),
+                        false,
+                        ImGuiWindowFlags_HorizontalScrollbar)) {
+    for (const auto& entry : entries) {
+      // Colour-code by log level detected in the formatted "[level]" token.
+      ImVec4 color{1.0F, 1.0F, 1.0F, 1.0F}; // default: white
+      if (entry.find("[warning]") != std::string::npos ||
+          entry.find("[warn]") != std::string::npos) {
+        color = ImVec4{1.0F, 0.75F, 0.1F, 1.0F}; // amber
+      } else if (entry.find("[error]") != std::string::npos ||
+                 entry.find("[critical]") != std::string::npos) {
+        color = ImVec4{1.0F, 0.3F, 0.3F, 1.0F}; // red
+      } else if (entry.find("[debug]") != std::string::npos ||
+                 entry.find("[trace]") != std::string::npos) {
+        color = ImVec4{0.6F, 0.6F, 0.6F, 1.0F}; // grey
+      }
+      ImGui::TextColored(color, "%s", entry.c_str());
+    }
+
+    // Auto-scroll to the bottom whenever new entries arrive.
+    if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
+      ImGui::SetScrollHereY(1.0F);
+    }
+  }
+  ImGui::EndChild();
 }
 
 void GuiApp::render_hash_cell(int column, const std::string& hash, const char* label) {
