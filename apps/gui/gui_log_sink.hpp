@@ -43,9 +43,10 @@ public:
   }
 
   /// Returns a snapshot of all stored log entries when the buffer has changed since the last call.
-  /// @param last_generation  The generation value returned by the previous call (or 0 on first
-  ///                         call). If the buffer has not changed, returns an empty optional.
-  /// @param[out] out_generation  Set to the current generation value on return.
+  /// @param last_generation  The generation value from the previous call (use 0 on first call).
+  /// @param[out] out_generation  Receives the current generation value regardless of whether the
+  ///                             buffer changed. The caller should pass this back as
+  ///                             `last_generation` on the next call.
   /// @return Entries snapshot, or std::nullopt if nothing has changed since last_generation.
   [[nodiscard]] auto get_entries_if_changed(std::uint64_t last_generation,
                                             std::uint64_t& out_generation)

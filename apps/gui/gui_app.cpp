@@ -50,6 +50,12 @@ constexpr int k_ColMd5 = 3;
 constexpr int k_ColSha1 = 4;
 constexpr int k_ColSha256 = 5;
 
+// Log panel colour scheme (RGBA)
+constexpr ImVec4 k_ColorLogWarn{1.0F, 0.75F, 0.1F, 1.0F};   // amber  — warnings
+constexpr ImVec4 k_ColorLogError{1.0F, 0.3F, 0.3F, 1.0F};   // red    — errors / critical
+constexpr ImVec4 k_ColorLogDebug{0.6F, 0.6F, 0.6F, 1.0F};   // grey   — debug / trace
+constexpr ImVec4 k_ColorLogDefault{1.0F, 1.0F, 1.0F, 1.0F}; // white  — info
+
 void glfw_error_callback(int error, const char* description) {
   std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
 }
@@ -474,8 +480,8 @@ void GuiApp::render_systems_panel() {
 
 void GuiApp::render_log_panel() {
   // Only copy the sink's buffer when new entries have been added.
-  if (auto updated = log_sink_->get_entries_if_changed(log_generation_, log_generation_)) {
-    log_entries_cache_ = std::move(*updated);
+  if (auto new_entries = log_sink_->get_entries_if_changed(log_generation_, log_generation_)) {
+    log_entries_cache_ = std::move(*new_entries);
   }
 
   ImGui::Text("Log (%zu entries)", log_entries_cache_.size());
@@ -486,6 +492,7 @@ void GuiApp::render_log_panel() {
     log_generation_ = 0;
   }
 
+  // Reserve space at the bottom for the horizontal scrollbar.
   constexpr float k_ScrollbarReserve = 30.0F;
   if (ImGui::BeginChild("##log_scroll",
                         ImVec2(0, -k_ScrollbarReserve),
@@ -493,13 +500,13 @@ void GuiApp::render_log_panel() {
                         ImGuiWindowFlags_HorizontalScrollbar)) {
     for (const auto& entry : log_entries_cache_) {
       // Colour-code by stored log level (no per-frame string searching needed).
-      ImVec4 color{1.0F, 1.0F, 1.0F, 1.0F}; // default: white (info)
+      ImVec4 color = k_ColorLogDefault;
       if (entry.level == spdlog::level::warn) {
-        color = ImVec4{1.0F, 0.75F, 0.1F, 1.0F}; // amber
+        color = k_ColorLogWarn;
       } else if (entry.level >= spdlog::level::err) {
-        color = ImVec4{1.0F, 0.3F, 0.3F, 1.0F}; // red
+        color = k_ColorLogError;
       } else if (entry.level <= spdlog::level::debug) {
-        color = ImVec4{0.6F, 0.6F, 0.6F, 1.0F}; // grey
+        color = k_ColorLogDebug;
       }
       ImGui::TextColored(color, "%s", entry.text.c_str());
     }
