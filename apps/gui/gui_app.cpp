@@ -91,6 +91,7 @@ GuiApp::GuiApp(service::RomulusService& svc) : svc_(svc) {
 
   status_message_ = "Ready.";
   refresh_files();
+  refresh_systems();
   refresh_summary();
 }
 
@@ -185,7 +186,23 @@ void GuiApp::run() {
     render_summary_panel();
 
     ImGui::Separator();
-    render_files_panel();
+    if (ImGui::BeginTabBar("##main_tabs")) {
+      if (ImGui::BeginTabItem("Local ROMs")) {
+        if (ImGui::IsItemActivated() && !is_busy()) {
+          refresh_files();
+        }
+        render_files_panel();
+        ImGui::EndTabItem();
+      }
+      if (ImGui::BeginTabItem("Systems")) {
+        if (ImGui::IsItemActivated() && !is_busy()) {
+          refresh_systems();
+        }
+        render_systems_panel();
+        ImGui::EndTabItem();
+      }
+      ImGui::EndTabBar();
+    }
 
     render_status_bar();
 
@@ -299,6 +316,7 @@ void GuiApp::render_actions_panel() {
   ImGui::SameLine();
   if (ImGui::Button("Refresh")) {
     refresh_files();
+    refresh_systems();
     refresh_summary();
     status_message_ = "Data refreshed.";
   }
@@ -354,7 +372,7 @@ void GuiApp::render_summary_panel() {
 }
 
 void GuiApp::render_files_panel() {
-  ImGui::Text("Scanned Files (%zu)", files_.size());
+  ImGui::Text("Local ROMs (%zu)", files_.size());
 
   constexpr int k_ColumnCount = 6;
   if (ImGui::BeginTable("files_table",
@@ -404,6 +422,41 @@ void GuiApp::render_files_panel() {
       render_hash_cell(k_ColMd5, file.md5, "MD5");
       render_hash_cell(k_ColSha1, file.sha1, "SHA1");
       render_hash_cell(k_ColSha256, file.sha256, "SHA256");
+
+      ImGui::PopID();
+    }
+    ImGui::EndTable();
+  }
+}
+
+void GuiApp::render_systems_panel() {
+  ImGui::Text("Systems (%zu)", systems_.size());
+
+  constexpr int k_SystemColumnCount = 3;
+  if (ImGui::BeginTable("systems_table",
+                        k_SystemColumnCount,
+                        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
+                            ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp,
+                        ImVec2(0, -30))) {
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_None, 3.0F);
+    ImGui::TableSetupColumn("Short Name", ImGuiTableColumnFlags_None, 1.0F);
+    ImGui::TableSetupColumn("Extensions", ImGuiTableColumnFlags_None, 2.0F);
+    ImGui::TableHeadersRow();
+
+    for (std::size_t i = 0; i < systems_.size(); ++i) {
+      const auto& sys = systems_[i];
+      ImGui::TableNextRow();
+      ImGui::PushID(static_cast<int>(i));
+
+      ImGui::TableSetColumnIndex(0);
+      ImGui::TextUnformatted(sys.name.c_str());
+
+      ImGui::TableSetColumnIndex(1);
+      ImGui::TextUnformatted(sys.short_name.c_str());
+
+      ImGui::TableSetColumnIndex(2);
+      ImGui::TextUnformatted(sys.extensions.c_str());
 
       ImGui::PopID();
     }
@@ -516,6 +569,7 @@ void GuiApp::action_import_dat() {
                            }),
       .refresh_files = false,
       .refresh_summary = true,
+      .refresh_systems = true,
   };
 }
 
@@ -543,6 +597,7 @@ void GuiApp::action_scan_folder() {
                            }),
       .refresh_files = true,
       .refresh_summary = true,
+      .refresh_systems = false,
   };
 }
 
@@ -563,6 +618,7 @@ void GuiApp::action_verify() {
                            }),
       .refresh_files = false,
       .refresh_summary = true,
+      .refresh_systems = false,
   };
 }
 
@@ -583,6 +639,7 @@ void GuiApp::action_purge_database() {
                            }),
       .refresh_files = true,
       .refresh_summary = true,
+      .refresh_systems = true,
   };
 }
 
@@ -608,6 +665,7 @@ void GuiApp::check_pending_task() {
 
   bool should_refresh_files = pending_task_->refresh_files;
   bool should_refresh_summary = pending_task_->refresh_summary;
+  bool should_refresh_systems = pending_task_->refresh_systems;
   pending_task_.reset();
 
   if (should_refresh_files) {
@@ -615,6 +673,9 @@ void GuiApp::check_pending_task() {
   }
   if (should_refresh_summary) {
     refresh_summary();
+  }
+  if (should_refresh_systems) {
+    refresh_systems();
   }
 }
 
@@ -634,6 +695,16 @@ void GuiApp::refresh_files() {
   } else {
     files_.clear();
     ROMULUS_WARN("Failed to refresh files: {}", result.error().message);
+  }
+}
+
+void GuiApp::refresh_systems() {
+  auto result = svc_.list_systems();
+  if (result) {
+    systems_ = std::move(*result);
+  } else {
+    systems_.clear();
+    ROMULUS_WARN("Failed to refresh systems: {}", result.error().message);
   }
 }
 

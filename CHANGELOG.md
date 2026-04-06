@@ -9,6 +9,7 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ### ⚡ Features
 
+- **GUI**: Added tabs to the main window — "Local ROMs" (scanned ROM files, renamed from "Scanned Files") and "Systems" (lists all systems imported from DAT files); each tab re-fetches its data fresh from the database on activation, and systems are also automatically refreshed after every DAT import and database purge
 - **GUI**: Added modular ImGui + GLFW desktop GUI (`apps/gui/`) with DAT import, folder scanning, verification, database purge, collection summary display, and scrollable file table
 - **GUI**: Added `--no-gui` launch parameter to skip GUI initialization for headless operation
 - **GUI**: Added `ROMULUS_ENABLE_GUI` CMake option (default ON) to opt out of building the GUI
