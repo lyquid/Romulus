@@ -131,7 +131,8 @@ auto RomScanner::scan(const std::filesystem::path& directory,
     std::string virtual_path; // path or archive::entry
     std::int64_t size;
     std::filesystem::path real_path;
-    std::string entry_name; // empty for regular files
+    std::string entry_name;  // display name; empty for regular files
+    std::size_t entry_index; // stable archive index; only meaningful when !entry_name.empty()
   };
 
   std::vector<HashJob> jobs;
@@ -150,6 +151,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
             .size = entry.size,
             .real_path = candidate.path,
             .entry_name = entry.name,
+            .entry_index = entry.index,
         });
       }
       ++report.archives_processed;
@@ -159,6 +161,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
           .size = candidate.size,
           .real_path = candidate.path,
           .entry_name = {},
+          .entry_index = 0, // unused for regular files
       });
     }
   }
@@ -183,7 +186,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
     // Compute hashes
     auto digest = job.entry_name.empty()
                       ? HashService::compute_hashes(job.real_path)
-                      : HashService::compute_hashes_archive(job.real_path, job.entry_name);
+                      : HashService::compute_hashes_archive(job.real_path, job.entry_index);
 
     if (!digest) {
       ROMULUS_WARN("Hash failed for '{}': {}", job.virtual_path, digest.error().message);

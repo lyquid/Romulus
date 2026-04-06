@@ -155,7 +155,7 @@ auto HashService::compute_hashes(const std::filesystem::path& file_path)
 }
 
 auto HashService::compute_hashes_archive(const std::filesystem::path& archive_path,
-                                         std::string_view entry_name) -> Result<core::HashDigest> {
+                                         std::size_t entry_index) -> Result<core::HashDigest> {
   auto ctx_result = HashContext::create();
   if (!ctx_result) {
     return std::unexpected(ctx_result.error());
@@ -163,7 +163,7 @@ auto HashService::compute_hashes_archive(const std::filesystem::path& archive_pa
   auto& ctx = *ctx_result;
 
   auto result = ArchiveService::stream_entry(
-      archive_path, entry_name, [&ctx](const std::byte* data, std::size_t size) {
+      archive_path, entry_index, [&ctx](const std::byte* data, std::size_t size) {
         ctx.update(data, size);
       });
 
@@ -172,9 +172,9 @@ auto HashService::compute_hashes_archive(const std::filesystem::path& archive_pa
   }
 
   auto digest = ctx.finalize();
-  ROMULUS_DEBUG("Hashed '{}::{}': CRC32={}, MD5={}, SHA1={}, SHA256={}",
+  ROMULUS_DEBUG("Hashed '{}::[{}]': CRC32={}, MD5={}, SHA1={}, SHA256={}",
                 archive_path.string(),
-                entry_name,
+                entry_index,
                 digest.crc32,
                 digest.md5,
                 digest.sha1,

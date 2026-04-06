@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <string>
 
 namespace romulus::scanner {
 
@@ -84,21 +85,25 @@ auto ArchiveService::list_entries(const std::filesystem::path& path)
 
   std::vector<core::ArchiveEntry> entries;
   struct archive_entry* entry = nullptr;
+  std::size_t header_index = 0;
 
   while (archive_read_next_header(reader.get(), &entry) == ARCHIVE_OK) {
-    // Skip directories
+    // Skip directories but increment index to maintain stable entry positions across archive reads
     if (archive_entry_filetype(entry) != AE_IFREG) {
       archive_read_data_skip(reader.get());
+      ++header_index;
       continue;
     }
 
     const char* name = archive_entry_pathname(entry);
     entries.push_back({
+        .index = header_index,
         .name = name != nullptr ? name : "",
         .size = archive_entry_size(entry),
     });
 
     archive_read_data_skip(reader.get());
+    ++header_index;
   }
 
   ROMULUS_DEBUG("Listed {} entries in archive '{}'", entries.size(), path.string());
@@ -106,7 +111,7 @@ auto ArchiveService::list_entries(const std::filesystem::path& path)
 }
 
 auto ArchiveService::stream_entry(const std::filesystem::path& path,
-                                  std::string_view entry_name,
+                                  std::size_t entry_index,
                                   const StreamCallback& callback) -> Result<void> {
   auto reader = create_archive_reader();
 
@@ -118,11 +123,12 @@ auto ArchiveService::stream_entry(const std::filesystem::path& path,
 
   struct archive_entry* entry = nullptr;
   bool found = false;
+  std::size_t current_index = 0;
 
   while (archive_read_next_header(reader.get(), &entry) == ARCHIVE_OK) {
-    const char* name = archive_entry_pathname(entry);
-    if (name == nullptr || entry_name != name) {
+    if (current_index != entry_index) {
       archive_read_data_skip(reader.get());
+      ++current_index;
       continue;
     }
 
@@ -142,8 +148,8 @@ auto ArchiveService::stream_entry(const std::filesystem::path& path,
 
   if (!found) {
     return std::unexpected(core::Error{core::ErrorCode::ArchiveReadError,
-                                       "Entry '" + std::string(entry_name) +
-                                           "' not found in archive '" + path.string() + "'"});
+                                       "Entry index " + std::to_string(entry_index) +
+                                           " not found in archive '" + path.string() + "'"});
   }
 
   return {};

@@ -25,10 +25,11 @@ public:
 
   /// Computes hashes for a file inside an archive (without extracting to disk).
   /// @param archive_path Path to the archive file.
-  /// @param entry_name Name of the entry within the archive.
+  /// @param entry_index Zero-based index of the entry within the archive (from
+  /// ArchiveEntry::index).
   /// @return HashDigest with CRC32, MD5, and SHA1 hex strings.
   [[nodiscard]] static auto compute_hashes_archive(const std::filesystem::path& archive_path,
-                                                   std::string_view entry_name)
+                                                   std::size_t entry_index)
       -> Result<core::HashDigest>;
 };
 

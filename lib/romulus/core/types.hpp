@@ -143,7 +143,8 @@ struct RomStatusEntry {
 
 /// An entry inside an archive file (zip/7z).
 struct ArchiveEntry {
-  std::string name;      ///< Entry name within the archive
+  std::size_t index = 0; ///< Zero-based position in the archive — stable ID for streaming
+  std::string name;      ///< Entry name (display only — not a unique key)
   std::int64_t size = 0; ///< Uncompressed size
 };
 

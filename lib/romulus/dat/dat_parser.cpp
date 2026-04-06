@@ -71,7 +71,9 @@ auto load_document_from_archive(const std::filesystem::path& dat_path,
 
   std::string xml_content;
   auto stream = scanner::ArchiveService::stream_entry(
-      dat_path, dat_entries->front().name, [&xml_content](const std::byte* data, std::size_t size) {
+      dat_path,
+      dat_entries->front().index,
+      [&xml_content](const std::byte* data, std::size_t size) {
         xml_content.append(reinterpret_cast<const char*>(data), size);
       });
   if (!stream) {

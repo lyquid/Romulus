@@ -37,10 +37,11 @@ public:
   /// Streams a specific entry's data in chunks to the callback.
   /// Used by HashService to hash archive contents without extraction.
   /// @param path Path to the archive file.
-  /// @param entry_name Name of the entry within the archive.
+  /// @param entry_index Zero-based index of the entry within the archive (from
+  /// ArchiveEntry::index).
   /// @param callback Called with each chunk of data.
   [[nodiscard]] static auto stream_entry(const std::filesystem::path& path,
-                                         std::string_view entry_name,
+                                         std::size_t entry_index,
                                          const StreamCallback& callback) -> Result<void>;
 };
 
