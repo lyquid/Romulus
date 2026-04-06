@@ -187,11 +187,17 @@ void GuiApp::run() {
 
     ImGui::Separator();
     if (ImGui::BeginTabBar("##main_tabs")) {
-      if (ImGui::BeginTabItem("Scanned Files")) {
+      if (ImGui::BeginTabItem("Local ROMs")) {
+        if (ImGui::IsItemActivated()) {
+          refresh_files();
+        }
         render_files_panel();
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem("Systems")) {
+        if (ImGui::IsItemActivated()) {
+          refresh_systems();
+        }
         render_systems_panel();
         ImGui::EndTabItem();
       }
@@ -366,7 +372,7 @@ void GuiApp::render_summary_panel() {
 }
 
 void GuiApp::render_files_panel() {
-  ImGui::Text("Scanned Files (%zu)", files_.size());
+  ImGui::Text("Local ROMs (%zu)", files_.size());
 
   constexpr int k_ColumnCount = 6;
   if (ImGui::BeginTable("files_table",
