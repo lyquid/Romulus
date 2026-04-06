@@ -188,14 +188,14 @@ void GuiApp::run() {
     ImGui::Separator();
     if (ImGui::BeginTabBar("##main_tabs")) {
       if (ImGui::BeginTabItem("Local ROMs")) {
-        if (ImGui::IsItemActivated()) {
+        if (ImGui::IsItemActivated() && !is_busy()) {
           refresh_files();
         }
         render_files_panel();
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem("Systems")) {
-        if (ImGui::IsItemActivated()) {
+        if (ImGui::IsItemActivated() && !is_busy()) {
           refresh_systems();
         }
         render_systems_panel();
