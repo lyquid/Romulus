@@ -473,11 +473,17 @@ void GuiApp::render_systems_panel() {
 }
 
 void GuiApp::render_log_panel() {
-  auto entries = log_sink_->get_entries();
-  ImGui::Text("Log (%zu entries)", entries.size());
+  // Only copy the sink's buffer when new entries have been added.
+  if (auto updated = log_sink_->get_entries_if_changed(log_generation_, log_generation_)) {
+    log_entries_cache_ = std::move(*updated);
+  }
+
+  ImGui::Text("Log (%zu entries)", log_entries_cache_.size());
   ImGui::SameLine();
   if (ImGui::SmallButton("Clear")) {
     log_sink_->clear();
+    log_entries_cache_.clear();
+    log_generation_ = 0;
   }
 
   constexpr float k_ScrollbarReserve = 30.0F;
@@ -485,20 +491,17 @@ void GuiApp::render_log_panel() {
                         ImVec2(0, -k_ScrollbarReserve),
                         false,
                         ImGuiWindowFlags_HorizontalScrollbar)) {
-    for (const auto& entry : entries) {
-      // Colour-code by log level detected in the formatted "[level]" token.
-      ImVec4 color{1.0F, 1.0F, 1.0F, 1.0F}; // default: white
-      if (entry.find("[warning]") != std::string::npos ||
-          entry.find("[warn]") != std::string::npos) {
+    for (const auto& entry : log_entries_cache_) {
+      // Colour-code by stored log level (no per-frame string searching needed).
+      ImVec4 color{1.0F, 1.0F, 1.0F, 1.0F}; // default: white (info)
+      if (entry.level == spdlog::level::warn) {
         color = ImVec4{1.0F, 0.75F, 0.1F, 1.0F}; // amber
-      } else if (entry.find("[error]") != std::string::npos ||
-                 entry.find("[critical]") != std::string::npos) {
+      } else if (entry.level >= spdlog::level::err) {
         color = ImVec4{1.0F, 0.3F, 0.3F, 1.0F}; // red
-      } else if (entry.find("[debug]") != std::string::npos ||
-                 entry.find("[trace]") != std::string::npos) {
+      } else if (entry.level <= spdlog::level::debug) {
         color = ImVec4{0.6F, 0.6F, 0.6F, 1.0F}; // grey
       }
-      ImGui::TextColored(color, "%s", entry.c_str());
+      ImGui::TextColored(color, "%s", entry.text.c_str());
     }
 
     // Auto-scroll to the bottom whenever new entries arrive.

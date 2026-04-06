@@ -8,6 +8,7 @@
 #include "romulus/core/types.hpp"
 #include "romulus/service/romulus_service.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <future>
 #include <memory>
@@ -114,6 +115,10 @@ private:
   // Files table sort state
   int sort_col_ = -1;          ///< Active sort column index (-1 = unsorted)
   bool sort_ascending_ = true; ///< true = ascending, false = descending
+
+  // Log panel cached state — updated only when the sink signals new content
+  std::vector<LogEntry> log_entries_cache_;
+  std::uint64_t log_generation_ = 0; ///< Last-seen generation from the log sink
 };
 
 } // namespace romulus::gui

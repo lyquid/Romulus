@@ -15,11 +15,19 @@
   #pragma GCC diagnostic pop
 #endif
 
+#include <cstdint>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <vector>
 
 namespace romulus::gui {
+
+/// A single captured log entry with its text and severity level.
+struct LogEntry {
+  std::string text;
+  spdlog::level::level_enum level = spdlog::level::info;
+};
 
 /// Thread-safe spdlog sink that stores formatted log messages in a ring buffer.
 /// Registered with the global logger in GuiApp to capture messages for the "Log" tab.
@@ -34,16 +42,27 @@ public:
         "[%H:%M:%S.%e] [%l] %v", spdlog::pattern_time_type::local, std::string{}));
   }
 
-  /// Returns a snapshot of all stored log entries (thread-safe, copies the buffer).
-  [[nodiscard]] auto get_entries() -> std::vector<std::string> {
+  /// Returns a snapshot of all stored log entries when the buffer has changed since the last call.
+  /// @param last_generation  The generation value returned by the previous call (or 0 on first
+  ///                         call). If the buffer has not changed, returns an empty optional.
+  /// @param[out] out_generation  Set to the current generation value on return.
+  /// @return Entries snapshot, or std::nullopt if nothing has changed since last_generation.
+  [[nodiscard]] auto get_entries_if_changed(std::uint64_t last_generation,
+                                            std::uint64_t& out_generation)
+      -> std::optional<std::vector<LogEntry>> {
     std::lock_guard<std::mutex> lock(mutex_);
-    return entries_;
+    out_generation = generation_;
+    if (generation_ == last_generation) {
+      return std::nullopt;
+    }
+    return std::vector<LogEntry>(entries_.begin(), entries_.end());
   }
 
   /// Clears all stored log entries.
   void clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     entries_.clear();
+    ++generation_;
   }
 
 protected:
@@ -51,23 +70,26 @@ protected:
     // Called with mutex_ already held by base_sink::log().
     spdlog::memory_buf_t formatted;
     formatter_->format(msg, formatted);
-    std::string entry(formatted.data(), formatted.size());
+    std::string text(formatted.data(), formatted.size());
 
     // Strip trailing newline / carriage-return added by the formatter.
-    while (!entry.empty() && (entry.back() == '\n' || entry.back() == '\r')) {
-      entry.pop_back();
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
+      text.pop_back();
     }
 
+    // std::deque provides O(1) front removal — no shifting of elements.
     if (entries_.size() >= k_MaxEntries) {
-      entries_.erase(entries_.begin());
+      entries_.pop_front();
     }
-    entries_.push_back(std::move(entry));
+    entries_.push_back({std::move(text), msg.level});
+    ++generation_;
   }
 
   void flush_() override {}
 
 private:
-  std::vector<std::string> entries_;
+  std::deque<LogEntry> entries_;
+  std::uint64_t generation_ = 0;
 };
 
 } // namespace romulus::gui
