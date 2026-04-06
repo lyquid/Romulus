@@ -131,8 +131,9 @@ auto RomScanner::scan(const std::filesystem::path& directory,
     std::string virtual_path; // path or archive::entry
     std::int64_t size;
     std::filesystem::path real_path;
-    std::string entry_name;  // display name; empty for regular files
-    std::size_t entry_index; // stable archive index; only meaningful when !entry_name.empty()
+    std::string entry_name;        // display name; empty for regular files
+    std::size_t entry_index;       // stable archive index; only valid when is_archive_entry
+    bool is_archive_entry = false; // true when this job represents an entry inside an archive
   };
 
   std::vector<HashJob> jobs;
@@ -152,6 +153,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
             .real_path = candidate.path,
             .entry_name = entry.name,
             .entry_index = entry.index,
+            .is_archive_entry = true,
         });
       }
       ++report.archives_processed;
@@ -161,7 +163,8 @@ auto RomScanner::scan(const std::filesystem::path& directory,
           .size = candidate.size,
           .real_path = candidate.path,
           .entry_name = {},
-          .entry_index = 0, // unused for regular files
+          .entry_index = 0,
+          .is_archive_entry = false,
       });
     }
   }
@@ -184,9 +187,9 @@ auto RomScanner::scan(const std::filesystem::path& directory,
     }
 
     // Compute hashes
-    auto digest = job.entry_name.empty()
-                      ? HashService::compute_hashes(job.real_path)
-                      : HashService::compute_hashes_archive(job.real_path, job.entry_index);
+    auto digest = job.is_archive_entry
+                      ? HashService::compute_hashes_archive(job.real_path, job.entry_index)
+                      : HashService::compute_hashes(job.real_path);
 
     if (!digest) {
       ROMULUS_WARN("Hash failed for '{}': {}", job.virtual_path, digest.error().message);
@@ -195,7 +198,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
 
     // Store in DB
     core::FileInfo file_info{
-        .filename = job.entry_name.empty() ? job.real_path.filename().string() : job.entry_name,
+        .filename = job.is_archive_entry ? job.entry_name : job.real_path.filename().string(),
         .path = job.virtual_path,
         .size = job.size,
         .crc32 = digest->crc32,
@@ -203,7 +206,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
         .sha1 = digest->sha1,
         .sha256 = digest->sha256,
         .last_scanned = {},
-        .is_archive_entry = !job.entry_name.empty(),
+        .is_archive_entry = job.is_archive_entry,
     };
 
     ROMULUS_DEBUG("Hashed '{}': SHA256={}", job.virtual_path, digest->sha256);

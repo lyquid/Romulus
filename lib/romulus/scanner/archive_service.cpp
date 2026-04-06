@@ -132,15 +132,32 @@ auto ArchiveService::stream_entry(const std::filesystem::path& path,
       continue;
     }
 
+    // Reject non-regular-file entries (directories, symlinks, etc.) — they have no streamable data
+    if (archive_entry_filetype(entry) != AE_IFREG) {
+      return std::unexpected(core::Error{core::ErrorCode::ArchiveReadError,
+                                         "Entry index " + std::to_string(entry_index) +
+                                             " in archive '" + path.string() +
+                                             "' is not a regular file"});
+    }
+
     found = true;
 
-    // Stream data in chunks
+    // Stream data in chunks; ARCHIVE_EOF is the normal end-of-entry sentinel
     const void* buff = nullptr;
     std::size_t size = 0;
     la_int64_t offset = 0;
+    int block_result = archive_read_data_block(reader.get(), &buff, &size, &offset);
 
-    while (archive_read_data_block(reader.get(), &buff, &size, &offset) == ARCHIVE_OK) {
+    while (block_result == ARCHIVE_OK) {
       callback(static_cast<const std::byte*>(buff), size);
+      block_result = archive_read_data_block(reader.get(), &buff, &size, &offset);
+    }
+
+    if (block_result != ARCHIVE_EOF) {
+      return std::unexpected(core::Error{
+          core::ErrorCode::ArchiveReadError,
+          "Read error for entry index " + std::to_string(entry_index) + " in archive '" +
+              path.string() + "': " + archive_error_string(reader.get())});
     }
 
     break;
