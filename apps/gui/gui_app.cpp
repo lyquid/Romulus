@@ -50,6 +50,12 @@ constexpr int k_ColMd5 = 3;
 constexpr int k_ColSha1 = 4;
 constexpr int k_ColSha256 = 5;
 
+// Log panel colour scheme (RGBA)
+constexpr ImVec4 k_ColorLogWarn{1.0F, 0.75F, 0.1F, 1.0F};   // amber  — warnings
+constexpr ImVec4 k_ColorLogError{1.0F, 0.3F, 0.3F, 1.0F};   // red    — errors / critical
+constexpr ImVec4 k_ColorLogDebug{0.6F, 0.6F, 0.6F, 1.0F};   // grey   — debug / trace
+constexpr ImVec4 k_ColorLogDefault{1.0F, 1.0F, 1.0F, 1.0F}; // white  — info
+
 void glfw_error_callback(int error, const char* description) {
   std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
 }
@@ -82,7 +88,8 @@ auto format_size(std::int64_t bytes) -> std::string {
 // Lifecycle
 // ═════════════════════════════════════════════════════════════════
 
-GuiApp::GuiApp(service::RomulusService& svc) : svc_(svc) {
+GuiApp::GuiApp(service::RomulusService& svc, std::shared_ptr<GuiLogSink> log_sink)
+    : svc_(svc), log_sink_(std::move(log_sink)) {
   dat_path_buf_.resize(k_PathBufferSize, '\0');
   scan_dir_buf_.resize(k_PathBufferSize, '\0');
 
@@ -199,6 +206,10 @@ void GuiApp::run() {
           refresh_systems();
         }
         render_systems_panel();
+        ImGui::EndTabItem();
+      }
+      if (ImGui::BeginTabItem("Log")) {
+        render_log_panel();
         ImGui::EndTabItem();
       }
       ImGui::EndTabBar();
@@ -462,6 +473,54 @@ void GuiApp::render_systems_panel() {
     }
     ImGui::EndTable();
   }
+}
+
+void GuiApp::render_log_panel() {
+  // Only copy the sink's buffer when new entries have been added.
+  bool had_new_entries = false;
+  if (auto new_entries = log_sink_->get_entries_if_changed(log_generation_, log_generation_)) {
+    log_entries_cache_ = std::move(*new_entries);
+    had_new_entries = true;
+  }
+
+  ImGui::Text("Log (%zu entries)", log_entries_cache_.size());
+  ImGui::SameLine();
+  if (ImGui::SmallButton("Clear")) {
+    log_sink_->clear();
+    log_entries_cache_.clear();
+    log_generation_ = 0;
+  }
+
+  // Reserve space at the bottom for the horizontal scrollbar.
+  constexpr float k_ScrollbarReserve = 30.0F;
+  if (ImGui::BeginChild("##log_scroll",
+                        ImVec2(0, -k_ScrollbarReserve),
+                        false,
+                        ImGuiWindowFlags_HorizontalScrollbar)) {
+    // Capture the at-bottom state *before* rendering new lines: once new items are
+    // appended the scroll max grows, making GetScrollY() < GetScrollMaxY() even if
+    // the view was pinned to the bottom on the previous frame.
+    const bool was_at_bottom = ImGui::GetScrollY() >= (ImGui::GetScrollMaxY() - 1.0F);
+
+    for (const auto& entry : log_entries_cache_) {
+      // Colour-code by stored log level (no per-frame string searching needed).
+      ImVec4 color = k_ColorLogDefault;
+      if (entry.level == spdlog::level::warn) {
+        color = k_ColorLogWarn;
+      } else if (entry.level >= spdlog::level::err) {
+        color = k_ColorLogError;
+      } else if (entry.level <= spdlog::level::debug) {
+        color = k_ColorLogDebug;
+      }
+      ImGui::TextColored(color, "%s", entry.text.c_str());
+    }
+
+    // Scroll to the bottom only when new entries arrived and the user hadn't scrolled up.
+    if (had_new_entries && was_at_bottom) {
+      ImGui::SetScrollHereY(1.0F);
+    }
+  }
+  ImGui::EndChild();
 }
 
 void GuiApp::render_hash_cell(int column, const std::string& hash, const char* label) {

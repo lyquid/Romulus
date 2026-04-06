@@ -4,11 +4,14 @@
 /// @brief Modular ImGui + GLFW GUI application for ROMULUS.
 /// Decoupled from the core service — can be swapped for a web UI or disabled entirely.
 
+#include "gui_log_sink.hpp"
 #include "romulus/core/types.hpp"
 #include "romulus/service/romulus_service.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <future>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,8 +27,11 @@ namespace romulus::gui {
 class GuiApp final {
 public:
   /// Initializes GLFW, creates a window, and sets up ImGui.
-  /// @param svc Reference to the ROMULUS service (must outlive GuiApp).
-  explicit GuiApp(service::RomulusService& svc);
+  /// @param svc     Reference to the ROMULUS service (must outlive GuiApp).
+  /// @param log_sink Pre-registered log sink that has already been added to the global
+  ///                 logger (so early startup messages are also captured). Ownership
+  ///                 is shared; GuiApp retains the sink only to read/clear entries.
+  explicit GuiApp(service::RomulusService& svc, std::shared_ptr<GuiLogSink> log_sink);
   ~GuiApp();
 
   GuiApp(const GuiApp&) = delete;
@@ -48,6 +54,7 @@ private:
   void render_files_panel();
   void render_systems_panel();
   void render_summary_panel();
+  void render_log_panel();
   void render_status_bar();
   void render_toast();
 
@@ -79,6 +86,7 @@ private:
   // ── State ───────────────────────────────────────────────
   service::RomulusService& svc_;
   GLFWwindow* window_ = nullptr;
+  std::shared_ptr<GuiLogSink> log_sink_;
 
   // UI input buffers
   std::string dat_path_buf_;
@@ -110,6 +118,10 @@ private:
   // Files table sort state
   int sort_col_ = -1;          ///< Active sort column index (-1 = unsorted)
   bool sort_ascending_ = true; ///< true = ascending, false = descending
+
+  // Log panel cached state — updated only when the sink signals new content
+  std::vector<LogEntry> log_entries_cache_;
+  std::uint64_t log_generation_ = 0; ///< Last-seen generation from the log sink
 };
 
 } // namespace romulus::gui

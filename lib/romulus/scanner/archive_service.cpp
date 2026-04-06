@@ -46,16 +46,30 @@ constexpr std::array k_ArchiveExtensions = {
 
 auto ArchiveService::is_archive(const std::filesystem::path& path) -> bool {
   auto ext = path.extension().string();
-  // Handle double extensions like .tar.gz
-  if (path.stem().has_extension()) {
-    ext = path.stem().extension().string() + ext;
-  }
   std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
   });
 
-  return std::ranges::any_of(k_ArchiveExtensions,
-                             [&ext](std::string_view ae) { return ext == ae; });
+  // Check simple single-component extensions first (.zip, .7z, .tar, .tgz, etc.)
+  if (std::ranges::any_of(k_ArchiveExtensions, [&ext](std::string_view ae) { return ext == ae; })) {
+    return true;
+  }
+
+  // Handle double extensions like .tar.gz / .tar.bz2 / .tar.xz — but only when the
+  // stem itself ends with ".tar".  A naive has_extension() check would incorrectly
+  // treat version strings like "(v1.1)" as a stem extension, producing ".1).zip".
+  auto stem_ext = path.stem().extension().string();
+  std::transform(stem_ext.begin(), stem_ext.end(), stem_ext.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+
+  if (stem_ext == ".tar") {
+    auto combined = stem_ext + ext;
+    return std::ranges::any_of(k_ArchiveExtensions,
+                               [&combined](std::string_view ae) { return combined == ae; });
+  }
+
+  return false;
 }
 
 auto ArchiveService::list_entries(const std::filesystem::path& path)
