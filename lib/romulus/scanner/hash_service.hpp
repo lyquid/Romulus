@@ -7,6 +7,7 @@
 #include "romulus/core/error.hpp"
 #include "romulus/core/types.hpp"
 
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 
@@ -15,12 +16,23 @@ namespace romulus::scanner {
 using romulus::core::Result;
 
 /// Callback invoked with each chunk of raw bytes during streaming.
-/// Signature is compatible with ArchiveService::StreamCallback.
+///
+/// **Contract for callers:**
+/// - `data` must remain valid for the duration of the callback invocation only.
+/// - The callback must not be stored or invoked after it returns.
 using DataChunkCallback = std::function<void(const std::byte*, std::size_t)>;
 
-/// Reader that drives the stream — calls back with successive data chunks and
-/// returns an error if reading fails.  Usable with any byte source
+/// Reader that drives the stream — calls the callback with successive data
+/// chunks and returns an error if reading fails.  Usable with any byte source
 /// (disk file, archive entry, in-memory buffer, …).
+///
+/// **Contract for implementations:**
+/// - The callback passed to the reader must be invoked **synchronously**,
+///   i.e. only during the `reader(callback)` call itself.
+/// - The callback must **not** be copied or stored for later use; it captures
+///   stack state that is invalid once `compute_hashes_stream` returns.
+/// - The `data` pointer passed to each callback invocation is valid only for
+///   the duration of that single callback call.
 using StreamReader = std::function<Result<void>(const DataChunkCallback&)>;
 
 /// Computes cryptographic hashes for ROM files.
@@ -30,8 +42,10 @@ public:
   /// Core streaming primitive: consumes bytes via reader and computes all four
   /// hashes in a single pass.  Both compute_hashes and compute_hashes_archive
   /// are thin wrappers around this method.
-  /// @param reader Callable that delivers data chunks via DataChunkCallback.
-  /// @return HashDigest on success, or Error if reading or OpenSSL fails.
+  /// @param reader Non-null callable that delivers data chunks synchronously
+  ///               via DataChunkCallback.  Must not store the callback.
+  /// @return HashDigest on success, or ErrorCode::InvalidArgument if reader is
+  ///         empty, or Error if reading or OpenSSL initialisation fails.
   [[nodiscard]] static auto compute_hashes_stream(const StreamReader& reader)
       -> Result<core::HashDigest>;
 

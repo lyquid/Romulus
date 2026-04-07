@@ -122,6 +122,11 @@ struct HashContext {
 } // namespace
 
 auto HashService::compute_hashes_stream(const StreamReader& reader) -> Result<core::HashDigest> {
+  if (!reader) {
+    return std::unexpected(
+        core::Error{core::ErrorCode::InvalidArgument, "StreamReader must not be empty"});
+  }
+
   auto ctx_result = HashContext::create();
   if (!ctx_result) {
     return std::unexpected(ctx_result.error());

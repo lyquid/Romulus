@@ -124,4 +124,11 @@ TEST(HashService, StreamReaderPropagatesReaderError) {
   EXPECT_EQ(result.error().code, romulus::core::ErrorCode::FileReadError);
 }
 
+TEST(HashService, StreamReaderRejectsNullReader) {
+  // An empty (null) StreamReader must yield InvalidArgument, not throw.
+  auto result = romulus::scanner::HashService::compute_hashes_stream(nullptr);
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error().code, romulus::core::ErrorCode::InvalidArgument);
+}
+
 } // namespace
