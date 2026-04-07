@@ -82,4 +82,46 @@ TEST(HashService, HandlesEmptyFile) {
   std::filesystem::remove(temp);
 }
 
+TEST(HashService, StreamReaderProducesMatchingHashesAsFile) {
+  // Verify that compute_hashes_stream yields the same digest as compute_hashes
+  // for identical content, confirming both paths share the same core primitive.
+  const std::string content = "Hello, ROMULUS stream!";
+
+  auto temp = std::filesystem::temp_directory_path() / "romulus_test_stream.bin";
+  {
+    std::ofstream f(temp, std::ios::binary);
+    f << content;
+  }
+
+  auto file_result = romulus::scanner::HashService::compute_hashes(temp);
+  ASSERT_TRUE(file_result.has_value()) << file_result.error().message;
+
+  auto stream_result = romulus::scanner::HashService::compute_hashes_stream(
+      [&content](
+          const romulus::scanner::DataChunkCallback& callback) -> romulus::core::Result<void> {
+        callback(reinterpret_cast<const std::byte*>(content.data()), content.size());
+        return {};
+      });
+  ASSERT_TRUE(stream_result.has_value()) << stream_result.error().message;
+
+  EXPECT_EQ(stream_result->crc32, file_result->crc32);
+  EXPECT_EQ(stream_result->md5, file_result->md5);
+  EXPECT_EQ(stream_result->sha1, file_result->sha1);
+  EXPECT_EQ(stream_result->sha256, file_result->sha256);
+
+  std::filesystem::remove(temp);
+}
+
+TEST(HashService, StreamReaderPropagatesReaderError) {
+  // Errors returned by the reader must be forwarded as-is.
+  auto result = romulus::scanner::HashService::compute_hashes_stream(
+      [](const romulus::scanner::DataChunkCallback&) -> romulus::core::Result<void> {
+        return std::unexpected(
+            romulus::core::Error{romulus::core::ErrorCode::FileReadError, "Simulated read error"});
+      });
+
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error().code, romulus::core::ErrorCode::FileReadError);
+}
+
 } // namespace

@@ -9,6 +9,8 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ### 🔧 Refactoring
 
+- **HashService**: Introduced `compute_hashes_stream(StreamReader)` as the single core hashing primitive. Both `compute_hashes` (disk file) and `compute_hashes_archive` (archive entry) are now thin wrappers that build a `StreamReader` lambda and delegate to it. The new `DataChunkCallback` and `StreamReader` type aliases are exposed in `hash_service.hpp`, allowing callers to hash any byte-stream source without adding new `HashService` methods. Zero performance impact: the hot path (per-byte hash computation) is unchanged; the added `std::function` call is a one-time setup cost, negligible against I/O and hash work.
+
 - **ArchiveService**: `ArchiveEntry` now carries a `std::size_t index` field — the zero-based sequential position of the entry in the archive. `stream_entry` and `compute_hashes_archive` now accept this stable numeric index instead of an `entry_name` string. Names are kept on `ArchiveEntry` for display purposes only. This eliminates subtle bugs from duplicate entry names, case-sensitivity differences, and encoding ambiguities.
 
 ### 🐛 Bug Fixes
