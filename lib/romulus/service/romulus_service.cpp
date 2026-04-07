@@ -212,8 +212,9 @@ auto RomulusService::get_all_files() -> Result<std::vector<core::FileInfo>> {
 auto RomulusService::purge_database() -> Result<void> {
   static constexpr std::array k_Tables = {
       "rom_status",
-      "file_matches",
+      "rom_matches",
       "files",
+      "global_roms",
       "roms",
       "games",
       "dat_versions",

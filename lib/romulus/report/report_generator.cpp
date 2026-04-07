@@ -9,6 +9,28 @@
 
 namespace romulus::report {
 
+namespace {
+
+/// Escapes a field for CSV output per RFC 4180.
+/// Wraps in double quotes if the value contains commas, quotes, or newlines.
+auto csv_escape(const std::string& field) -> std::string {
+  if (field.find_first_of(",\"\n\r") == std::string::npos) {
+    return field;
+  }
+  std::string escaped = "\"";
+  for (char c : field) {
+    if (c == '"') {
+      escaped += "\"\"";
+    } else {
+      escaped += c;
+    }
+  }
+  escaped += '"';
+  return escaped;
+}
+
+} // namespace
+
 auto ReportGenerator::generate(database::Database& db,
                                core::ReportType type,
                                core::ReportFormat format,
@@ -100,7 +122,7 @@ auto ReportGenerator::summary_csv(database::Database& db,
 
   std::ostringstream out;
   out << "system,total_roms,verified,missing,unverified,mismatch,verified_pct\n";
-  out << summary->system_name << "," << summary->total_roms << "," << summary->verified << ","
+  out << csv_escape(summary->system_name) << "," << summary->total_roms << "," << summary->verified << ","
       << summary->missing << "," << summary->unverified << "," << summary->mismatch << ","
       << std::fixed << std::setprecision(1) << summary->verified_percent() << "\n";
 
@@ -162,7 +184,7 @@ auto ReportGenerator::missing_csv(database::Database& db,
   std::ostringstream out;
   out << "system,game,rom,sha1\n";
   for (const auto& rom : *missing) {
-    out << rom.system_name << "," << rom.game_name << "," << rom.rom_name << "," << rom.sha1
+    out << csv_escape(rom.system_name) << "," << csv_escape(rom.game_name) << "," << csv_escape(rom.rom_name) << "," << rom.sha1
         << "\n";
   }
 
@@ -229,7 +251,7 @@ auto ReportGenerator::duplicates_csv(database::Database& db,
   std::ostringstream out;
   out << "file_path,rom_name,game_name\n";
   for (const auto& d : *dupes) {
-    out << d.file_path << "," << d.rom_name << "," << d.game_name << "\n";
+    out << csv_escape(d.file_path) << "," << csv_escape(d.rom_name) << "," << csv_escape(d.game_name) << "\n";
   }
 
   return out.str();
@@ -289,7 +311,7 @@ auto ReportGenerator::unverified_csv(database::Database& db,
   out << "path,size,crc32,md5,sha1\n";
 
   for (const auto& f : *unverified) {
-    out << f.path << "," << f.size << "," << f.crc32 << "," << f.md5 << "," << f.sha1 << "\n";
+    out << csv_escape(f.path) << "," << f.size << "," << f.crc32 << "," << f.md5 << "," << f.sha1 << "\n";
   }
 
   return out.str();

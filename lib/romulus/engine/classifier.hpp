@@ -16,11 +16,11 @@ namespace romulus::engine {
 
 using romulus::core::Result;
 
-/// Classifies every ROM in the database based on file matches.
+/// Classifies every ROM in the database based on rom matches.
 class Classifier final {
 public:
   /// Classifies all ROMs and updates the rom_status table.
-  /// @param db Database with ROMs and file_matches populated.
+  /// @param db Database with ROMs and rom_matches populated.
   /// @param system_id Optional system filter.
   [[nodiscard]] static auto classify_all(
       database::Database& db, std::optional<std::int64_t> system_id = {}) -> Result<void>;

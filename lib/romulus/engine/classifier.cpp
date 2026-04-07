@@ -56,14 +56,17 @@ auto Classifier::classify_all(database::Database& db,
         status = core::RomStatusType::Missing;
         ++missing;
       } else {
-        // Check best match type
+        // Check best match type based on whether we ACTUALLY have the file
         bool has_exact = false;
         bool has_partial = false;
         for (const auto& m : *matches) {
-          if (m.match_type == core::MatchType::Exact) {
-            has_exact = true;
-          } else if (m.match_type != core::MatchType::NoMatch) {
-            has_partial = true;
+          auto has_files = db.has_files_for_global_rom(m.global_rom_sha1);
+          if (has_files && has_files.value()) {
+            if (m.match_type == core::MatchType::Exact) {
+              has_exact = true;
+            } else if (m.match_type != core::MatchType::NoMatch) {
+              has_partial = true;
+            }
           }
         }
 

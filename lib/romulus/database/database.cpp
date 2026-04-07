@@ -9,6 +9,40 @@
 
 namespace romulus::database {
 
+namespace {
+
+auto hex_to_bytes(std::string_view hex) -> std::vector<uint8_t> {
+  std::vector<uint8_t> bytes;
+  if (hex.empty()) return bytes;
+  // Reject odd-length or non-hex input
+  if (hex.length() % 2 != 0) return bytes;
+  bytes.reserve(hex.length() / 2);
+  for (size_t i = 0; i < hex.length(); i += 2) {
+    const char hi = hex[i];
+    const char lo = hex[i + 1];
+    auto is_hex = [](char c) {
+      return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    };
+    if (!is_hex(hi) || !is_hex(lo)) return {};
+    auto byteString = std::string(hex.substr(i, 2));
+    bytes.push_back(static_cast<uint8_t>(strtol(byteString.c_str(), nullptr, 16)));
+  }
+  return bytes;
+}
+
+auto bytes_to_hex(const std::vector<uint8_t>& bytes) -> std::string {
+  static constexpr char hex_chars[] = "0123456789abcdef";
+  std::string hex;
+  hex.reserve(bytes.size() * 2);
+  for (const auto b : bytes) {
+    hex.push_back(hex_chars[b >> 4]);
+    hex.push_back(hex_chars[b & 0x0F]);
+  }
+  return hex;
+}
+
+} // namespace
+
 // ═══════════════════════════════════════════════════════════════
 // PreparedStatement
 // ═══════════════════════════════════════════════════════════════
@@ -40,6 +74,14 @@ void PreparedStatement::bind_int64(int index, std::int64_t value) {
 
 void PreparedStatement::bind_text(int index, std::string_view value) {
   sqlite3_bind_text(stmt_, index, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
+}
+
+void PreparedStatement::bind_blob(int index, const std::vector<uint8_t>& blob) {
+  if (blob.empty()) {
+    sqlite3_bind_null(stmt_, index);
+  } else {
+    sqlite3_bind_blob(stmt_, index, blob.data(), static_cast<int>(blob.size()), SQLITE_TRANSIENT);
+  }
 }
 
 void PreparedStatement::bind_null(int index) {
@@ -84,6 +126,17 @@ auto PreparedStatement::column_optional_text(int index) const -> std::optional<s
     return std::nullopt;
   }
   return column_text(index);
+}
+
+auto PreparedStatement::column_blob(int index) const -> std::vector<uint8_t> {
+  if (sqlite3_column_type(stmt_, index) == SQLITE_NULL) {
+    return {};
+  }
+  const void* blob = sqlite3_column_blob(stmt_, index);
+  int bytes = sqlite3_column_bytes(stmt_, index);
+  if (!blob || bytes == 0) return {};
+  const auto* p = static_cast<const uint8_t*>(blob);
+  return std::vector<uint8_t>(p, p + bytes);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -174,23 +227,31 @@ CREATE TABLE IF NOT EXISTS roms (
     region   TEXT
 );
 
+CREATE TABLE IF NOT EXISTS global_roms (
+    sha1          BLOB PRIMARY KEY,
+    sha256        BLOB,
+    md5           BLOB,
+    crc32         BLOB,
+    size          INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS files (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     filename      TEXT NOT NULL,
     path          TEXT NOT NULL UNIQUE,
     size          INTEGER NOT NULL,
-    crc32         TEXT,
-    md5           TEXT,
-    sha1          TEXT,
-    sha256        TEXT NOT NULL,
+    crc32         BLOB,
+    md5           BLOB,
+    sha1          BLOB REFERENCES global_roms(sha1),
+    sha256        BLOB NOT NULL,
     last_scanned  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS file_matches (
-    file_id     INTEGER NOT NULL REFERENCES files(id),
-    rom_id      INTEGER NOT NULL REFERENCES roms(id),
-    match_type  TEXT NOT NULL,
-    PRIMARY KEY (file_id, rom_id)
+CREATE TABLE IF NOT EXISTS rom_matches (
+    rom_id        INTEGER NOT NULL REFERENCES roms(id),
+    global_rom_sha1 BLOB NOT NULL REFERENCES global_roms(sha1),
+    match_type    TEXT NOT NULL,
+    PRIMARY KEY (rom_id, global_rom_sha1)
 );
 
 CREATE TABLE IF NOT EXISTS rom_status (
@@ -207,6 +268,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_roms_sha256 ON roms(sha256) WHERE sha256 I
 CREATE INDEX IF NOT EXISTS idx_files_sha1 ON files(sha1);
 CREATE INDEX IF NOT EXISTS idx_files_crc32 ON files(crc32);
 CREATE INDEX IF NOT EXISTS idx_files_sha256 ON files(sha256);
+CREATE INDEX IF NOT EXISTS idx_global_roms_sha1 ON global_roms(sha1);
+CREATE INDEX IF NOT EXISTS idx_global_roms_md5 ON global_roms(md5) WHERE md5 IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_rom_status_status ON rom_status(status);
 )SQL";
 
@@ -341,7 +404,9 @@ void Database::run_migrations() {
       std::string err(msg);
       sqlite3_free(msg);
       // SQLite reports "duplicate column name" when a column already exists; treat as no-op.
-      if (err.find("duplicate column name") != std::string::npos) {
+      // "no such table" fires on fresh databases before k_Schema creates them; also no-op.
+      if (err.find("duplicate column name") != std::string::npos ||
+          err.find("no such table") != std::string::npos) {
         return;
       }
       // Duplicate SHA256 values already in DB will block creating the unique index.
@@ -768,6 +833,19 @@ auto Database::get_all_roms_for_system(std::int64_t system_id)
 // ═══════════════════════════════════════════════════════════════
 
 auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
+  // 1. Maintain the Global ROM index dynamically based on files on disk
+  core::GlobalRom gr;
+  gr.size = file.size;
+  gr.crc32 = file.crc32;
+  gr.md5 = file.md5;
+  gr.sha1 = file.sha1;
+  gr.sha256 = file.sha256;
+  auto g_res = upsert_global_rom(gr);
+  if (!g_res) {
+    return std::unexpected(g_res.error());
+  }
+
+  // 2. Upsert the physical file record, linking to the global identity
   auto stmt =
       prepare("INSERT INTO files (filename, path, size, crc32, md5, sha1, sha256, last_scanned) "
               "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now')) "
@@ -782,10 +860,10 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
   stmt->bind_text(1, file.filename);
   stmt->bind_text(2, file.path);
   stmt->bind_int64(3, file.size);
-  stmt->bind_text(4, file.crc32);
-  stmt->bind_text(5, file.md5);
-  stmt->bind_text(6, file.sha1);
-  stmt->bind_text(7, file.sha256);
+  stmt->bind_blob(4, hex_to_bytes(file.crc32));
+  stmt->bind_blob(5, hex_to_bytes(file.md5));
+  stmt->bind_blob(6, hex_to_bytes(file.sha1));
+  stmt->bind_blob(7, hex_to_bytes(file.sha256));
   stmt->execute();
 
   // Get the id (either inserted or updated)
@@ -817,10 +895,10 @@ auto Database::find_file_by_path(std::string_view path) -> Result<std::optional<
       .filename = stmt->column_text(1),
       .path = stmt->column_text(2),
       .size = stmt->column_int64(3),
-      .crc32 = stmt->column_text(4),
-      .md5 = stmt->column_text(5),
-      .sha1 = stmt->column_text(6),
-      .sha256 = stmt->column_text(7),
+      .crc32 = bytes_to_hex(stmt->column_blob(4)),
+      .md5 = bytes_to_hex(stmt->column_blob(5)),
+      .sha1 = bytes_to_hex(stmt->column_blob(6)),
+      .sha256 = bytes_to_hex(stmt->column_blob(7)),
       .last_scanned = stmt->column_text(8),
   };
 }
@@ -839,10 +917,10 @@ auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
         .filename = stmt->column_text(1),
         .path = stmt->column_text(2),
         .size = stmt->column_int64(3),
-        .crc32 = stmt->column_text(4),
-        .md5 = stmt->column_text(5),
-        .sha1 = stmt->column_text(6),
-        .sha256 = stmt->column_text(7),
+        .crc32 = bytes_to_hex(stmt->column_blob(4)),
+        .md5 = bytes_to_hex(stmt->column_blob(5)),
+        .sha1 = bytes_to_hex(stmt->column_blob(6)),
+        .sha256 = bytes_to_hex(stmt->column_blob(7)),
         .last_scanned = stmt->column_text(8),
     });
   }
@@ -862,12 +940,6 @@ auto Database::remove_missing_files(const std::vector<std::string>& existing_pat
     return std::unexpected(del_stmt.error());
   }
 
-  // Also clean up related file_matches
-  auto del_matches = prepare("DELETE FROM file_matches WHERE file_id = ?1");
-  if (!del_matches) {
-    return std::unexpected(del_matches.error());
-  }
-
   std::int64_t removed = 0;
   for (const auto& file : *all_files) {
     bool found = false;
@@ -878,10 +950,6 @@ auto Database::remove_missing_files(const std::vector<std::string>& existing_pat
       }
     }
     if (!found) {
-      del_matches->bind_int64(1, file.id);
-      del_matches->execute();
-      del_matches->reset();
-
       del_stmt->bind_int64(1, file.id);
       del_stmt->execute();
       del_stmt->reset();
@@ -892,46 +960,91 @@ auto Database::remove_missing_files(const std::vector<std::string>& existing_pat
 }
 
 // ═══════════════════════════════════════════════════════════════
-// File Matches CRUD
+// Global ROMs CRUD
 // ═══════════════════════════════════════════════════════════════
 
-auto Database::insert_file_match(const core::MatchResult& match) -> Result<void> {
-  auto stmt = prepare("INSERT OR REPLACE INTO file_matches (file_id, rom_id, match_type) "
+auto Database::upsert_global_rom(const core::GlobalRom& rom) -> Result<void> {
+  auto stmt = prepare("INSERT INTO global_roms (sha256, sha1, md5, crc32, size) "
+                      "VALUES (?1, ?2, ?3, ?4, ?5) "
+                      "ON CONFLICT(sha1) DO UPDATE SET "
+                      "sha256 = COALESCE(NULLIF(excluded.sha256, ''), global_roms.sha256), "
+                      "md5 = COALESCE(NULLIF(excluded.md5, ''), global_roms.md5), "
+                      "crc32 = COALESCE(NULLIF(excluded.crc32, ''), global_roms.crc32)");
+  if (!stmt) return std::unexpected(stmt.error());
+
+  stmt->bind_blob(1, hex_to_bytes(rom.sha256));
+  stmt->bind_blob(2, hex_to_bytes(rom.sha1));
+  stmt->bind_blob(3, hex_to_bytes(rom.md5));
+  stmt->bind_blob(4, hex_to_bytes(rom.crc32));
+  stmt->bind_int64(5, rom.size);
+  stmt->execute();
+
+  return {};
+}
+
+auto Database::find_global_rom_by_sha256(std::string_view sha256) -> Result<std::optional<core::GlobalRom>> {
+  auto stmt = prepare("SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE sha256 = ?1 LIMIT 1");
+  if (!stmt) return std::unexpected(stmt.error());
+  stmt->bind_blob(1, hex_to_bytes(sha256));
+  if (!stmt->step()) return std::nullopt;
+  return core::GlobalRom{.sha1 = bytes_to_hex(stmt->column_blob(1)), .sha256 = bytes_to_hex(stmt->column_blob(0)), .md5 = bytes_to_hex(stmt->column_blob(2)), .crc32 = bytes_to_hex(stmt->column_blob(3)), .size = stmt->column_int64(4)};
+}
+
+auto Database::find_global_rom_by_sha1(std::string_view sha1) -> Result<std::optional<core::GlobalRom>> {
+  auto stmt = prepare("SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE sha1 = ?1 LIMIT 1");
+  if (!stmt) return std::unexpected(stmt.error());
+  stmt->bind_blob(1, hex_to_bytes(sha1));
+  if (!stmt->step()) return std::nullopt;
+  return core::GlobalRom{.sha1 = bytes_to_hex(stmt->column_blob(1)), .sha256 = bytes_to_hex(stmt->column_blob(0)), .md5 = bytes_to_hex(stmt->column_blob(2)), .crc32 = bytes_to_hex(stmt->column_blob(3)), .size = stmt->column_int64(4)};
+}
+
+auto Database::find_global_rom_by_md5(std::string_view md5) -> Result<std::optional<core::GlobalRom>> {
+  auto stmt = prepare("SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE md5 = ?1 LIMIT 1");
+  if (!stmt) return std::unexpected(stmt.error());
+  stmt->bind_blob(1, hex_to_bytes(md5));
+  if (!stmt->step()) return std::nullopt;
+  return core::GlobalRom{.sha1 = bytes_to_hex(stmt->column_blob(1)), .sha256 = bytes_to_hex(stmt->column_blob(0)), .md5 = bytes_to_hex(stmt->column_blob(2)), .crc32 = bytes_to_hex(stmt->column_blob(3)), .size = stmt->column_int64(4)};
+}
+
+auto Database::find_global_rom_by_crc32(std::string_view crc32) -> Result<std::vector<core::GlobalRom>> {
+  auto stmt = prepare("SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE crc32 = ?1");
+  if (!stmt) return std::unexpected(stmt.error());
+  stmt->bind_blob(1, hex_to_bytes(crc32));
+  std::vector<core::GlobalRom> res;
+  while (stmt->step()) {
+    res.push_back(core::GlobalRom{.sha1 = bytes_to_hex(stmt->column_blob(1)), .sha256 = bytes_to_hex(stmt->column_blob(0)), .md5 = bytes_to_hex(stmt->column_blob(2)), .crc32 = bytes_to_hex(stmt->column_blob(3)), .size = stmt->column_int64(4)});
+  }
+  return res;
+}
+
+auto Database::has_files_for_global_rom(std::string_view global_rom_sha1) -> Result<bool> {
+  auto stmt = prepare("SELECT 1 FROM files WHERE sha1 = ?1 LIMIT 1");
+  if (!stmt) return std::unexpected(stmt.error());
+  stmt->bind_blob(1, hex_to_bytes(global_rom_sha1));
+  return stmt->step();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ROM Matches CRUD
+// ═══════════════════════════════════════════════════════════════
+
+auto Database::insert_rom_match(const core::MatchResult& match) -> Result<void> {
+  auto stmt = prepare("INSERT OR REPLACE INTO rom_matches (rom_id, global_rom_sha1, match_type) "
                       "VALUES (?1, ?2, ?3)");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_int64(1, match.file_id);
-  stmt->bind_int64(2, match.rom_id);
+  stmt->bind_int64(1, match.rom_id);
+  stmt->bind_blob(2, hex_to_bytes(match.global_rom_sha1));
   stmt->bind_text(3, match_type_to_string(match.match_type));
   stmt->execute();
 
   return {};
 }
 
-auto Database::get_matches_for_file(std::int64_t file_id)
-    -> Result<std::vector<core::MatchResult>> {
-  auto stmt = prepare("SELECT file_id, rom_id, match_type FROM file_matches WHERE file_id = ?1");
-  if (!stmt) {
-    return std::unexpected(stmt.error());
-  }
-
-  stmt->bind_int64(1, file_id);
-
-  std::vector<core::MatchResult> matches;
-  while (stmt->step()) {
-    matches.push_back({
-        .file_id = stmt->column_int64(0),
-        .rom_id = stmt->column_int64(1),
-        .match_type = string_to_match_type(stmt->column_text(2)),
-    });
-  }
-  return matches;
-}
-
 auto Database::get_matches_for_rom(std::int64_t rom_id) -> Result<std::vector<core::MatchResult>> {
-  auto stmt = prepare("SELECT file_id, rom_id, match_type FROM file_matches WHERE rom_id = ?1");
+  auto stmt = prepare("SELECT rom_id, global_rom_sha1, match_type FROM rom_matches WHERE rom_id = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -941,8 +1054,8 @@ auto Database::get_matches_for_rom(std::int64_t rom_id) -> Result<std::vector<co
   std::vector<core::MatchResult> matches;
   while (stmt->step()) {
     matches.push_back({
-        .file_id = stmt->column_int64(0),
-        .rom_id = stmt->column_int64(1),
+        .rom_id = stmt->column_int64(0),
+        .global_rom_sha1 = bytes_to_hex(stmt->column_blob(1)),
         .match_type = string_to_match_type(stmt->column_text(2)),
     });
   }
@@ -950,7 +1063,7 @@ auto Database::get_matches_for_rom(std::int64_t rom_id) -> Result<std::vector<co
 }
 
 auto Database::clear_matches() -> Result<void> {
-  return execute("DELETE FROM file_matches");
+  return execute("DELETE FROM rom_matches");
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1078,13 +1191,16 @@ auto Database::get_missing_roms(std::optional<std::int64_t> system_id)
 
 auto Database::get_duplicate_files(std::optional<std::int64_t> system_id)
     -> Result<std::vector<core::DuplicateFile>> {
+  // Find files that share the same global ROM identity (sha1) with at least one other file.
+  // A "duplicate" means multiple physical disk files resolve to the same global_rom_sha1.
   std::string sql = "SELECT f.path, r.name, g.name "
-                    "FROM file_matches fm "
-                    "JOIN files f ON fm.file_id = f.id "
-                    "JOIN roms r ON fm.rom_id = r.id "
+                    "FROM files f "
+                    "JOIN global_roms gr ON f.sha1 = gr.sha1 "
+                    "JOIN rom_matches rm ON rm.global_rom_sha1 = gr.sha1 "
+                    "JOIN roms r ON rm.rom_id = r.id "
                     "JOIN games g ON r.game_id = g.id "
-                    "WHERE fm.rom_id IN ("
-                    "  SELECT rom_id FROM file_matches GROUP BY rom_id HAVING COUNT(*) > 1"
+                    "WHERE f.sha1 IN ("
+                    "  SELECT sha1 FROM files GROUP BY sha1 HAVING COUNT(*) > 1"
                     ")";
 
   if (system_id.has_value()) {
@@ -1118,8 +1234,8 @@ auto Database::get_unverified_files(std::optional<std::int64_t> /*system_id*/)
   std::string sql =
       "SELECT f.id, f.filename, f.path, f.size, f.crc32, f.md5, f.sha1, f.sha256, f.last_scanned "
       "FROM files f "
-      "LEFT JOIN file_matches fm ON f.id = fm.file_id "
-      "WHERE fm.file_id IS NULL "
+      "LEFT JOIN rom_matches rm ON f.sha1 = rm.global_rom_sha1 "
+      "WHERE rm.global_rom_sha1 IS NULL "
       "ORDER BY f.path";
 
   auto stmt = prepare(sql);
@@ -1134,10 +1250,10 @@ auto Database::get_unverified_files(std::optional<std::int64_t> /*system_id*/)
         .filename = stmt->column_text(1),
         .path = stmt->column_text(2),
         .size = stmt->column_int64(3),
-        .crc32 = stmt->column_text(4),
-        .md5 = stmt->column_text(5),
-        .sha1 = stmt->column_text(6),
-        .sha256 = stmt->column_text(7),
+        .crc32 = bytes_to_hex(stmt->column_blob(4)),
+        .md5 = bytes_to_hex(stmt->column_blob(5)),
+        .sha1 = bytes_to_hex(stmt->column_blob(6)),
+        .sha256 = bytes_to_hex(stmt->column_blob(7)),
         .last_scanned = stmt->column_text(8),
     });
   }

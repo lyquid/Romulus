@@ -14,109 +14,100 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
     return std::unexpected(clear_result.error());
   }
 
-  auto files = db.get_all_files();
-  if (!files) {
-    return std::unexpected(files.error());
+  auto systems = db.get_all_systems();
+  if (!systems) {
+    return std::unexpected(systems.error());
   }
 
-  ROMULUS_INFO("Matching {} files against ROM database...", files->size());
+  ROMULUS_INFO("Matching ROMs against Global Index (Priority: SHA1 > SHA256 > MD5 > CRC32)...");
 
   std::vector<core::MatchResult> results;
   auto txn = db.begin_transaction();
 
-  for (const auto& file : *files) {
-    core::MatchResult match{.file_id = file.id};
+  for (const auto& sys : *systems) {
+    auto roms = db.get_all_roms_for_system(sys.id);
+    if (!roms) {
+      continue;
+    }
 
-    // Priority 1: SHA256 match (strongest — collision-resistant)
-    if (!file.sha256.empty()) {
-      auto rom = db.find_rom_by_sha256(file.sha256);
-      if (rom && rom->has_value()) {
-        bool sha1_match = file.sha1 == rom->value().sha1;
-        bool md5_match = file.md5 == rom->value().md5;
-        bool crc_match = file.crc32 == rom->value().crc32;
+    for (const auto& rom : *roms) {
+      core::MatchResult match{.rom_id = rom.id, .global_rom_sha1 = "", .match_type = core::MatchType::NoMatch};
 
-        match.rom_id = rom->value().id;
-        if (sha1_match && md5_match && crc_match) {
-          match.match_type = core::MatchType::Exact;
-        } else {
+      // Priority 1: SHA1 match (Standard for No-Intro, Redump, etc.)
+      if (!rom.sha1.empty()) {
+        auto g_rom = db.find_global_rom_by_sha1(rom.sha1);
+        if (g_rom && g_rom->has_value()) {
+          bool md5_match = rom.md5.empty() || g_rom->value().md5.empty() || rom.md5 == g_rom->value().md5;
+          bool crc_match = rom.crc32.empty() || g_rom->value().crc32.empty() || rom.crc32 == g_rom->value().crc32;
+
+          match.global_rom_sha1 = g_rom->value().sha1;
+          if (md5_match && crc_match) {
+            match.match_type = core::MatchType::Exact;
+          } else {
+            match.match_type = core::MatchType::Sha1Only;
+          }
+
+          auto ins = db.insert_rom_match(match);
+          if (!ins) ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
+          results.push_back(match);
+          continue;
+        }
+      }
+
+      // Priority 2: SHA256 match (Optional / fallback if DAT specifically supports it and SHA1 didn't exist or wasn't provided)
+      if (!rom.sha256.empty()) {
+        auto g_rom = db.find_global_rom_by_sha256(rom.sha256);
+        if (g_rom && g_rom->has_value()) {
+          match.global_rom_sha1 = g_rom->value().sha1;
           match.match_type = core::MatchType::Sha256Only;
+          
+          auto ins = db.insert_rom_match(match);
+          if (!ins) ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
+          results.push_back(match);
+          continue;
         }
-
-        auto ins = db.insert_file_match(match);
-        if (!ins) {
-          ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
-        }
-        results.push_back(match);
-        continue;
       }
-    }
 
-    // Priority 2: SHA1 match
-    if (!file.sha1.empty()) {
-      auto rom = db.find_rom_by_sha1(file.sha1);
-      if (rom && rom->has_value()) {
-        // Check if MD5 and CRC32 also match for "exact"
-        bool md5_match = file.md5 == rom->value().md5;
-        bool crc_match = file.crc32 == rom->value().crc32;
+      // Priority 3: MD5 match
+      if (!rom.md5.empty()) {
+        auto g_rom = db.find_global_rom_by_md5(rom.md5);
+        if (g_rom && g_rom->has_value()) {
+          match.global_rom_sha1 = g_rom->value().sha1;
+          match.match_type = core::MatchType::Md5Only;
 
-        match.rom_id = rom->value().id;
-        if (md5_match && crc_match) {
-          match.match_type = core::MatchType::Exact;
-        } else {
-          match.match_type = core::MatchType::Sha1Only;
+          auto ins = db.insert_rom_match(match);
+          if (!ins) ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
+          results.push_back(match);
+          continue;
         }
-
-        auto ins = db.insert_file_match(match);
-        if (!ins) {
-          ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
-        }
-        results.push_back(match);
-        continue;
       }
-    }
 
-    // Priority 3: MD5 match
-    if (!file.md5.empty()) {
-      auto rom = db.find_rom_by_md5(file.md5);
-      if (rom && rom->has_value()) {
-        match.rom_id = rom->value().id;
-        match.match_type = core::MatchType::Md5Only;
+      // Priority 4: CRC32 match (weakest)
+      if (!rom.crc32.empty()) {
+        auto g_roms = db.find_global_rom_by_crc32(rom.crc32);
+        if (g_roms && !g_roms->empty()) {
+          // Take the first match
+          match.global_rom_sha1 = g_roms->front().sha1;
+          match.match_type = core::MatchType::Crc32Only;
 
-        auto ins = db.insert_file_match(match);
-        if (!ins) {
-          ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
+          auto ins = db.insert_rom_match(match);
+          if (!ins) ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
+          results.push_back(match);
+          continue;
         }
-        results.push_back(match);
-        continue;
       }
+
+      // No match
+      match.match_type = core::MatchType::NoMatch;
+      results.push_back(match);
     }
-
-    // Priority 4: CRC32 match (weakest, may have multiple)
-    if (!file.crc32.empty()) {
-      auto roms = db.find_rom_by_crc32(file.crc32);
-      if (roms && !roms->empty()) {
-        // Take the first CRC32 match
-        match.rom_id = roms->front().id;
-        match.match_type = core::MatchType::Crc32Only;
-
-        auto ins = db.insert_file_match(match);
-        if (!ins) {
-          ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
-        }
-        results.push_back(match);
-        continue;
-      }
-    }
-
-    // No match
-    match.match_type = core::MatchType::NoMatch;
-    results.push_back(match);
   }
 
   txn.commit();
 
-  auto matched = std::ranges::count_if(
-      results, [](const auto& r) { return r.match_type != core::MatchType::NoMatch; });
+  auto matched = std::count_if(results.begin(), results.end(), [](const auto& r) {
+    return r.match_type != core::MatchType::NoMatch;
+  });
 
   ROMULUS_INFO("Matching complete: {} matched, {} unmatched",
                matched,

@@ -129,6 +129,17 @@ struct DatFile {
   std::vector<GameInfo> games;
 };
 
+// ── Global ROM ───────────────────────────────────────────────
+
+/// A deduplicated global hash index representing unique files.
+struct GlobalRom {
+  std::string sha1; // 40-char hex string, stored as BLOB(20) in DB
+  std::string sha256;
+  std::string md5;
+  std::string crc32;
+  std::int64_t size = 0;
+};
+
 // ── Scanned File ─────────────────────────────────────────────
 
 /// A file discovered during filesystem scanning.
@@ -139,7 +150,7 @@ struct FileInfo {
   std::int64_t size = 0;
   std::string crc32;
   std::string md5;
-  std::string sha1;
+  std::string sha1;     ///< Primary anchor linking to global_roms.sha1
   std::string sha256;
   std::string last_scanned;
   bool is_archive_entry = false; ///< True if this file is inside an archive
@@ -160,8 +171,8 @@ enum class MatchType {
 
 /// Result of matching a scanned file against the ROM database.
 struct MatchResult {
-  std::int64_t file_id = 0;
   std::int64_t rom_id = 0;
+  std::string global_rom_sha1;
   MatchType match_type = MatchType::NoMatch;
 };
 

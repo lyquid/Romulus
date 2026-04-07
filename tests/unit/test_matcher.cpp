@@ -41,13 +41,13 @@ protected:
                                  .roms = {}};
     auto game_id = db_->insert_game(game);
 
-    // ROM 1: SHA1/MD5/CRC32 known but no SHA256 in DAT
+    // ROM 1: SHA1/MD5/CRC32 known but no SHA256 in DAT — all valid hex
     romulus::core::RomInfo rom{.game_id = *game_id,
                                .name = "test.bin",
                                .size = 100,
                                .crc32 = "aabb0011",
-                               .md5 = "md5hash",
-                               .sha1 = "sha1hash",
+                               .md5 = "aabb0011aabb0011aabb0011aabb0011",
+                               .sha1 = "aabb0011aabb0011aabb0011aabb0011aabb0011",
                                .sha256 = {},
                                .region = {}};
     ASSERT_TRUE(db_->insert_rom(rom).has_value());
@@ -57,46 +57,57 @@ protected:
                                         .name = "with_sha256.bin",
                                         .size = 200,
                                         .crc32 = "ccdd0022",
-                                        .md5 = "md5_b",
-                                        .sha1 = "sha1_b",
-                                        .sha256 = "sha256_b",
+                                        .md5 = "ccdd0022ccdd0022ccdd0022ccdd0022",
+                                        .sha1 = "ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022",
+                                        .sha256 = "ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022",
                                         .region = {}};
     auto rom_enriched_id = db_->insert_rom(rom_enriched);
     ASSERT_TRUE(rom_enriched_id.has_value());
     rom_enriched_id_ = *rom_enriched_id;
+
+    // ROM 3: missing completely — no matching file will exist
+    romulus::core::RomInfo rom_missing{.game_id = *game_id,
+                                       .name = "missing.bin",
+                                       .size = 300,
+                                       .crc32 = "dead0033",
+                                       .md5 = "dead0033dead0033dead0033dead0033",
+                                       .sha1 = "dead0033dead0033dead0033dead0033dead0033",
+                                       .sha256 = {},
+                                       .region = {}};
+    ASSERT_TRUE(db_->insert_rom(rom_missing).has_value());
 
     // File 1: exact match against ROM 1 via SHA1+MD5+CRC32
     romulus::core::FileInfo file{.filename = "test.bin",
                                  .path = "/roms/test.bin",
                                  .size = 100,
                                  .crc32 = "aabb0011",
-                                 .md5 = "md5hash",
-                                 .sha1 = "sha1hash",
-                                 .sha256 = "sha256hash",
+                                 .md5 = "aabb0011aabb0011aabb0011aabb0011",
+                                 .sha1 = "aabb0011aabb0011aabb0011aabb0011aabb0011",
+                                 .sha256 = "aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011",
                                  .last_scanned = {}};
     ASSERT_TRUE(db_->upsert_file(file).has_value());
 
-    // File 2: matches ROM 2 via SHA256 but lower hashes differ → Sha256Only
+    // File 2: matches ROM 2 only via SHA256 — lower hashes differ
     romulus::core::FileInfo file_sha256_only{.filename = "sha256_only.bin",
                                              .path = "/roms/sha256_only.bin",
                                              .size = 200,
-                                             .crc32 = "different_crc",
-                                             .md5 = "different_md5",
-                                             .sha1 = "different_sha1",
-                                             .sha256 = "sha256_b",
+                                             .crc32 = "ff110044",
+                                             .md5 = "ff110044ff110044ff110044ff110044",
+                                             .sha1 = "ff110044ff110044ff110044ff110044ff110044",
+                                             .sha256 = "ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022",
                                              .last_scanned = {}};
     auto sha256_only_id = db_->upsert_file(file_sha256_only);
     ASSERT_TRUE(sha256_only_id.has_value());
     sha256_only_file_id_ = *sha256_only_id;
 
-    // File 3: no match
+    // File 3: no match at all
     romulus::core::FileInfo other{.filename = "unknown.bin",
                                   .path = "/roms/unknown.bin",
                                   .size = 200,
                                   .crc32 = "00000000",
-                                  .md5 = "nomatch",
-                                  .sha1 = "nomatch",
-                                  .sha256 = "sha256nomatch",
+                                  .md5 = "00000000000000000000000000000000",
+                                  .sha1 = "0000000000000000000000000000000000000000",
+                                  .sha256 = "0000000000000000000000000000000000000000000000000000000000000000",
                                   .last_scanned = {}};
     ASSERT_TRUE(db_->upsert_file(other).has_value());
   }
@@ -120,7 +131,7 @@ TEST_F(MatcherTest, MatchesExactByAllHashes) {
   EXPECT_TRUE(found_exact);
 }
 
-TEST_F(MatcherTest, ReportsNoMatchForUnknownFile) {
+TEST_F(MatcherTest, ReportsNoMatchForUnknownRom) {
   auto results = romulus::engine::Matcher::match_all(*db_);
   ASSERT_TRUE(results.has_value());
 
@@ -148,7 +159,10 @@ TEST_F(MatcherTest, MatchesSha256OnlyWhenLowerHashesDiffer) {
 
   ASSERT_NE(sha256_match, nullptr) << "Expected a Sha256Only match result";
   // The matched file should be the sha256_only.bin file and point to rom_enriched
-  EXPECT_EQ(sha256_match->file_id, sha256_only_file_id_);
+  auto file_info = db_->find_file_by_path("/roms/sha256_only.bin");
+  ASSERT_TRUE(file_info.has_value());
+  ASSERT_TRUE(file_info->has_value());
+  EXPECT_EQ(sha256_match->global_rom_sha1, file_info->value().sha1);
   EXPECT_EQ(sha256_match->rom_id, rom_enriched_id_);
 }
 

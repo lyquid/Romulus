@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
   std::string report_type = "summary";
   std::string report_format = "text";
   std::string report_system;
-  cmd_report->add_option("type", report_type, "Report type (summary/missing)")
+  cmd_report->add_option("type", report_type, "Report type (summary/missing/duplicates/unverified)")
       ->default_str("summary");
   cmd_report->add_option("--format,-f", report_format, "Output format (text/csv/json)")
       ->default_str("text");
@@ -246,6 +246,10 @@ int main(int argc, char** argv) {
       auto type = romulus::core::ReportType::Summary;
       if (report_type == "missing") {
         type = romulus::core::ReportType::Missing;
+      } else if (report_type == "duplicates") {
+        type = romulus::core::ReportType::Duplicates;
+      } else if (report_type == "unverified") {
+        type = romulus::core::ReportType::Unverified;
       }
 
       auto fmt = romulus::core::ReportFormat::Text;

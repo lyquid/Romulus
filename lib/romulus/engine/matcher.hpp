@@ -22,7 +22,7 @@ class Matcher final {
 public:
   /// Matches all scanned files in the DB against all known ROMs.
   /// @param db Database containing files and ROMs.
-  /// @return Vector of match results stored in file_matches table.
+  /// @return Vector of match results stored in rom_matches table.
   [[nodiscard]] static auto match_all(database::Database& db)
       -> Result<std::vector<core::MatchResult>>;
 };

@@ -41,6 +41,7 @@ public:
 
   void bind_int64(int index, std::int64_t value);
   void bind_text(int index, std::string_view value);
+  void bind_blob(int index, const std::vector<uint8_t>& blob);
   void bind_null(int index);
 
   /// Steps the statement. Returns true if a row is available (SQLITE_ROW).
@@ -55,6 +56,7 @@ public:
   [[nodiscard]] auto column_int64(int index) const -> std::int64_t;
   [[nodiscard]] auto column_text(int index) const -> std::string;
   [[nodiscard]] auto column_optional_text(int index) const -> std::optional<std::string>;
+  [[nodiscard]] auto column_blob(int index) const -> std::vector<uint8_t>;
 
 private:
   sqlite3_stmt* stmt_ = nullptr;
@@ -144,11 +146,22 @@ public:
   [[nodiscard]] auto remove_missing_files(const std::vector<std::string>& existing_paths)
       -> Result<std::int64_t>;
 
-  // ── File Matches ─────────────────────────────────────────
+  // ── Global ROMs ──────────────────────────────────────────
 
-  [[nodiscard]] auto insert_file_match(const core::MatchResult& match) -> Result<void>;
-  [[nodiscard]] auto get_matches_for_file(std::int64_t file_id)
-      -> Result<std::vector<core::MatchResult>>;
+  [[nodiscard]] auto upsert_global_rom(const core::GlobalRom& rom) -> Result<void>;
+  [[nodiscard]] auto find_global_rom_by_sha256(std::string_view sha256)
+      -> Result<std::optional<core::GlobalRom>>;
+  [[nodiscard]] auto find_global_rom_by_sha1(std::string_view sha1)
+      -> Result<std::optional<core::GlobalRom>>;
+  [[nodiscard]] auto find_global_rom_by_md5(std::string_view md5)
+      -> Result<std::optional<core::GlobalRom>>;
+  [[nodiscard]] auto find_global_rom_by_crc32(std::string_view crc32)
+      -> Result<std::vector<core::GlobalRom>>;
+  [[nodiscard]] auto has_files_for_global_rom(std::string_view global_rom_sha1) -> Result<bool>;
+
+  // ── ROM Matches ──────────────────────────────────────────
+
+  [[nodiscard]] auto insert_rom_match(const core::MatchResult& match) -> Result<void>;
   [[nodiscard]] auto get_matches_for_rom(std::int64_t rom_id)
       -> Result<std::vector<core::MatchResult>>;
   [[nodiscard]] auto clear_matches() -> Result<void>;

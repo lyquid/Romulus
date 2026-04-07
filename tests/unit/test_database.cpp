@@ -125,7 +125,7 @@ TEST_F(DatabaseTest, UpsertFileUpdatesExisting) {
   auto id1 = db_->upsert_file(file);
   ASSERT_TRUE(id1.has_value());
 
-  file.crc32 = "updated!";
+  file.crc32 = "deadbeef";
   auto id2 = db_->upsert_file(file);
   ASSERT_TRUE(id2.has_value());
   EXPECT_EQ(*id1, *id2);
@@ -133,7 +133,7 @@ TEST_F(DatabaseTest, UpsertFileUpdatesExisting) {
   auto found = db_->find_file_by_path("/roms/test.bin");
   ASSERT_TRUE(found.has_value());
   ASSERT_TRUE(found->has_value());
-  EXPECT_EQ(found->value().crc32, "updated!");
+  EXPECT_EQ(found->value().crc32, "deadbeef");
 }
 
 TEST_F(DatabaseTest, TransactionRollsBackOnScopeExit) {
@@ -158,6 +158,66 @@ TEST_F(DatabaseTest, TransactionCommits) {
   auto found = db_->find_system_by_name("Should Persist");
   ASSERT_TRUE(found.has_value());
   EXPECT_TRUE(found->has_value());
+}
+
+TEST_F(DatabaseTest, FindsDuplicateFiles) {
+  // Set up system/dat/game/rom
+  auto sys_id = db_->get_or_create_system("Dup System");
+  ASSERT_TRUE(sys_id.has_value());
+  romulus::core::DatVersion dat{.system_id = *sys_id, .name = "Dup", .version = "1.0",
+                                .source_url = {}, .checksum = "abc", .imported_at = {}};
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+  romulus::core::GameInfo game{.name = "Dup Game", .description = {},
+                               .system_id = *sys_id, .dat_version_id = *dat_id, .roms = {}};
+  auto game_id = db_->insert_game(game);
+  ASSERT_TRUE(game_id.has_value());
+
+  // ROM with sha1 "aa..."
+  romulus::core::RomInfo rom{.game_id = *game_id, .name = "dup.bin", .size = 100,
+      .crc32 = "aaaaaaaa", .md5 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      .sha1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", .sha256 = {}, .region = {}};
+  auto rom_id = db_->insert_rom(rom);
+  ASSERT_TRUE(rom_id.has_value());
+
+  // Two files with identical sha1 → duplicates
+  romulus::core::FileInfo file1{.filename = "copy1.bin", .path = "/roms/copy1.bin", .size = 100,
+      .crc32 = "aaaaaaaa", .md5 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      .sha1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      .sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      .last_scanned = {}};
+  romulus::core::FileInfo file2{.filename = "copy2.bin", .path = "/roms/copy2.bin", .size = 100,
+      .crc32 = "aaaaaaaa", .md5 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      .sha1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      .sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      .last_scanned = {}};
+  ASSERT_TRUE(db_->upsert_file(file1).has_value());
+  ASSERT_TRUE(db_->upsert_file(file2).has_value());
+
+  // Insert a rom_match so the join can resolve
+  romulus::core::MatchResult match{.rom_id = *rom_id,
+      .global_rom_sha1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      .match_type = romulus::core::MatchType::Exact};
+  ASSERT_TRUE(db_->insert_rom_match(match).has_value());
+
+  auto dupes = db_->get_duplicate_files();
+  ASSERT_TRUE(dupes.has_value()) << dupes.error().message;
+  EXPECT_GE(dupes->size(), 2u); // Both files should appear as duplicates
+}
+
+TEST_F(DatabaseTest, FindsUnverifiedFiles) {
+  // A file that has no rom_matches entry at all → unverified
+  romulus::core::FileInfo orphan{.filename = "orphan.bin", .path = "/roms/orphan.bin", .size = 50,
+      .crc32 = "bbbbbbbb", .md5 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      .sha1 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      .sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      .last_scanned = {}};
+  ASSERT_TRUE(db_->upsert_file(orphan).has_value());
+
+  auto unverified = db_->get_unverified_files();
+  ASSERT_TRUE(unverified.has_value()) << unverified.error().message;
+  EXPECT_EQ(unverified->size(), 1u);
+  EXPECT_EQ(unverified->front().path, "/roms/orphan.bin");
 }
 
 } // namespace

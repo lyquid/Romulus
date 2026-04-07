@@ -6,6 +6,7 @@
 #include "romulus/scanner/hash_service.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <mutex>
 #include <ranges>
 #include <sstream>
@@ -124,6 +125,8 @@ auto RomScanner::scan(const std::filesystem::path& directory,
   ROMULUS_INFO("Found {} candidate files", candidates.size());
 
   core::ScanReport report;
+  std::atomic<std::int64_t> files_hashed{0};
+  std::atomic<std::int64_t> files_skipped{0};
   std::mutex db_mutex;
 
   // Phase 2: Expand archives into individual entries
@@ -181,7 +184,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
       std::lock_guard lock(db_mutex);
       auto existing = db.find_file_by_path(job.virtual_path);
       if (existing && existing->has_value()) {
-        ++report.files_skipped;
+        ++files_skipped;
         return;
       }
     }
@@ -221,7 +224,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
       }
     }
 
-    ++report.files_hashed;
+    ++files_hashed;
   };
 
   // Simple thread pool using jthread
@@ -244,6 +247,8 @@ auto RomScanner::scan(const std::filesystem::path& directory,
   threads.clear();
 
   report.files_scanned = static_cast<std::int64_t>(jobs.size());
+  report.files_hashed = files_hashed.load();
+  report.files_skipped = files_skipped.load();
 
   ROMULUS_INFO("Scan complete: {} files, {} hashed, {} skipped, {} archives",
                report.files_scanned,
