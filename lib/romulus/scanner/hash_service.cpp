@@ -6,10 +6,9 @@
 #include <openssl/evp.h>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
-#include <iomanip>
-#include <sstream>
 
 namespace romulus::scanner {
 
@@ -99,23 +98,22 @@ struct HashContext {
     EVP_DigestFinal_ex(sha1_ctx.get(), sha1_hash.data(), &sha1_len);
     EVP_DigestFinal_ex(sha256_ctx.get(), sha256_hash.data(), &sha256_len);
 
-    auto to_hex = [](const unsigned char* data, unsigned int len) {
-      std::ostringstream hex;
-      for (unsigned int i = 0; i < len; ++i) {
-        hex << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(data[i]);
+    auto copy_bytes = [](const unsigned char* src, auto& dst) {
+      for (std::size_t i = 0; i < dst.size(); ++i) {
+        dst[i] = static_cast<std::byte>(src[i]);
       }
-      return hex.str();
     };
 
-    std::ostringstream crc_hex;
-    crc_hex << std::hex << std::setfill('0') << std::setw(8) << crc32;
+    core::HashDigest digest{};
+    digest.crc32[0] = static_cast<std::byte>((crc32 >> 24U) & 0xFFU);
+    digest.crc32[1] = static_cast<std::byte>((crc32 >> 16U) & 0xFFU);
+    digest.crc32[2] = static_cast<std::byte>((crc32 >> 8U) & 0xFFU);
+    digest.crc32[3] = static_cast<std::byte>(crc32 & 0xFFU);
+    copy_bytes(md5_hash.data(), digest.md5);
+    copy_bytes(sha1_hash.data(), digest.sha1);
+    copy_bytes(sha256_hash.data(), digest.sha256);
 
-    return core::HashDigest{
-        .crc32 = crc_hex.str(),
-        .md5 = to_hex(md5_hash.data(), md5_len),
-        .sha1 = to_hex(sha1_hash.data(), sha1_len),
-        .sha256 = to_hex(sha256_hash.data(), sha256_len),
-    };
+    return digest;
   }
 };
 
@@ -168,10 +166,10 @@ auto HashService::compute_hashes(const std::filesystem::path& file_path)
   }
   ROMULUS_DEBUG("Hashed '{}': CRC32={}, MD5={}, SHA1={}, SHA256={}",
                 file_path.string(),
-                result->crc32,
-                result->md5,
-                result->sha1,
-                result->sha256);
+                result->to_hex_crc32(),
+                result->to_hex_md5(),
+                result->to_hex_sha1(),
+                result->to_hex_sha256());
   return result;
 }
 
@@ -188,10 +186,10 @@ auto HashService::compute_hashes_archive(const std::filesystem::path& archive_pa
   ROMULUS_DEBUG("Hashed '{}::[{}]': CRC32={}, MD5={}, SHA1={}, SHA256={}",
                 archive_path.string(),
                 entry_index,
-                result->crc32,
-                result->md5,
-                result->sha1,
-                result->sha256);
+                result->to_hex_crc32(),
+                result->to_hex_md5(),
+                result->to_hex_sha1(),
+                result->to_hex_sha256());
   return result;
 }
 

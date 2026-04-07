@@ -3,21 +3,64 @@
 /// @file types.hpp
 /// @brief Shared data structures used across all ROMULUS modules.
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace romulus::core {
 
 // ── Hash Digest ──────────────────────────────────────────────
 
+namespace detail {
+
+/// Converts a fixed-size byte array to a lowercase hex string.
+template <std::size_t N>
+[[nodiscard]] inline auto bytes_to_hex(const std::array<std::byte, N>& bytes) -> std::string {
+  static constexpr std::string_view k_Hex = "0123456789abcdef";
+  std::string result;
+  result.reserve(N * 2);
+  for (const auto b : bytes) {
+    const auto v = std::to_integer<std::uint8_t>(b);
+    result += k_Hex[v >> 4U];
+    result += k_Hex[v & 0xFU];
+  }
+  return result;
+}
+
+} // namespace detail
+
 /// CRC32 + MD5 + SHA1 + SHA256 hash set computed from a ROM file.
+/// Fields store raw bytes for efficient comparison and compact storage.
+/// Use the to_hex_*() accessors to obtain display-ready lowercase hex strings.
 struct HashDigest {
-  std::string crc32;
-  std::string md5;
-  std::string sha1;
-  std::string sha256;
+  std::array<std::byte, 4> crc32;   ///< 4-byte CRC32 (big-endian)
+  std::array<std::byte, 16> md5;    ///< 16-byte MD5 digest
+  std::array<std::byte, 20> sha1;   ///< 20-byte SHA-1 digest
+  std::array<std::byte, 32> sha256; ///< 32-byte SHA-256 digest
+
+  /// Returns the CRC32 as a zero-padded 8-character lowercase hex string.
+  [[nodiscard]] auto to_hex_crc32() const -> std::string {
+    return detail::bytes_to_hex(crc32);
+  }
+
+  /// Returns the MD5 as a 32-character lowercase hex string.
+  [[nodiscard]] auto to_hex_md5() const -> std::string {
+    return detail::bytes_to_hex(md5);
+  }
+
+  /// Returns the SHA-1 as a 40-character lowercase hex string.
+  [[nodiscard]] auto to_hex_sha1() const -> std::string {
+    return detail::bytes_to_hex(sha1);
+  }
+
+  /// Returns the SHA-256 as a 64-character lowercase hex string.
+  [[nodiscard]] auto to_hex_sha256() const -> std::string {
+    return detail::bytes_to_hex(sha256);
+  }
 };
 
 // ── System ───────────────────────────────────────────────────

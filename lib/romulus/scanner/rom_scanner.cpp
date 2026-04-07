@@ -201,15 +201,15 @@ auto RomScanner::scan(const std::filesystem::path& directory,
         .filename = job.is_archive_entry ? job.entry_name : job.real_path.filename().string(),
         .path = job.virtual_path,
         .size = job.size,
-        .crc32 = digest->crc32,
-        .md5 = digest->md5,
-        .sha1 = digest->sha1,
-        .sha256 = digest->sha256,
+        .crc32 = digest->to_hex_crc32(),
+        .md5 = digest->to_hex_md5(),
+        .sha1 = digest->to_hex_sha1(),
+        .sha256 = digest->to_hex_sha256(),
         .last_scanned = {},
         .is_archive_entry = job.is_archive_entry,
     };
 
-    ROMULUS_DEBUG("Hashed '{}': SHA256={}", job.virtual_path, digest->sha256);
+    ROMULUS_DEBUG("Hashed '{}': SHA256={}", job.virtual_path, digest->to_hex_sha256());
 
     {
       std::lock_guard lock(db_mutex);
