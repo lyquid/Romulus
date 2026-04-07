@@ -1385,7 +1385,8 @@ auto Database::add_scanned_directory(std::string_view path) -> Result<core::Scan
   }
   stmt->bind_text(1, path);
   if (!stmt->step()) {
-    return std::unexpected(Error{"Failed to insert scanned directory"});
+    return std::unexpected(
+        core::Error{core::ErrorCode::DatabaseQueryError, "Failed to insert scanned directory"});
   }
   return core::ScannedDirectory{
       .id = stmt->column_int64(0),
