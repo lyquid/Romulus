@@ -5,6 +5,7 @@
 
 #include <openssl/evp.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -99,9 +100,9 @@ struct HashContext {
     EVP_DigestFinal_ex(sha256_ctx.get(), sha256_hash.data(), &sha256_len);
 
     auto copy_bytes = [](const unsigned char* src, auto& dst) {
-      for (std::size_t i = 0; i < dst.size(); ++i) {
-        dst[i] = static_cast<std::byte>(src[i]);
-      }
+      std::ranges::transform(src, src + dst.size(), dst.begin(), [](unsigned char c) {
+        return static_cast<std::byte>(c);
+      });
     };
 
     core::HashDigest digest{};
