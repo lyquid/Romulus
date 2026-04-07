@@ -85,7 +85,7 @@ struct HashContext {
     EVP_DigestUpdate(sha256_ctx.get(), data, size);
   }
 
-  auto finalize() -> core::HashDigest {
+  auto finalize() -> core::Result<core::HashDigest> {
     crc32 ^= 0xFFFFFFFFU;
 
     std::array<unsigned char, EVP_MAX_MD_SIZE> md5_hash{};
@@ -95,9 +95,16 @@ struct HashContext {
     unsigned int sha1_len = 0;
     unsigned int sha256_len = 0;
 
-    EVP_DigestFinal_ex(md5_ctx.get(), md5_hash.data(), &md5_len);
-    EVP_DigestFinal_ex(sha1_ctx.get(), sha1_hash.data(), &sha1_len);
-    EVP_DigestFinal_ex(sha256_ctx.get(), sha256_hash.data(), &sha256_len);
+    if (EVP_DigestFinal_ex(md5_ctx.get(), md5_hash.data(), &md5_len) != 1 ||
+        EVP_DigestFinal_ex(sha1_ctx.get(), sha1_hash.data(), &sha1_len) != 1 ||
+        EVP_DigestFinal_ex(sha256_ctx.get(), sha256_hash.data(), &sha256_len) != 1) {
+      return std::unexpected(
+          core::Error{core::ErrorCode::HashComputeError, "EVP_DigestFinal_ex failed"});
+    }
+    if (md5_len != 16u || sha1_len != 20u || sha256_len != 32u) {
+      return std::unexpected(
+          core::Error{core::ErrorCode::HashComputeError, "Unexpected digest length from OpenSSL"});
+    }
 
     auto copy_bytes = [](const unsigned char* src, auto& dst) {
       std::ranges::transform(src, src + dst.size(), dst.begin(), [](unsigned char c) {

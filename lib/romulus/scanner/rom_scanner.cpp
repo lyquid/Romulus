@@ -197,6 +197,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
     }
 
     // Store in DB
+    const auto sha256_hex = digest->to_hex_sha256();
     core::FileInfo file_info{
         .filename = job.is_archive_entry ? job.entry_name : job.real_path.filename().string(),
         .path = job.virtual_path,
@@ -204,12 +205,12 @@ auto RomScanner::scan(const std::filesystem::path& directory,
         .crc32 = digest->to_hex_crc32(),
         .md5 = digest->to_hex_md5(),
         .sha1 = digest->to_hex_sha1(),
-        .sha256 = digest->to_hex_sha256(),
+        .sha256 = sha256_hex,
         .last_scanned = {},
         .is_archive_entry = job.is_archive_entry,
     };
 
-    ROMULUS_DEBUG("Hashed '{}': SHA256={}", job.virtual_path, digest->to_hex_sha256());
+    ROMULUS_DEBUG("Hashed '{}': SHA256={}", job.virtual_path, sha256_hex);
 
     {
       std::lock_guard lock(db_mutex);
