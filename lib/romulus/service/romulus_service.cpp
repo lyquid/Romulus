@@ -192,6 +192,32 @@ auto RomulusService::list_systems() -> Result<std::vector<core::SystemInfo>> {
   return db_->get_all_systems();
 }
 
+auto RomulusService::list_dat_versions() -> Result<std::vector<core::DatVersion>> {
+  return db_->get_all_dat_versions();
+}
+
+auto RomulusService::get_roms_with_status(std::int64_t dat_version_id)
+    -> Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>> {
+  auto roms = db_->get_roms_for_dat_version(dat_version_id);
+  if (!roms) {
+    return std::unexpected(roms.error());
+  }
+
+  std::vector<std::pair<core::RomInfo, core::RomStatusType>> result;
+  result.reserve(roms->size());
+
+  for (auto& rom : *roms) {
+    auto status = db_->get_rom_status(rom.id);
+    core::RomStatusType st = core::RomStatusType::Missing;
+    if (status && status->has_value()) {
+      st = status->value().status;
+    }
+    result.emplace_back(std::move(rom), st);
+  }
+
+  return result;
+}
+
 auto RomulusService::get_missing_roms(std::optional<std::string> system)
     -> Result<std::vector<core::MissingRom>> {
   auto sys_id = resolve_system_id(system);

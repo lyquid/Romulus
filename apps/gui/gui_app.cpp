@@ -35,20 +35,23 @@ constexpr int k_WindowWidth = 1280;
 constexpr int k_WindowHeight = 720;
 constexpr auto* k_WindowTitle = "ROMULUS — ROM Collection Verifier";
 constexpr auto* k_GlslVersion = "#version 130";
-constexpr std::size_t k_PathBufferSize = 512;
 constexpr float k_ToastDuration = 2.5F;
 constexpr float k_ToastWidth = 310.0F;
 constexpr float k_ToastHeight = 36.0F;
 constexpr float k_ToastMarginRight = 10.0F;
 constexpr float k_ToastMarginBottom = 50.0F;
 
-// Files table column indices
-constexpr int k_ColFilename = 0;
-constexpr int k_ColSize = 1;
-constexpr int k_ColCrc32 = 2;
-constexpr int k_ColMd5 = 3;
-constexpr int k_ColSha1 = 4;
-constexpr int k_ColSha256 = 5;
+// ROM checklist column indices
+constexpr int k_ColStatus = 0;
+constexpr int k_ColRomName = 1;
+constexpr int k_ColSize = 2;
+constexpr int k_ColCrc32 = 3;
+
+// Status colours
+constexpr ImVec4 k_ColorVerified{0.2F, 0.9F, 0.3F, 1.0F};   // green
+constexpr ImVec4 k_ColorMissing{1.0F, 0.3F, 0.3F, 1.0F};    // red
+constexpr ImVec4 k_ColorUnverified{1.0F, 0.9F, 0.2F, 1.0F};  // yellow
+constexpr ImVec4 k_ColorMismatch{1.0F, 0.5F, 0.0F, 1.0F};    // orange
 
 // Log panel colour scheme (RGBA)
 constexpr ImVec4 k_ColorLogWarn{1.0F, 0.75F, 0.1F, 1.0F};   // amber  — warnings
@@ -82,6 +85,48 @@ auto format_size(std::int64_t bytes) -> std::string {
   return buf;
 }
 
+auto status_label(core::RomStatusType status) -> const char* {
+  switch (status) {
+    case core::RomStatusType::Verified:
+      return "  Available";
+    case core::RomStatusType::Missing:
+      return "  Missing";
+    case core::RomStatusType::Unverified:
+      return "? Unverified";
+    case core::RomStatusType::Mismatch:
+      return "! Mismatch";
+  }
+  return "? Unknown";
+}
+
+auto status_color(core::RomStatusType status) -> ImVec4 {
+  switch (status) {
+    case core::RomStatusType::Verified:
+      return k_ColorVerified;
+    case core::RomStatusType::Missing:
+      return k_ColorMissing;
+    case core::RomStatusType::Unverified:
+      return k_ColorUnverified;
+    case core::RomStatusType::Mismatch:
+      return k_ColorMismatch;
+  }
+  return k_ColorMissing;
+}
+
+auto status_sort_order(core::RomStatusType status) -> int {
+  switch (status) {
+    case core::RomStatusType::Missing:
+      return 0;
+    case core::RomStatusType::Mismatch:
+      return 1;
+    case core::RomStatusType::Unverified:
+      return 2;
+    case core::RomStatusType::Verified:
+      return 3;
+  }
+  return 4;
+}
+
 } // namespace
 
 // ═════════════════════════════════════════════════════════════════
@@ -90,16 +135,11 @@ auto format_size(std::int64_t bytes) -> std::string {
 
 GuiApp::GuiApp(service::RomulusService& svc, std::shared_ptr<GuiLogSink> log_sink)
     : svc_(svc), log_sink_(std::move(log_sink)) {
-  dat_path_buf_.resize(k_PathBufferSize, '\0');
-  scan_dir_buf_.resize(k_PathBufferSize, '\0');
-
   init_glfw();
   init_imgui();
 
   status_message_ = "Ready.";
-  refresh_files();
-  refresh_systems();
-  refresh_summary();
+  refresh_dat_versions();
 }
 
 GuiApp::~GuiApp() {
@@ -190,22 +230,9 @@ void GuiApp::run() {
     render_actions_panel();
 
     ImGui::Separator();
-    render_summary_panel();
-
-    ImGui::Separator();
     if (ImGui::BeginTabBar("##main_tabs")) {
-      if (ImGui::BeginTabItem("Local ROMs")) {
-        if (ImGui::IsItemActivated() && !is_busy()) {
-          refresh_files();
-        }
-        render_files_panel();
-        ImGui::EndTabItem();
-      }
-      if (ImGui::BeginTabItem("Systems")) {
-        if (ImGui::IsItemActivated() && !is_busy()) {
-          refresh_systems();
-        }
-        render_systems_panel();
+      if (ImGui::BeginTabItem("ROM Checklist")) {
+        render_rom_checklist_panel();
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem("Log")) {
@@ -277,197 +304,176 @@ void GuiApp::render_main_menu_bar() {
 void GuiApp::render_actions_panel() {
   const bool busy = is_busy();
 
-  // ── DAT Import ──
-  ImGui::Text("DAT Import");
-  ImGui::PushItemWidth(-230);
-  ImGui::InputText("##dat_path", dat_path_buf_.data(), dat_path_buf_.size());
-  ImGui::PopItemWidth();
-  ImGui::SameLine();
-  if (ImGui::Button("Browse##dat")) {
-    auto path = open_file_dialog();
-    if (!path.empty()) {
-      dat_path_buf_.assign(k_PathBufferSize, '\0');
-      std::copy_n(path.begin(), std::min(path.size(), k_PathBufferSize - 1), dat_path_buf_.begin());
-    }
-  }
-  ImGui::SameLine();
+  // ── DAT Management ──
+  ImGui::Text("DAT File");
+
+  // Import DAT button
   ImGui::BeginDisabled(busy);
   if (ImGui::Button("Import DAT")) {
     action_import_dat();
   }
   ImGui::EndDisabled();
 
+  ImGui::SameLine();
+
+  // DAT Selector Dropdown
+  {
+    // Build combo preview string
+    std::string preview = "(No DAT selected)";
+    if (selected_dat_index_ >= 0 &&
+        selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
+      const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
+      preview = dv.name + " v" + dv.version;
+    }
+
+    ImGui::PushItemWidth(-260);
+    if (ImGui::BeginCombo("##dat_combo", preview.c_str())) {
+      for (int i = 0; i < static_cast<int>(dat_versions_.size()); ++i) {
+        const auto& dv = dat_versions_[static_cast<std::size_t>(i)];
+        std::string label = dv.name + " v" + dv.version;
+        if (!dv.imported_at.empty()) {
+          label += "  (" + dv.imported_at + ")";
+        }
+
+        bool is_selected = (selected_dat_index_ == i);
+        if (ImGui::Selectable(label.c_str(), is_selected)) {
+          selected_dat_index_ = i;
+          rom_checklist_.clear(); // Clear stale checklist when switching DAT
+        }
+        if (is_selected) {
+          ImGui::SetItemDefaultFocus();
+        }
+      }
+      ImGui::EndCombo();
+    }
+    ImGui::PopItemWidth();
+  }
+
+  ImGui::SameLine();
+
+  // Check DAT button
+  ImGui::BeginDisabled(busy || selected_dat_index_ < 0);
+  if (ImGui::Button("Check DAT")) {
+    action_check_dat();
+  }
+  ImGui::EndDisabled();
+
+  // ── Active DAT indicator ──
+  if (selected_dat_index_ >= 0 &&
+      selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
+    const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.4F, 0.7F, 1.0F, 1.0F), "[Active: %s v%s]",
+                       dv.name.c_str(), dv.version.c_str());
+  }
+
   // ── ROM Directory ──
   ImGui::Spacing();
   ImGui::Text("ROM Directory");
-  ImGui::PushItemWidth(-230);
-  ImGui::InputText("##scan_dir", scan_dir_buf_.data(), scan_dir_buf_.size());
-  ImGui::PopItemWidth();
-  ImGui::SameLine();
-  if (ImGui::Button("Browse##dir")) {
-    auto path = open_folder_dialog();
-    if (!path.empty()) {
-      scan_dir_buf_.assign(k_PathBufferSize, '\0');
-      std::copy_n(path.begin(), std::min(path.size(), k_PathBufferSize - 1), scan_dir_buf_.begin());
+
+  ImGui::BeginDisabled(busy);
+  if (ImGui::Button("Add ROM Folder")) {
+    action_add_rom_folder();
+  }
+  ImGui::EndDisabled();
+
+  // Show tracked folders
+  if (!scanned_dirs_.empty()) {
+    ImGui::SameLine();
+    ImGui::BeginDisabled(busy);
+    if (ImGui::Button("Rescan All")) {
+      action_rescan_folders();
+    }
+    ImGui::EndDisabled();
+
+    ImGui::SameLine();
+    ImGui::TextDisabled("(%zu folder%s tracked)",
+                        scanned_dirs_.size(),
+                        scanned_dirs_.size() == 1 ? "" : "s");
+  }
+}
+
+void GuiApp::render_rom_checklist_panel() {
+  if (rom_checklist_.empty()) {
+    if (selected_dat_index_ < 0) {
+      ImGui::TextDisabled("Select a DAT and click 'Check DAT' to see the ROM checklist.");
+    } else {
+      ImGui::TextDisabled("Click 'Check DAT' to verify and populate the ROM list.");
+    }
+    return;
+  }
+
+  // Summary header
+  std::int64_t total = static_cast<std::int64_t>(rom_checklist_.size());
+  std::int64_t available = 0;
+  for (const auto& entry : rom_checklist_) {
+    if (entry.status == core::RomStatusType::Verified) {
+      ++available;
     }
   }
-  ImGui::SameLine();
-  ImGui::BeginDisabled(busy);
-  if (ImGui::Button("Scan Folder")) {
-    action_scan_folder();
-  }
-  ImGui::EndDisabled();
+  double pct = total > 0 ? static_cast<double>(available) / static_cast<double>(total) * 100.0 : 0.0;
 
-  // ── Actions ──
+  ImGui::TextColored(k_ColorVerified, "%lld", static_cast<long long>(available));
+  ImGui::SameLine();
+  ImGui::Text("/ %lld ROMs available (%.1f%%)", static_cast<long long>(total), pct);
+
+  // Progress bar
+  float progress = total > 0 ? static_cast<float>(available) / static_cast<float>(total) : 0.0F;
+  ImGui::ProgressBar(progress, ImVec2(-1, 4));
   ImGui::Spacing();
-  ImGui::BeginDisabled(busy);
-  if (ImGui::Button("Verify All")) {
-    action_verify();
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("Refresh")) {
-    refresh_files();
-    refresh_systems();
-    refresh_summary();
-    status_message_ = "Data refreshed.";
-  }
-  ImGui::EndDisabled();
-}
 
-void GuiApp::render_summary_panel() {
-  ImGui::Text("Collection Summary");
-  if (has_summary_) {
-    ImGui::Columns(2, "summary_cols", false);
-    ImGui::SetColumnWidth(0, 150);
-
-    ImGui::Text("System:");
-    ImGui::NextColumn();
-    ImGui::Text("%s", summary_.system_name.c_str());
-    ImGui::NextColumn();
-
-    ImGui::Text("Total ROMs:");
-    ImGui::NextColumn();
-    ImGui::Text("%lld", static_cast<long long>(summary_.total_roms));
-    ImGui::NextColumn();
-
-    ImGui::Text("Verified:");
-    ImGui::NextColumn();
-    ImGui::TextColored(ImVec4(0.0F, 1.0F, 0.0F, 1.0F),
-                       "%lld (%.0f%%)",
-                       static_cast<long long>(summary_.verified),
-                       summary_.verified_percent());
-    ImGui::NextColumn();
-
-    ImGui::Text("Missing:");
-    ImGui::NextColumn();
-    ImGui::TextColored(
-        ImVec4(1.0F, 0.5F, 0.0F, 1.0F), "%lld", static_cast<long long>(summary_.missing));
-    ImGui::NextColumn();
-
-    ImGui::Text("Unverified:");
-    ImGui::NextColumn();
-    ImGui::TextColored(
-        ImVec4(1.0F, 1.0F, 0.0F, 1.0F), "%lld", static_cast<long long>(summary_.unverified));
-    ImGui::NextColumn();
-
-    ImGui::Text("Mismatch:");
-    ImGui::NextColumn();
-    ImGui::TextColored(
-        ImVec4(1.0F, 0.0F, 0.0F, 1.0F), "%lld", static_cast<long long>(summary_.mismatch));
-    ImGui::NextColumn();
-
-    ImGui::Columns(1);
-  } else {
-    ImGui::TextDisabled("No data. Import a DAT and scan ROMs to see a summary.");
-  }
-}
-
-void GuiApp::render_files_panel() {
-  ImGui::Text("Local ROMs (%zu)", files_.size());
-
-  constexpr int k_ColumnCount = 6;
-  if (ImGui::BeginTable("files_table",
+  // Table
+  constexpr int k_ColumnCount = 4;
+  if (ImGui::BeginTable("rom_checklist_table",
                         k_ColumnCount,
                         ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                             ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp |
                             ImGuiTableFlags_Sortable,
                         ImVec2(0, -30))) {
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Filename", ImGuiTableColumnFlags_DefaultSort, 3.0F);
+    ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_DefaultSort, 1.5F);
+    ImGui::TableSetupColumn("ROM Name", ImGuiTableColumnFlags_None, 5.0F);
     ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_None, 1.0F);
     ImGui::TableSetupColumn("CRC32", ImGuiTableColumnFlags_None, 1.5F);
-    ImGui::TableSetupColumn("MD5", ImGuiTableColumnFlags_None, 3.0F);
-    ImGui::TableSetupColumn("SHA1", ImGuiTableColumnFlags_None, 3.5F);
-    ImGui::TableSetupColumn("SHA256", ImGuiTableColumnFlags_None, 4.0F);
     ImGui::TableHeadersRow();
 
-    // Apply any pending sort requested by the user clicking a column header.
+    // Apply any pending sort
     if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
       if (sort_specs->SpecsDirty) {
         if (sort_specs->SpecsCount > 0) {
-          sort_col_ = sort_specs->Specs[0].ColumnIndex;
-          sort_ascending_ = (sort_specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
+          checklist_sort_col_ = sort_specs->Specs[0].ColumnIndex;
+          checklist_sort_ascending_ =
+              (sort_specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
         } else {
-          sort_col_ = -1;
+          checklist_sort_col_ = -1;
         }
-        apply_sort();
+        apply_checklist_sort();
         sort_specs->SpecsDirty = false;
       }
     }
 
-    for (std::size_t i = 0; i < files_.size(); ++i) {
-      const auto& file = files_[i];
+    for (std::size_t i = 0; i < rom_checklist_.size(); ++i) {
+      const auto& entry = rom_checklist_[i];
+      ImVec4 color = status_color(entry.status);
+
       ImGui::TableNextRow();
       ImGui::PushID(static_cast<int>(i));
 
-      // Filename
-      ImGui::TableSetColumnIndex(k_ColFilename);
-      ImGui::TextUnformatted(file.filename.c_str());
+      // Status
+      ImGui::TableSetColumnIndex(k_ColStatus);
+      ImGui::TextColored(color, "%s", status_label(entry.status));
 
-      // Size (human-readable)
+      // ROM Name
+      ImGui::TableSetColumnIndex(k_ColRomName);
+      ImGui::TextColored(color, "%s", entry.name.c_str());
+
+      // Size
       ImGui::TableSetColumnIndex(k_ColSize);
-      ImGui::TextUnformatted(format_size(file.size).c_str());
+      ImGui::TextUnformatted(format_size(entry.size).c_str());
 
-      // Hash columns — right-click to copy
-      render_hash_cell(k_ColCrc32, file.crc32, "CRC32");
-      render_hash_cell(k_ColMd5, file.md5, "MD5");
-      render_hash_cell(k_ColSha1, file.sha1, "SHA1");
-      render_hash_cell(k_ColSha256, file.sha256, "SHA256");
-
-      ImGui::PopID();
-    }
-    ImGui::EndTable();
-  }
-}
-
-void GuiApp::render_systems_panel() {
-  ImGui::Text("Systems (%zu)", systems_.size());
-
-  constexpr int k_SystemColumnCount = 3;
-  if (ImGui::BeginTable("systems_table",
-                        k_SystemColumnCount,
-                        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
-                            ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp,
-                        ImVec2(0, -30))) {
-    ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_None, 3.0F);
-    ImGui::TableSetupColumn("Short Name", ImGuiTableColumnFlags_None, 1.0F);
-    ImGui::TableSetupColumn("Extensions", ImGuiTableColumnFlags_None, 2.0F);
-    ImGui::TableHeadersRow();
-
-    for (std::size_t i = 0; i < systems_.size(); ++i) {
-      const auto& sys = systems_[i];
-      ImGui::TableNextRow();
-      ImGui::PushID(static_cast<int>(i));
-
-      ImGui::TableSetColumnIndex(0);
-      ImGui::TextUnformatted(sys.name.c_str());
-
-      ImGui::TableSetColumnIndex(1);
-      ImGui::TextUnformatted(sys.short_name.c_str());
-
-      ImGui::TableSetColumnIndex(2);
-      ImGui::TextUnformatted(sys.extensions.c_str());
+      // CRC32
+      ImGui::TableSetColumnIndex(k_ColCrc32);
+      ImGui::TextUnformatted(entry.crc32.c_str());
 
       ImGui::PopID();
     }
@@ -497,13 +503,10 @@ void GuiApp::render_log_panel() {
                         ImVec2(0, -k_ScrollbarReserve),
                         false,
                         ImGuiWindowFlags_HorizontalScrollbar)) {
-    // Capture the at-bottom state *before* rendering new lines: once new items are
-    // appended the scroll max grows, making GetScrollY() < GetScrollMaxY() even if
-    // the view was pinned to the bottom on the previous frame.
+    // Capture the at-bottom state *before* rendering new lines.
     const bool was_at_bottom = ImGui::GetScrollY() >= (ImGui::GetScrollMaxY() - 1.0F);
 
     for (const auto& entry : log_entries_cache_) {
-      // Colour-code by stored log level (no per-frame string searching needed).
       ImVec4 color = k_ColorLogDefault;
       if (entry.level == spdlog::level::warn) {
         color = k_ColorLogWarn;
@@ -521,46 +524,6 @@ void GuiApp::render_log_panel() {
     }
   }
   ImGui::EndChild();
-}
-
-void GuiApp::render_hash_cell(int column, const std::string& hash, const char* label) {
-  ImGui::TableSetColumnIndex(column);
-  ImGui::TextUnformatted(hash.c_str());
-  if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("Right-click to copy %s", label);
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-      glfwSetClipboardString(window_, hash.c_str());
-      show_toast(std::string(label) + " copied to clipboard");
-    }
-  }
-}
-
-void GuiApp::apply_sort() {
-  if (sort_col_ < 0 || files_.empty()) {
-    return;
-  }
-  const int col = sort_col_;
-  const bool asc = sort_ascending_;
-  std::stable_sort(
-      files_.begin(), files_.end(), [col, asc](const core::FileInfo& a, const core::FileInfo& b) {
-        switch (col) {
-          case k_ColFilename:
-            return asc ? a.filename < b.filename : b.filename < a.filename;
-          case k_ColSize:
-            return asc ? a.size < b.size : b.size < a.size;
-          case k_ColCrc32:
-            return asc ? a.crc32 < b.crc32 : b.crc32 < a.crc32;
-          case k_ColMd5:
-            return asc ? a.md5 < b.md5 : b.md5 < a.md5;
-          case k_ColSha1:
-            return asc ? a.sha1 < b.sha1 : b.sha1 < a.sha1;
-          case k_ColSha256:
-            return asc ? a.sha256 < b.sha256 : b.sha256 < a.sha256;
-          default:
-            // Unknown column: treat elements as equal (no reordering).
-            return false;
-        }
-      });
 }
 
 void GuiApp::render_status_bar() {
@@ -602,6 +565,37 @@ void GuiApp::render_toast() {
 }
 
 // ═════════════════════════════════════════════════════════════════
+// Checklist sorting
+// ═════════════════════════════════════════════════════════════════
+
+void GuiApp::apply_checklist_sort() {
+  if (checklist_sort_col_ < 0 || rom_checklist_.empty()) {
+    return;
+  }
+  const int col = checklist_sort_col_;
+  const bool asc = checklist_sort_ascending_;
+
+  std::stable_sort(rom_checklist_.begin(), rom_checklist_.end(),
+                   [col, asc](const RomChecklistEntry& a, const RomChecklistEntry& b) {
+                     switch (col) {
+                       case k_ColStatus: {
+                         int sa = status_sort_order(a.status);
+                         int sb = status_sort_order(b.status);
+                         return asc ? sa < sb : sb < sa;
+                       }
+                       case k_ColRomName:
+                         return asc ? a.name < b.name : b.name < a.name;
+                       case k_ColSize:
+                         return asc ? a.size < b.size : b.size < a.size;
+                       case k_ColCrc32:
+                         return asc ? a.crc32 < b.crc32 : b.crc32 < a.crc32;
+                       default:
+                         return false;
+                     }
+                   });
+}
+
+// ═════════════════════════════════════════════════════════════════
 // Actions (launch background tasks)
 // ═════════════════════════════════════════════════════════════════
 
@@ -610,10 +604,9 @@ void GuiApp::action_import_dat() {
     return;
   }
 
-  std::string path(dat_path_buf_.c_str());
+  auto path = open_file_dialog();
   if (path.empty()) {
-    status_message_ = "Error: DAT path is empty.";
-    return;
+    return; // User cancelled
   }
 
   status_message_ = "Importing DAT... Please wait.";
@@ -626,27 +619,40 @@ void GuiApp::action_import_dat() {
                              }
                              return "Imported DAT: " + result->name + " v" + result->version;
                            }),
-      .refresh_files = false,
-      .refresh_summary = true,
-      .refresh_systems = true,
+      .refresh_dat_versions = true,
+      .refresh_checklist = false,
   };
 }
 
-void GuiApp::action_scan_folder() {
+void GuiApp::action_add_rom_folder() {
   if (is_busy()) {
     return;
   }
 
-  std::string dir(scan_dir_buf_.c_str());
-  if (dir.empty()) {
-    status_message_ = "Error: Scan directory is empty.";
-    return;
+  auto path = open_folder_dialog();
+  if (path.empty()) {
+    return; // User cancelled
   }
 
+  auto dir = std::filesystem::path(path);
+
+  // Track the folder for future rescans (avoid duplicates)
+  bool already_tracked = false;
+  for (const auto& d : scanned_dirs_) {
+    if (std::filesystem::equivalent(d, dir)) {
+      already_tracked = true;
+      break;
+    }
+  }
+  if (!already_tracked) {
+    scanned_dirs_.push_back(dir);
+  }
+
+  // Auto-scan immediately
   status_message_ = "Scanning folder... Please wait.";
   pending_task_ = PendingTask{
       .result = std::async(std::launch::async,
-                           [this, d = std::filesystem::path(dir)]() -> std::string {
+                           [this, d = std::move(dir)]() -> std::string {
                              auto result = svc_.scan_directory(d);
                              if (!result) {
                                return "Scan failed: " + result.error().message;
@@ -654,9 +660,73 @@ void GuiApp::action_scan_folder() {
                              return "Scan complete: " + std::to_string(result->files_scanned) +
                                     " files, " + std::to_string(result->files_hashed) + " hashed.";
                            }),
-      .refresh_files = true,
-      .refresh_summary = true,
-      .refresh_systems = false,
+      .refresh_dat_versions = false,
+      .refresh_checklist = false,
+  };
+}
+
+void GuiApp::action_rescan_folders() {
+  if (is_busy() || scanned_dirs_.empty()) {
+    return;
+  }
+
+  status_message_ = "Rescanning all folders... Please wait.";
+  // Copy the dirs vector for the async lambda
+  auto dirs = scanned_dirs_;
+
+  pending_task_ = PendingTask{
+      .result = std::async(std::launch::async,
+                           [this, dirs = std::move(dirs)]() -> std::string {
+                             std::int64_t total_scanned = 0;
+                             std::int64_t total_hashed = 0;
+                             for (const auto& d : dirs) {
+                               auto result = svc_.scan_directory(d);
+                               if (result) {
+                                 total_scanned += result->files_scanned;
+                                 total_hashed += result->files_hashed;
+                               } else {
+                                 ROMULUS_WARN("Rescan failed for '{}': {}",
+                                              d.string(), result.error().message);
+                               }
+                             }
+                             return "Rescan complete: " + std::to_string(total_scanned) +
+                                    " files, " + std::to_string(total_hashed) + " hashed.";
+                           }),
+      .refresh_dat_versions = false,
+      .refresh_checklist = false,
+  };
+}
+
+void GuiApp::action_check_dat() {
+  if (is_busy() || selected_dat_index_ < 0) {
+    return;
+  }
+
+  const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
+  auto dat_id = dv.id;
+  auto system_name = dv.name;
+
+  status_message_ = "Verifying and checking DAT... Please wait.";
+  pending_task_ = PendingTask{
+      .result = std::async(std::launch::async,
+                           [this, dat_id, system_name]() -> std::string {
+                             // Run verify first to update statuses
+                             auto verify_result = svc_.verify(system_name);
+                             if (!verify_result) {
+                               ROMULUS_WARN("Verification step failed: {}",
+                                            verify_result.error().message);
+                             }
+
+                             // Get ROMs with status
+                             auto roms = svc_.get_roms_with_status(dat_id);
+                             if (!roms) {
+                               return "Check failed: " + roms.error().message;
+                             }
+
+                             return "OK:" + std::to_string(roms->size());
+                           }),
+      .refresh_dat_versions = false,
+      .refresh_checklist = true,
   };
 }
 
@@ -675,9 +745,8 @@ void GuiApp::action_verify() {
                              }
                              return "Verification complete.";
                            }),
-      .refresh_files = false,
-      .refresh_summary = true,
-      .refresh_systems = false,
+      .refresh_dat_versions = false,
+      .refresh_checklist = false,
   };
 }
 
@@ -696,9 +765,8 @@ void GuiApp::action_purge_database() {
                              }
                              return "Database purged.";
                            }),
-      .refresh_files = true,
-      .refresh_summary = true,
-      .refresh_systems = true,
+      .refresh_dat_versions = true,
+      .refresh_checklist = false,
   };
 }
 
@@ -716,26 +784,54 @@ void GuiApp::check_pending_task() {
   }
 
   // Task finished — collect the result on the main thread
+  std::string task_result;
   try {
-    status_message_ = pending_task_->result.get();
+    task_result = pending_task_->result.get();
   } catch (const std::exception& e) {
-    status_message_ = std::string("Task error: ") + e.what();
+    task_result = std::string("Task error: ") + e.what();
   }
 
-  bool should_refresh_files = pending_task_->refresh_files;
-  bool should_refresh_summary = pending_task_->refresh_summary;
-  bool should_refresh_systems = pending_task_->refresh_systems;
+  bool should_refresh_dat = pending_task_->refresh_dat_versions;
+  bool should_refresh_checklist = pending_task_->refresh_checklist;
   pending_task_.reset();
 
-  if (should_refresh_files) {
-    refresh_files();
+  // Handle check_dat result: populates checklist from service on main thread
+  if (should_refresh_checklist && task_result.starts_with("OK:")) {
+    // Re-fetch on main thread to populate the checklist
+    if (selected_dat_index_ >= 0) {
+      const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
+      auto roms = svc_.get_roms_with_status(dv.id);
+      if (roms) {
+        rom_checklist_.clear();
+        rom_checklist_.reserve(roms->size());
+        std::int64_t available = 0;
+        for (const auto& [rom, st] : *roms) {
+          rom_checklist_.push_back({
+              .name = rom.name,
+              .size = rom.size,
+              .crc32 = rom.crc32,
+              .status = st,
+          });
+          if (st == core::RomStatusType::Verified) {
+            ++available;
+          }
+        }
+        apply_checklist_sort();
+        status_message_ = "Check complete: " + std::to_string(available) + " / " +
+                           std::to_string(rom_checklist_.size()) + " ROMs available.";
+      } else {
+        status_message_ = "Failed to load checklist: " + roms.error().message;
+      }
+    }
+  } else {
+    status_message_ = task_result;
   }
-  if (should_refresh_summary) {
-    refresh_summary();
+
+  if (should_refresh_dat) {
+    refresh_dat_versions();
   }
-  if (should_refresh_systems) {
-    refresh_systems();
-  }
+
+  show_toast(status_message_);
 }
 
 auto GuiApp::is_busy() const -> bool {
@@ -746,35 +842,24 @@ auto GuiApp::is_busy() const -> bool {
 // Data Refresh
 // ═════════════════════════════════════════════════════════════════
 
-void GuiApp::refresh_files() {
-  auto result = svc_.get_all_files();
+void GuiApp::refresh_dat_versions() {
+  auto result = svc_.list_dat_versions();
   if (result) {
-    files_ = std::move(*result);
-    apply_sort();
-  } else {
-    files_.clear();
-    ROMULUS_WARN("Failed to refresh files: {}", result.error().message);
-  }
-}
+    dat_versions_ = std::move(*result);
 
-void GuiApp::refresh_systems() {
-  auto result = svc_.list_systems();
-  if (result) {
-    systems_ = std::move(*result);
-  } else {
-    systems_.clear();
-    ROMULUS_WARN("Failed to refresh systems: {}", result.error().message);
-  }
-}
+    // Reset selection if the current index is out of bounds
+    if (selected_dat_index_ >= static_cast<int>(dat_versions_.size())) {
+      selected_dat_index_ = dat_versions_.empty() ? -1 : 0;
+    }
 
-void GuiApp::refresh_summary() {
-  auto result = svc_.get_summary();
-  if (result) {
-    summary_ = std::move(*result);
-    has_summary_ = summary_.total_roms > 0;
+    // Auto-select first if nothing selected and we have data
+    if (selected_dat_index_ < 0 && !dat_versions_.empty()) {
+      selected_dat_index_ = 0;
+    }
   } else {
-    summary_ = {};
-    has_summary_ = false;
+    dat_versions_.clear();
+    selected_dat_index_ = -1;
+    ROMULUS_WARN("Failed to refresh DAT versions: {}", result.error().message);
   }
 }
 

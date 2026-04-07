@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace romulus::database {
@@ -58,6 +59,9 @@ public:
   [[nodiscard]] auto get_summary(std::optional<std::string> system = {})
       -> Result<core::CollectionSummary>;
   [[nodiscard]] auto list_systems() -> Result<std::vector<core::SystemInfo>>;
+  [[nodiscard]] auto list_dat_versions() -> Result<std::vector<core::DatVersion>>;
+  [[nodiscard]] auto get_roms_with_status(std::int64_t dat_version_id)
+      -> Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>>;
   [[nodiscard]] auto get_missing_roms(std::optional<std::string> system = {})
       -> Result<std::vector<core::MissingRom>>;
   [[nodiscard]] auto get_all_files() -> Result<std::vector<core::FileInfo>>;

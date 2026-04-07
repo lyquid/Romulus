@@ -117,6 +117,9 @@ public:
       -> Result<std::optional<core::DatVersion>>;
   [[nodiscard]] auto get_latest_dat_version(std::int64_t system_id)
       -> Result<std::optional<core::DatVersion>>;
+  [[nodiscard]] auto get_all_dat_versions() -> Result<std::vector<core::DatVersion>>;
+  [[nodiscard]] auto get_roms_for_dat_version(std::int64_t dat_version_id)
+      -> Result<std::vector<core::RomInfo>>;
 
   // ── Games ────────────────────────────────────────────────
 

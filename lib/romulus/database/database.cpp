@@ -611,6 +611,57 @@ auto Database::get_latest_dat_version(std::int64_t system_id)
   };
 }
 
+auto Database::get_all_dat_versions() -> Result<std::vector<core::DatVersion>> {
+  auto stmt = prepare("SELECT id, system_id, name, version, source_url, checksum, imported_at "
+                      "FROM dat_versions ORDER BY imported_at DESC");
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+
+  std::vector<core::DatVersion> versions;
+  while (stmt->step()) {
+    versions.push_back({
+        .id = stmt->column_int64(0),
+        .system_id = stmt->column_int64(1),
+        .name = stmt->column_text(2),
+        .version = stmt->column_text(3),
+        .source_url = stmt->column_text(4),
+        .checksum = stmt->column_text(5),
+        .imported_at = stmt->column_text(6),
+    });
+  }
+  return versions;
+}
+
+auto Database::get_roms_for_dat_version(std::int64_t dat_version_id)
+    -> Result<std::vector<core::RomInfo>> {
+  auto stmt = prepare("SELECT r.id, r.game_id, r.name, r.size, r.crc32, r.md5, r.sha1, r.sha256, "
+                      "r.region "
+                      "FROM roms r JOIN games g ON r.game_id = g.id "
+                      "WHERE g.dat_version_id = ?1 ORDER BY r.name");
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+
+  stmt->bind_int64(1, dat_version_id);
+
+  std::vector<core::RomInfo> roms;
+  while (stmt->step()) {
+    roms.push_back({
+        .id = stmt->column_int64(0),
+        .game_id = stmt->column_int64(1),
+        .name = stmt->column_text(2),
+        .size = stmt->column_int64(3),
+        .crc32 = stmt->column_text(4),
+        .md5 = stmt->column_text(5),
+        .sha1 = stmt->column_text(6),
+        .sha256 = stmt->column_text(7),
+        .region = stmt->column_text(8),
+    });
+  }
+  return roms;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Games CRUD
 // ═══════════════════════════════════════════════════════════════
