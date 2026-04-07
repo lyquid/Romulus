@@ -7,6 +7,14 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ⚡ Features
+
+- **GUI**: Foundation overhaul — applied a custom polished dark-blue theme replacing the stock ImGui dark theme; all colours, rounding values, padding, and spacing are tuned for a cohesive professional look
+- **GUI**: ROM checklist now shows a full status breakdown in the summary header — individual counts and colour-coded badges for Verified (✓), Missing (✗), Unverified (?), and Mismatch (!) entries alongside the completion percentage
+- **GUI**: Added filter bar to the ROM checklist — free-text substring search (case-insensitive) and a status dropdown (All / Verified / Missing / Unverified / Mismatch) to narrow down large ROM lists
+- **GUI**: Section headers in the actions panel are now rendered with `SeparatorText` for cleaner visual grouping between DAT File and ROM Directory controls
+- **GUI**: Status labels use Unicode symbols (✓ / ✗) for improved at-a-glance readability
+
 ### 🔧 Refactoring
 
 - **HashService / HashDigest**: `HashDigest` now stores raw bytes (`std::array<std::byte, N>`) instead of hex strings — 4 bytes for CRC32, 16 for MD5, 20 for SHA-1, 32 for SHA-256. Binary storage enables direct equality comparison with no string parsing, and is more compact for future DB optimisation. Display-ready lowercase hex strings are produced on demand via `to_hex_crc32()`, `to_hex_md5()`, `to_hex_sha1()`, and `to_hex_sha256()` accessor methods. All call-sites (scanner, logging) updated accordingly. A new `KnownContentProducesExpectedHexDigests` unit test pins exact hash values against externally-computed reference vectors.

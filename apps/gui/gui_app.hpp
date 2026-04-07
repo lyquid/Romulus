@@ -8,6 +8,7 @@
 #include "romulus/core/types.hpp"
 #include "romulus/service/romulus_service.hpp"
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <future>
@@ -57,6 +58,9 @@ private:
   void render_status_bar();
   void render_toast();
 
+  // ── Theme ────────────────────────────────────────────────
+  static void apply_custom_theme();
+
   // ── Action handlers (launch background tasks) ──────────
   void action_import_dat();
   void action_add_rom_folder();
@@ -90,6 +94,7 @@ private:
   // ROM checklist
   struct RomChecklistEntry {
     std::string name;
+    std::string name_lower; ///< Lowercase copy of name — precomputed for filter matching
     std::int64_t size = 0;
     std::string crc32;
     core::RomStatusType status = core::RomStatusType::Missing;
@@ -97,6 +102,13 @@ private:
   std::vector<RomChecklistEntry> rom_checklist_;
   int checklist_sort_col_ = -1;
   bool checklist_sort_ascending_ = true;
+
+  // Checklist filter state
+  static constexpr std::size_t k_MaxFilterLen = 256; ///< Max bytes for the name filter input
+  std::array<char, k_MaxFilterLen> checklist_filter_buf_{};
+  /// ASCII-lowercased copy of checklist_filter_buf_, recomputed only on edit.
+  std::string checklist_filter_lower_;
+  int checklist_status_filter_ = 0; ///< 0=All, 1=Verified, 2=Missing, 3=Unverified, 4=Mismatch
 
   // Scanned ROM directories (for rescan)
   std::vector<std::filesystem::path> scanned_dirs_;
