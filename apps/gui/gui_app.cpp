@@ -46,7 +46,7 @@ constexpr float k_ToastMarginBottom = 50.0F;
 constexpr int k_ColStatus = 0;
 constexpr int k_ColRomName = 1;
 constexpr int k_ColSize = 2;
-constexpr int k_ColCrc32 = 3;
+constexpr int k_ColSha1 = 3;
 
 // Status colours
 constexpr ImVec4 k_ColorVerified{0.2F, 0.9F, 0.3F, 1.0F};   // green
@@ -60,11 +60,12 @@ constexpr ImVec4 k_ColorLogError{1.0F, 0.3F, 0.3F, 1.0F};   // red    — errors
 constexpr ImVec4 k_ColorLogDebug{0.6F, 0.6F, 0.6F, 1.0F};   // grey   — debug / trace
 constexpr ImVec4 k_ColorLogDefault{1.0F, 1.0F, 1.0F, 1.0F}; // white  — info
 
-// Status icon labels — UTF-8 Unicode symbols embedded as string literals.
-// ✓ U+2713 CHECK MARK,  ✗ U+2717 BALLOT X
-constexpr auto* k_IconVerified = "\xE2\x9C\x93 Verified"; // ✓ Verified
-constexpr auto* k_IconMissing = "\xE2\x9C\x97 Missing";   // ✗ Missing
-constexpr auto* k_SymbolMissing = "\xE2\x9C\x97";         // ✗ (standalone)
+// Status icon labels — ASCII symbols compatible with ImGui's default font.
+// The Unicode checkmarks (✓ U+2713, ✗ U+2717) are not in the built-in ProggyClean
+// font and show as '?' on most systems.  Use plain ASCII equivalents instead.
+constexpr auto* k_IconVerified = "[OK] Verified";
+constexpr auto* k_IconMissing = "[--] Missing";
+constexpr auto* k_SymbolMissing = "[--]"; // standalone, for summary badges
 
 /// ASCII-only character case fold: maps [A-Z] → [a-z], all other bytes pass through unchanged.
 /// Safe for UTF-8 strings because non-ASCII bytes are always ≥ 0x80 and never in [A-Z].
@@ -154,6 +155,7 @@ GuiApp::GuiApp(service::RomulusService& svc, std::shared_ptr<GuiLogSink> log_sin
 
   status_message_ = "Ready.";
   refresh_dat_versions();
+  refresh_folders();
 }
 
 GuiApp::~GuiApp() {
@@ -345,12 +347,15 @@ void GuiApp::run() {
                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_MenuBar);
 
     render_main_menu_bar();
-    render_actions_panel();
 
     ImGui::Spacing();
     if (ImGui::BeginTabBar("##main_tabs")) {
-      if (ImGui::BeginTabItem("ROM Checklist")) {
-        render_rom_checklist_panel();
+      if (ImGui::BeginTabItem("DATs")) {
+        render_dats_tab();
+        ImGui::EndTabItem();
+      }
+      if (ImGui::BeginTabItem("Folders")) {
+        render_folders_tab();
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem("Log")) {
@@ -419,13 +424,10 @@ void GuiApp::render_main_menu_bar() {
   }
 }
 
-void GuiApp::render_actions_panel() {
+void GuiApp::render_dats_tab() {
   const bool busy = is_busy();
 
-  // ── DAT Management ──────────────────────────────────────────
-  ImGui::SeparatorText("DAT File");
-
-  // Import DAT button
+  // ── DAT controls ──────────────────────────────────────────────
   ImGui::BeginDisabled(busy);
   if (ImGui::Button("Import DAT")) {
     action_import_dat();
@@ -434,9 +436,8 @@ void GuiApp::render_actions_panel() {
 
   ImGui::SameLine();
 
-  // DAT Selector Dropdown
+  // DAT selector dropdown
   {
-    // Build combo preview string
     std::string preview = "(No DAT selected)";
     if (selected_dat_index_ >= 0 && selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
       const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
@@ -451,11 +452,10 @@ void GuiApp::render_actions_panel() {
         if (!dv.imported_at.empty()) {
           label += "  (" + dv.imported_at + ")";
         }
-
         bool is_selected = (selected_dat_index_ == i);
         if (ImGui::Selectable(label.c_str(), is_selected)) {
           selected_dat_index_ = i;
-          rom_checklist_.clear(); // Clear stale checklist when switching DAT
+          rom_checklist_.clear();
         }
         if (is_selected) {
           ImGui::SetItemDefaultFocus();
@@ -468,14 +468,12 @@ void GuiApp::render_actions_panel() {
 
   ImGui::SameLine();
 
-  // Check DAT button
   ImGui::BeginDisabled(busy || selected_dat_index_ < 0);
   if (ImGui::Button("Check DAT")) {
     action_check_dat();
   }
   ImGui::EndDisabled();
 
-  // ── Active DAT indicator ──
   if (selected_dat_index_ >= 0 && selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
     const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
     ImGui::SameLine();
@@ -483,39 +481,15 @@ void GuiApp::render_actions_panel() {
         ImVec4(0.4F, 0.7F, 1.0F, 1.0F), "[Active: %s v%s]", dv.name.c_str(), dv.version.c_str());
   }
 
-  // ── ROM Directory ────────────────────────────────────────────
-  ImGui::SeparatorText("ROM Directory");
+  ImGui::Spacing();
 
-  ImGui::BeginDisabled(busy);
-  if (ImGui::Button("Add ROM Folder")) {
-    action_add_rom_folder();
-  }
-  ImGui::EndDisabled();
-
-  // Show tracked folders
-  if (!scanned_dirs_.empty()) {
-    ImGui::SameLine();
-    ImGui::BeginDisabled(busy);
-    if (ImGui::Button("Rescan All")) {
-      action_rescan_folders();
-    }
-    ImGui::EndDisabled();
-
-    ImGui::SameLine();
-    ImGui::TextDisabled(
-        "(%zu folder%s tracked)", scanned_dirs_.size(), scanned_dirs_.size() == 1 ? "" : "s");
-  }
-}
-
-void GuiApp::render_rom_checklist_panel() {
+  // ── ROM checklist ─────────────────────────────────────────────
   if (rom_checklist_.empty()) {
+    ImGui::Spacing();
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0F);
     if (selected_dat_index_ < 0) {
-      ImGui::Spacing();
-      ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0F);
       ImGui::TextDisabled("Select a DAT from the dropdown above, then click 'Check DAT'.");
     } else {
-      ImGui::Spacing();
-      ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0F);
       ImGui::TextDisabled("Click 'Check DAT' to verify and populate the ROM list.");
     }
     return;
@@ -546,12 +520,10 @@ void GuiApp::render_rom_checklist_panel() {
   double pct =
       total > 0 ? static_cast<double>(cnt_verified) / static_cast<double>(total) * 100.0 : 0.0;
 
-  // Verified count + percentage
   ImGui::TextColored(k_ColorVerified, "%lld", static_cast<long long>(cnt_verified));
   ImGui::SameLine();
   ImGui::Text("/ %lld verified (%.1f%%)", static_cast<long long>(total), pct);
 
-  // Status badges
   ImGui::SameLine(0.0F, 20.0F);
   if (cnt_missing > 0) {
     ImGui::TextColored(
@@ -560,16 +532,15 @@ void GuiApp::render_rom_checklist_panel() {
   }
   if (cnt_unverified > 0) {
     ImGui::TextColored(
-        k_ColorUnverified, "? %lld unverified", static_cast<long long>(cnt_unverified));
+        k_ColorUnverified, "[??] %lld unverified", static_cast<long long>(cnt_unverified));
     ImGui::SameLine(0.0F, 14.0F);
   }
   if (cnt_mismatch > 0) {
-    ImGui::TextColored(k_ColorMismatch, "! %lld mismatch", static_cast<long long>(cnt_mismatch));
+    ImGui::TextColored(k_ColorMismatch, "[!!] %lld mismatch", static_cast<long long>(cnt_mismatch));
     ImGui::SameLine(0.0F, 14.0F);
   }
   ImGui::NewLine();
 
-  // Progress bar
   float progress = total > 0 ? static_cast<float>(cnt_verified) / static_cast<float>(total) : 0.0F;
   ImGui::ProgressBar(progress, ImVec2(-1.0F, 6.0F));
   ImGui::Spacing();
@@ -595,10 +566,9 @@ void GuiApp::render_rom_checklist_panel() {
                &checklist_status_filter_,
                k_StatusFilterItems,
                IM_ARRAYSIZE(k_StatusFilterItems));
-
   ImGui::Spacing();
 
-  // ── Table ───────────────────────────────────────────────────
+  // ── ROM table ───────────────────────────────────────────────
   constexpr int k_ColumnCount = 4;
   if (ImGui::BeginTable("rom_checklist_table",
                         k_ColumnCount,
@@ -610,10 +580,9 @@ void GuiApp::render_rom_checklist_panel() {
     ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_DefaultSort, 1.5F);
     ImGui::TableSetupColumn("ROM Name", ImGuiTableColumnFlags_None, 5.0F);
     ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_None, 1.0F);
-    ImGui::TableSetupColumn("CRC32", ImGuiTableColumnFlags_None, 1.5F);
+    ImGui::TableSetupColumn("SHA1", ImGuiTableColumnFlags_None, 2.5F);
     ImGui::TableHeadersRow();
 
-    // Apply any pending sort
     if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
       if (sort_specs->SpecsDirty) {
         if (sort_specs->SpecsCount > 0) {
@@ -628,50 +597,106 @@ void GuiApp::render_rom_checklist_panel() {
       }
     }
 
-    // Use the pre-cached lowercase filter string (updated only when the InputText is edited).
     const std::string& filter_str = checklist_filter_lower_;
 
     for (std::size_t i = 0; i < rom_checklist_.size(); ++i) {
       const auto& entry = rom_checklist_[i];
 
-      // Status filter
       if (checklist_status_filter_ != 0) {
-        const int filter_status = checklist_status_filter_ - 1; // 0=Verified,1=Missing,...
-        const int entry_status = static_cast<int>(entry.status);
-        if (filter_status != entry_status) {
+        if ((checklist_status_filter_ - 1) != static_cast<int>(entry.status)) {
           continue;
         }
       }
-
-      // Name filter (case-insensitive substring using precomputed lowercase name)
       if (!filter_str.empty() && entry.name_lower.find(filter_str) == std::string::npos) {
         continue;
       }
 
       ImVec4 color = status_color(entry.status);
-
       ImGui::TableNextRow();
       ImGui::PushID(static_cast<int>(i));
 
-      // Status
       ImGui::TableSetColumnIndex(k_ColStatus);
       ImGui::TextColored(color, "%s", status_label(entry.status));
 
-      // ROM Name
       ImGui::TableSetColumnIndex(k_ColRomName);
       ImGui::TextColored(color, "%s", entry.name.c_str());
 
-      // Size
       ImGui::TableSetColumnIndex(k_ColSize);
       ImGui::TextUnformatted(format_size(entry.size).c_str());
 
-      // CRC32
-      ImGui::TableSetColumnIndex(k_ColCrc32);
-      ImGui::TextUnformatted(entry.crc32.c_str());
+      ImGui::TableSetColumnIndex(k_ColSha1);
+      ImGui::TextUnformatted(entry.sha1.c_str());
 
       ImGui::PopID();
     }
     ImGui::EndTable();
+  }
+}
+
+void GuiApp::render_folders_tab() {
+  const bool busy = is_busy();
+
+  ImGui::BeginDisabled(busy);
+  if (ImGui::Button("Add Folder")) {
+    action_add_rom_folder();
+  }
+  ImGui::EndDisabled();
+
+  if (!scanned_dirs_.empty()) {
+    ImGui::SameLine();
+    ImGui::BeginDisabled(busy);
+    if (ImGui::Button("Rescan All")) {
+      action_rescan_folders();
+    }
+    ImGui::EndDisabled();
+  }
+
+  ImGui::Spacing();
+
+  if (scanned_dirs_.empty()) {
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0F);
+    ImGui::TextDisabled("No folders added yet. Click 'Add Folder' to register a ROM directory.");
+    return;
+  }
+
+  // Folder list table
+  constexpr int k_FolderCols = 2;
+  if (ImGui::BeginTable("folders_table",
+                        k_FolderCols,
+                        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
+                            ImGuiTableFlags_SizingStretchProp,
+                        ImVec2(0, -30))) {
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_None, 6.0F);
+    ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_None, 1.0F);
+    ImGui::TableHeadersRow();
+
+    std::int64_t to_remove = -1;
+    for (std::size_t i = 0; i < scanned_dirs_.size(); ++i) {
+      const auto& dir = scanned_dirs_[i];
+      ImGui::TableNextRow();
+      ImGui::PushID(static_cast<int>(i));
+
+      ImGui::TableSetColumnIndex(0);
+      ImGui::TextUnformatted(dir.path.c_str());
+
+      ImGui::TableSetColumnIndex(1);
+      ImGui::BeginDisabled(busy);
+      if (ImGui::SmallButton("[X]")) {
+        to_remove = dir.id;
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Remove this folder");
+      }
+      ImGui::EndDisabled();
+
+      ImGui::PopID();
+    }
+    ImGui::EndTable();
+
+    if (to_remove >= 0) {
+      action_remove_folder(to_remove);
+    }
   }
 }
 
@@ -782,8 +807,8 @@ void GuiApp::apply_checklist_sort() {
                          return asc ? a.name < b.name : b.name < a.name;
                        case k_ColSize:
                          return asc ? a.size < b.size : b.size < a.size;
-                       case k_ColCrc32:
-                         return asc ? a.crc32 < b.crc32 : b.crc32 < a.crc32;
+                       case k_ColSha1:
+                         return asc ? a.sha1 < b.sha1 : b.sha1 < a.sha1;
                        default:
                          return false;
                      }
@@ -831,23 +856,21 @@ void GuiApp::action_add_rom_folder() {
 
   auto dir = std::filesystem::path(path);
 
-  // Track the folder for future rescans (avoid duplicates)
-  bool already_tracked = false;
-  for (const auto& d : scanned_dirs_) {
-    if (std::filesystem::equivalent(d, dir)) {
-      already_tracked = true;
-      break;
-    }
-  }
-  if (!already_tracked) {
-    scanned_dirs_.push_back(dir);
-  }
-
-  // Auto-scan immediately
+  // Persist the directory to the DB (upsert — handles duplicates gracefully).
+  // The refresh_folders flag causes the in-memory list to reload on task completion.
   status_message_ = "Scanning folder... Please wait.";
   pending_task_ = PendingTask{
       .result = std::async(std::launch::async,
                            [this, d = std::move(dir)]() -> std::string {
+                             // Register in DB first; surface any failure in the result string
+                             // so the user knows the folder won't persist across restarts.
+                             auto reg = svc_.add_scan_directory(d);
+                             if (!reg) {
+                               ROMULUS_WARN("Could not register folder: {}", reg.error().message);
+                               return "Folder not saved to DB (" + reg.error().message +
+                                      "). Scan aborted.";
+                             }
+                             // Then scan
                              auto result = svc_.scan_directory(d);
                              if (!result) {
                                return "Scan failed: " + result.error().message;
@@ -857,7 +880,23 @@ void GuiApp::action_add_rom_folder() {
                            }),
       .refresh_dat_versions = false,
       .refresh_checklist = false,
+      .refresh_folders = true,
   };
+}
+
+void GuiApp::action_remove_folder(std::int64_t id) {
+  if (is_busy()) {
+    return;
+  }
+  auto result = svc_.remove_scan_directory(id);
+  if (!result) {
+    ROMULUS_WARN("Could not remove folder: {}", result.error().message);
+    status_message_ = "Failed to remove folder: " + result.error().message;
+  } else {
+    status_message_ = "Folder removed.";
+  }
+  refresh_folders();
+  show_toast(status_message_);
 }
 
 void GuiApp::action_rescan_folders() {
@@ -866,29 +905,34 @@ void GuiApp::action_rescan_folders() {
   }
 
   status_message_ = "Rescanning all folders... Please wait.";
-  // Copy the dirs vector for the async lambda
-  auto dirs = scanned_dirs_;
+  // Collect paths from the DB snapshot for the async lambda
+  std::vector<std::string> paths;
+  paths.reserve(scanned_dirs_.size());
+  for (const auto& d : scanned_dirs_) {
+    paths.push_back(d.path);
+  }
 
   pending_task_ = PendingTask{
-      .result = std::async(
-          std::launch::async,
-          [this, dirs = std::move(dirs)]() -> std::string {
-            std::int64_t total_scanned = 0;
-            std::int64_t total_hashed = 0;
-            for (const auto& d : dirs) {
-              auto result = svc_.scan_directory(d);
-              if (result) {
-                total_scanned += result->files_scanned;
-                total_hashed += result->files_hashed;
-              } else {
-                ROMULUS_WARN("Rescan failed for '{}': {}", d.string(), result.error().message);
-              }
-            }
-            return "Rescan complete: " + std::to_string(total_scanned) + " files, " +
-                   std::to_string(total_hashed) + " hashed.";
-          }),
+      .result =
+          std::async(std::launch::async,
+                     [this, paths = std::move(paths)]() -> std::string {
+                       std::int64_t total_scanned = 0;
+                       std::int64_t total_hashed = 0;
+                       for (const auto& p : paths) {
+                         auto result = svc_.scan_directory(std::filesystem::path(p));
+                         if (result) {
+                           total_scanned += result->files_scanned;
+                           total_hashed += result->files_hashed;
+                         } else {
+                           ROMULUS_WARN("Rescan failed for '{}': {}", p, result.error().message);
+                         }
+                       }
+                       return "Rescan complete: " + std::to_string(total_scanned) + " files, " +
+                              std::to_string(total_hashed) + " hashed.";
+                     }),
       .refresh_dat_versions = false,
       .refresh_checklist = false,
+      .refresh_folders = false,
   };
 }
 
@@ -988,6 +1032,7 @@ void GuiApp::check_pending_task() {
 
   bool should_refresh_dat = pending_task_->refresh_dat_versions;
   bool should_refresh_checklist = pending_task_->refresh_checklist;
+  bool should_refresh_folders = pending_task_->refresh_folders;
   pending_task_.reset();
 
   // Handle check_dat result: populates checklist from service on main thread
@@ -1007,7 +1052,7 @@ void GuiApp::check_pending_task() {
               .name = rom.name,
               .name_lower = std::move(name_lower),
               .size = rom.size,
-              .crc32 = rom.crc32,
+              .sha1 = rom.sha1,
               .status = st,
           });
           if (st == core::RomStatusType::Verified) {
@@ -1027,6 +1072,9 @@ void GuiApp::check_pending_task() {
 
   if (should_refresh_dat) {
     refresh_dat_versions();
+  }
+  if (should_refresh_folders) {
+    refresh_folders();
   }
 
   show_toast(status_message_);
@@ -1058,6 +1106,15 @@ void GuiApp::refresh_dat_versions() {
     dat_versions_.clear();
     selected_dat_index_ = -1;
     ROMULUS_WARN("Failed to refresh DAT versions: {}", result.error().message);
+  }
+}
+
+void GuiApp::refresh_folders() {
+  auto result = svc_.get_scan_directories();
+  if (result) {
+    scanned_dirs_ = std::move(*result);
+  } else {
+    ROMULUS_WARN("Failed to refresh scan directories: {}", result.error().message);
   }
 }
 

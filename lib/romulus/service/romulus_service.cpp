@@ -268,6 +268,23 @@ auto RomulusService::purge_database() -> Result<void> {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Scanned Directories
+// ═══════════════════════════════════════════════════════════════
+
+auto RomulusService::add_scan_directory(const std::filesystem::path& dir)
+    -> Result<core::ScannedDirectory> {
+  return db_->add_scanned_directory(dir.string());
+}
+
+auto RomulusService::get_scan_directories() -> Result<std::vector<core::ScannedDirectory>> {
+  return db_->get_all_scanned_directories();
+}
+
+auto RomulusService::remove_scan_directory(std::int64_t id) -> Result<void> {
+  return db_->remove_scanned_directory(id);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Reports
 // ═══════════════════════════════════════════════════════════════
 

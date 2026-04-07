@@ -52,8 +52,8 @@ private:
 
   // ── UI panels ───────────────────────────────────────────
   void render_main_menu_bar();
-  void render_actions_panel();
-  void render_rom_checklist_panel();
+  void render_dats_tab();
+  void render_folders_tab();
   void render_log_panel();
   void render_status_bar();
   void render_toast();
@@ -65,6 +65,7 @@ private:
   void action_import_dat();
   void action_add_rom_folder();
   void action_rescan_folders();
+  void action_remove_folder(std::int64_t id);
   void action_check_dat();
   void action_verify();
   void action_purge_database();
@@ -75,6 +76,7 @@ private:
 
   // ── Data refresh ────────────────────────────────────────
   void refresh_dat_versions();
+  void refresh_folders();
 
   // ── Checklist sorting ──────────────────────────────────
   void apply_checklist_sort();
@@ -96,7 +98,7 @@ private:
     std::string name;
     std::string name_lower; ///< Lowercase copy of name — precomputed for filter matching
     std::int64_t size = 0;
-    std::string crc32;
+    std::string sha1;
     core::RomStatusType status = core::RomStatusType::Missing;
   };
   std::vector<RomChecklistEntry> rom_checklist_;
@@ -110,8 +112,8 @@ private:
   std::string checklist_filter_lower_;
   int checklist_status_filter_ = 0; ///< 0=All, 1=Verified, 2=Missing, 3=Unverified, 4=Mismatch
 
-  // Scanned ROM directories (for rescan)
-  std::vector<std::filesystem::path> scanned_dirs_;
+  // Scanned ROM directories (persisted in DB)
+  std::vector<core::ScannedDirectory> scanned_dirs_;
 
   // Status
   std::string status_message_;
@@ -124,6 +126,7 @@ private:
     std::future<std::string> result;
     bool refresh_dat_versions = false;
     bool refresh_checklist = false;
+    bool refresh_folders = false;
   };
   std::optional<PendingTask> pending_task_;
 

@@ -9,11 +9,15 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ### ⚡ Features
 
+- **GUI**: Restructured main window into three tabs — **DATs** (ROM checklist with inline DAT controls), **Folders** (ROM directory management), **Log** (application log)
+- **GUI**: DATs tab ROM table now shows SHA1 instead of CRC32 as the hash column
+- **GUI**: Folders tab — lists all registered ROM scan directories loaded from the database; supports adding new folders and removing existing ones with an `[X]` button
+- **Database**: Added `scanned_directories` table — ROM scan directories are now persisted across sessions; `add_scanned_directory`, `get_all_scanned_directories`, and `remove_scanned_directory` CRUD operations added
+- **Service**: Exposed `add_scan_directory`, `get_scan_directories`, and `remove_scan_directory` methods on `RomulusService`; scan directories are registered in the DB before scanning so they survive restarts
+- **GUI**: Fixed status label display — replaced non-ASCII Unicode symbols (✓ / ✗) that rendered as `?` with ImGui's default ProggyClean font with ASCII equivalents: `[OK]`, `[--]`, `[??]`, `[!!]`
 - **GUI**: Foundation overhaul — applied a custom polished dark-blue theme replacing the stock ImGui dark theme; all colours, rounding values, padding, and spacing are tuned for a cohesive professional look
-- **GUI**: ROM checklist now shows a full status breakdown in the summary header — individual counts and colour-coded badges for Verified (✓), Missing (✗), Unverified (?), and Mismatch (!) entries alongside the completion percentage
+- **GUI**: ROM checklist now shows a full status breakdown in the summary header — individual counts and colour-coded badges for Verified, Missing, Unverified, and Mismatch entries alongside the completion percentage
 - **GUI**: Added filter bar to the ROM checklist — free-text substring search (case-insensitive) and a status dropdown (All / Verified / Missing / Unverified / Mismatch) to narrow down large ROM lists
-- **GUI**: Section headers in the actions panel are now rendered with `SeparatorText` for cleaner visual grouping between DAT File and ROM Directory controls
-- **GUI**: Status labels use Unicode symbols (✓ / ✗) for improved at-a-glance readability
 
 ### 🔧 Refactoring
 

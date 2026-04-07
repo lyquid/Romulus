@@ -71,6 +71,18 @@ public:
   /// Atomically deletes all data from the database (all tables).
   [[nodiscard]] auto purge_database() -> Result<void>;
 
+  // ── Scanned Directories ──────────────────────────────────
+
+  /// Registers a directory path for ROM scanning (persisted in DB).
+  [[nodiscard]] auto add_scan_directory(const std::filesystem::path& dir)
+      -> Result<core::ScannedDirectory>;
+
+  /// Returns all registered scan directories.
+  [[nodiscard]] auto get_scan_directories() -> Result<std::vector<core::ScannedDirectory>>;
+
+  /// Removes a registered scan directory by its database ID.
+  [[nodiscard]] auto remove_scan_directory(std::int64_t id) -> Result<void>;
+
   // ── Reports ──────────────────────────────────────────────
 
   [[nodiscard]] auto generate_report(core::ReportType type,
