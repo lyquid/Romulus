@@ -7,6 +7,10 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🔧 Refactoring
+
+- **ArchiveService**: `ArchiveEntry` now carries a `std::size_t index` field — the zero-based sequential position of the entry in the archive. `stream_entry` and `compute_hashes_archive` now accept this stable numeric index instead of an `entry_name` string. Names are kept on `ArchiveEntry` for display purposes only. This eliminates subtle bugs from duplicate entry names, case-sensitivity differences, and encoding ambiguities.
+
 ### 🐛 Bug Fixes
 
 - **Scanner**: Fixed `ArchiveService::is_archive()` incorrectly classifying ZIP (and other archive) files whose names contain dots inside parentheses (e.g. version strings like `(v1.1)`) as non-archives. The naive stem-extension check was building a bogus double-extension such as `.1).zip`, which was not recognised, causing the ZIP container itself to be stored in the database and displayed in the "Local ROMs" list instead of the ROM it contains.
