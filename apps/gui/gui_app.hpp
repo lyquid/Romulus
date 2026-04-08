@@ -123,7 +123,9 @@ private:
   std::array<char, k_MaxFilterLen> checklist_filter_buf_{};
   /// ASCII-lowercased copy of checklist_filter_buf_, recomputed only on edit.
   std::string checklist_filter_lower_;
-  int checklist_status_filter_ = 0; ///< 0=All, 1=Verified, 2=Missing, 3=Unverified, 4=Mismatch
+  int checklist_status_filter_ = 0;      ///< 0=All, 1=Verified, 2=Missing, 3=Unverified, 4=Mismatch
+  bool scroll_checklist_top_ = false;    ///< One-shot flag: scroll table to the first row
+  bool scroll_checklist_bottom_ = false; ///< One-shot flag: scroll table to the last row
 
   // Scanned ROM directories (persisted in DB)
   std::vector<core::ScannedDirectory> scanned_dirs_;

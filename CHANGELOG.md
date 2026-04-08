@@ -24,6 +24,9 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 - **GUI**: Right-click on any ROM Name, Size, or SHA1 cell in the DATs table copies the raw value to the clipboard; right-click on a folder path in the Folders tab copies the path. A "Right-click to copy" tooltip hints users. A toast confirms each copy.
 - **GUI**: Fixed toast notification rendering — reimplemented using `ImGui::GetForegroundDrawList()` instead of a separate ImGui window. The old approach relied on window Z-ordering which ImGui breaks by always drawing the focused window last, making the toast invisible after the first appearance or after interacting with the table (e.g. sorting). The foreground draw list is always rendered on top of all windows, bypassing the Z-order system entirely.
 - **GUI**: Active DAT now shown in a full-width highlighted banner below the control toolbar instead of a truncated inline label. The banner (dark-blue background, rounded corners) displays: `Active DAT | <name> <version>  imported <date>` — full name is never clipped and the selected DAT is always easy to identify at a glance. The combo dropdown is widened to fill the available toolbar space now that the inline label is removed.
+- **GUI**: Toast text is now centered both horizontally and vertically within the notification box.
+- **GUI**: Active DAT banner child window no longer shows a spurious scrollbar — added `ImGuiWindowFlags_NoScrollbar | NoScrollWithMouse`.
+- **GUI**: Added `[^] Top` and `[v] Bot` navigation buttons to the DATs tab filter bar — jump to the first or last row of the ROM table in one click while preserving the current sort order.
 - **Database**: `imported_at` timestamps are now stored in **local time** (`datetime('now', 'localtime')`) rather than UTC, so the DAT selector shows the correct time for the user's timezone
 
 ### ⚡ Performance

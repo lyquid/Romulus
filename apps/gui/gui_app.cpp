@@ -506,7 +506,10 @@ void GuiApp::render_dats_tab() {
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, bg_col);
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0F);
-    if (ImGui::BeginChild("##active_dat_banner", ImVec2(-1.0F, banner_h), true)) {
+    if (ImGui::BeginChild("##active_dat_banner",
+                          ImVec2(-1.0F, banner_h),
+                          true,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
       if (v_pad > 0.0F) {
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + v_pad);
       }
@@ -597,6 +600,14 @@ void GuiApp::render_dats_tab() {
                &checklist_status_filter_,
                k_StatusFilterItems,
                IM_ARRAYSIZE(k_StatusFilterItems));
+  ImGui::SameLine(0.0F, 16.0F);
+  if (ImGui::SmallButton("[^] Top")) {
+    scroll_checklist_top_ = true;
+  }
+  ImGui::SameLine(0.0F, 6.0F);
+  if (ImGui::SmallButton("[v] Bot")) {
+    scroll_checklist_bottom_ = true;
+  }
   ImGui::Spacing();
 
   // ── ROM table ───────────────────────────────────────────────
@@ -626,6 +637,15 @@ void GuiApp::render_dats_tab() {
         apply_checklist_sort();
         sort_specs->SpecsDirty = false;
       }
+    }
+
+    // One-shot scroll requests from the Top / Bot buttons.
+    if (scroll_checklist_top_) {
+      ImGui::SetScrollY(0.0F);
+      scroll_checklist_top_ = false;
+    } else if (scroll_checklist_bottom_) {
+      ImGui::SetScrollY(ImGui::GetScrollMaxY());
+      scroll_checklist_bottom_ = false;
     }
 
     const std::string& filter_str = checklist_filter_lower_;
@@ -843,7 +863,11 @@ void GuiApp::render_toast() {
               toast_max,
               IM_COL32(100, 160, 255, static_cast<int>(k_ToastBorderAlpha * alpha)),
               k_ToastRounding);
-  dl->AddText(ImVec2(toast_min.x + k_ToastTextPadding, toast_min.y + k_ToastTextPadding),
+  // Center the text both horizontally and vertically within the toast box.
+  const ImVec2 text_size = ImGui::CalcTextSize(toast_message_.c_str());
+  const ImVec2 text_pos(toast_min.x + (k_ToastWidth - text_size.x) * 0.5F,
+                        toast_min.y + (k_ToastHeight - text_size.y) * 0.5F);
+  dl->AddText(text_pos,
               IM_COL32(77, 255, 128, static_cast<int>(k_ToastTextAlpha * alpha)),
               toast_message_.c_str());
 }
