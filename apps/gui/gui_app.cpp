@@ -602,35 +602,19 @@ void GuiApp::render_dats_tab() {
                k_StatusFilterItems,
                IM_ARRAYSIZE(k_StatusFilterItems));
 
-  // Right-aligned Top / Bot navigation buttons — placed at the right edge of the row.
-  {
-    const float pad_x = ImGui::GetStyle().FramePadding.x;
-    const float gap = ImGui::GetStyle().ItemSpacing.x;
-    const float btn_top_w = ImGui::CalcTextSize("[^] Top").x + pad_x * 2.0F;
-    const float btn_bot_w = ImGui::CalcTextSize("[v] Bot").x + pad_x * 2.0F;
-    // SameLine keeps us on the combo's row; available width from cursor gives the true
-    // right edge without needing to account for window scroll or indent offsets.
-    ImGui::SameLine();
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - btn_top_w -
-                         gap - btn_bot_w);
-    if (ImGui::SmallButton("[^] Top")) {
-      scroll_checklist_top_ = true;
-    }
-    ImGui::SameLine(0.0F, gap);
-    if (ImGui::SmallButton("[v] Bot")) {
-      scroll_checklist_bottom_ = true;
-    }
-  }
   ImGui::Spacing();
 
-  // ── ROM table ───────────────────────────────────────────────
+  // ── ROM table + right-side nav strip ────────────────────────
+  constexpr float k_NavStripW = 72.0F;
+  const float nav_gap = ImGui::GetStyle().ItemSpacing.x;
   constexpr int k_ColumnCount = 4;
+  ImGui::BeginGroup();
   if (ImGui::BeginTable("rom_checklist_table",
                         k_ColumnCount,
                         ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                             ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp |
                             ImGuiTableFlags_Sortable,
-                        ImVec2(0, -30))) {
+                        ImVec2(-k_NavStripW - nav_gap, -30))) {
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_None, 1.5F);
     ImGui::TableSetupColumn("ROM Name", ImGuiTableColumnFlags_DefaultSort, 5.0F);
@@ -715,6 +699,30 @@ void GuiApp::render_dats_tab() {
       ImGui::PopID();
     }
     ImGui::EndTable();
+  }
+  ImGui::EndGroup();
+
+  // Side nav strip — vertically centered buttons to the right of the table.
+  ImGui::SameLine(0.0F, nav_gap);
+  {
+    const float strip_h = ImGui::GetItemRectSize().y;
+    const float btn_h = ImGui::GetFrameHeight();
+    const float total_btn_h = btn_h * 2.0F + ImGui::GetStyle().ItemSpacing.y;
+    ImGui::BeginChild("##nav_strip",
+                      ImVec2(k_NavStripW, strip_h),
+                      false,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    const float v_pad = (strip_h - total_btn_h) * 0.5F;
+    if (v_pad > 0.0F) {
+      ImGui::SetCursorPosY(ImGui::GetCursorPosY() + v_pad);
+    }
+    if (ImGui::Button("[^] Top", ImVec2(-1.0F, 0.0F))) {
+      scroll_checklist_top_ = true;
+    }
+    if (ImGui::Button("[v] Bot", ImVec2(-1.0F, 0.0F))) {
+      scroll_checklist_bottom_ = true;
+    }
+    ImGui::EndChild();
   }
 }
 
