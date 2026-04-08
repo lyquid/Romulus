@@ -48,6 +48,9 @@ constexpr float k_ToastBgAlpha = 220.0F;
 constexpr float k_ToastBorderAlpha = 180.0F;
 constexpr float k_ToastTextAlpha = 255.0F;
 
+// Active DAT banner — extra vertical padding (px) added to the computed text height.
+constexpr float k_BannerExtraPadding = 6.0F;
+
 // ROM checklist column indices
 constexpr int k_ColStatus = 0;
 constexpr int k_ColRomName = 1;
@@ -448,7 +451,7 @@ void GuiApp::render_dats_tab() {
 
   ImGui::SameLine();
 
-  // DAT selector dropdown
+  // DAT selector dropdown — expands to fill available width, leaving just room for "Check DAT".
   {
     std::string preview = "(No DAT selected)";
     if (selected_dat_index_ >= 0 && selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
@@ -456,7 +459,7 @@ void GuiApp::render_dats_tab() {
       preview = dv.name + " v" + dv.version;
     }
 
-    ImGui::PushItemWidth(-260);
+    ImGui::PushItemWidth(-110);
     if (ImGui::BeginCombo("##dat_combo", preview.c_str())) {
       for (int i = 0; i < static_cast<int>(dat_versions_.size()); ++i) {
         const auto& dv = dat_versions_[static_cast<std::size_t>(i)];
@@ -487,11 +490,46 @@ void GuiApp::render_dats_tab() {
   }
   ImGui::EndDisabled();
 
-  if (selected_dat_index_ >= 0 && selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
-    const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
-    ImGui::SameLine();
-    ImGui::TextColored(
-        ImVec4(0.4F, 0.7F, 1.0F, 1.0F), "[Active: %s v%s]", dv.name.c_str(), dv.version.c_str());
+  // ── Active DAT banner ─────────────────────────────────────────
+  // Show the selected DAT name on its own highlighted row so it is
+  // never cropped and is easy to read at a glance.
+  ImGui::Spacing();
+  {
+    const float line_h = ImGui::GetTextLineHeightWithSpacing();
+    const float banner_h = line_h + ImGui::GetStyle().FramePadding.y * 2.0F + k_BannerExtraPadding;
+    const float v_pad = (banner_h - line_h) * 0.5F - ImGui::GetStyle().WindowPadding.y;
+
+    const bool has_dat =
+        selected_dat_index_ >= 0 && selected_dat_index_ < static_cast<int>(dat_versions_.size());
+    const ImVec4 bg_col =
+        has_dat ? ImVec4(0.08F, 0.16F, 0.32F, 1.0F) : ImVec4(0.10F, 0.10F, 0.12F, 1.0F);
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, bg_col);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0F);
+    if (ImGui::BeginChild("##active_dat_banner", ImVec2(-1.0F, banner_h), true)) {
+      if (v_pad > 0.0F) {
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + v_pad);
+      }
+      if (has_dat) {
+        const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
+        ImGui::TextColored(ImVec4(0.45F, 0.75F, 1.0F, 1.0F), "Active DAT");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.55F, 0.55F, 0.60F, 1.0F), "|");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0F, 1.0F, 1.0F, 1.0F), "%s", dv.name.c_str());
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.6F, 0.75F, 0.9F, 1.0F), "v%s", dv.version.c_str());
+        if (!dv.imported_at.empty()) {
+          ImGui::SameLine();
+          ImGui::TextDisabled("  imported %s", dv.imported_at.c_str());
+        }
+      } else {
+        ImGui::TextDisabled("No DAT selected");
+      }
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
   }
 
   ImGui::Spacing();
