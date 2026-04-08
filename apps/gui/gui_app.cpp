@@ -197,6 +197,7 @@ void GuiApp::init_imgui() {
 
   auto& io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+  io.ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable; // Not used; disable to save overhead
 
   apply_custom_theme();
 
@@ -325,8 +326,14 @@ void GuiApp::shutdown() {
 // ═════════════════════════════════════════════════════════════════
 
 void GuiApp::run() {
+  // Sleep until an event arrives (or the timeout expires) — avoids busy-looping
+  // at thousands of FPS when idle.  glfwSwapInterval(1) caps rendering to the
+  // display refresh rate; glfwWaitEventsTimeout provides the ~60 FPS floor used
+  // when background tasks are running and no user input arrives.
+  constexpr double k_TargetFrameTimeout = 1.0 / 60.0;
+
   while (glfwWindowShouldClose(window_) == 0) {
-    glfwPollEvents();
+    glfwWaitEventsTimeout(k_TargetFrameTimeout);
 
     // Check if a background task has finished
     check_pending_task();
@@ -456,6 +463,7 @@ void GuiApp::render_dats_tab() {
         if (ImGui::Selectable(label.c_str(), is_selected)) {
           selected_dat_index_ = i;
           rom_checklist_.clear();
+          checklist_stats_ = {};
         }
         if (is_selected) {
           ImGui::SetItemDefaultFocus();
@@ -495,28 +503,12 @@ void GuiApp::render_dats_tab() {
     return;
   }
 
-  // ── Summary counters ────────────────────────────────────────
-  std::int64_t total = static_cast<std::int64_t>(rom_checklist_.size());
-  std::int64_t cnt_verified = 0;
-  std::int64_t cnt_missing = 0;
-  std::int64_t cnt_unverified = 0;
-  std::int64_t cnt_mismatch = 0;
-  for (const auto& entry : rom_checklist_) {
-    switch (entry.status) {
-      case core::RomStatusType::Verified:
-        ++cnt_verified;
-        break;
-      case core::RomStatusType::Missing:
-        ++cnt_missing;
-        break;
-      case core::RomStatusType::Unverified:
-        ++cnt_unverified;
-        break;
-      case core::RomStatusType::Mismatch:
-        ++cnt_mismatch;
-        break;
-    }
-  }
+  // ── Summary counters (precomputed at checklist-load time) ──
+  const std::int64_t total = checklist_stats_.total;
+  const std::int64_t cnt_verified = checklist_stats_.verified;
+  const std::int64_t cnt_missing = checklist_stats_.missing;
+  const std::int64_t cnt_unverified = checklist_stats_.unverified;
+  const std::int64_t cnt_mismatch = checklist_stats_.mismatch;
   double pct =
       total > 0 ? static_cast<double>(cnt_verified) / static_cast<double>(total) * 100.0 : 0.0;
 
@@ -1044,7 +1036,7 @@ void GuiApp::check_pending_task() {
       if (roms) {
         rom_checklist_.clear();
         rom_checklist_.reserve(roms->size());
-        std::int64_t available = 0;
+        checklist_stats_ = {};
         for (const auto& [rom, st] : *roms) {
           std::string name_lower = rom.name;
           std::ranges::transform(name_lower, name_lower.begin(), ascii_lower);
@@ -1055,13 +1047,25 @@ void GuiApp::check_pending_task() {
               .sha1 = rom.sha1,
               .status = st,
           });
-          if (st == core::RomStatusType::Verified) {
-            ++available;
+          switch (st) {
+            case core::RomStatusType::Verified:
+              ++checklist_stats_.verified;
+              break;
+            case core::RomStatusType::Missing:
+              ++checklist_stats_.missing;
+              break;
+            case core::RomStatusType::Unverified:
+              ++checklist_stats_.unverified;
+              break;
+            case core::RomStatusType::Mismatch:
+              ++checklist_stats_.mismatch;
+              break;
           }
         }
+        checklist_stats_.total = static_cast<std::int64_t>(rom_checklist_.size());
         apply_checklist_sort();
-        status_message_ = "Check complete: " + std::to_string(available) + " / " +
-                          std::to_string(rom_checklist_.size()) + " ROMs available.";
+        status_message_ = "Check complete: " + std::to_string(checklist_stats_.verified) + " / " +
+                          std::to_string(checklist_stats_.total) + " ROMs available.";
       } else {
         status_message_ = "Failed to load checklist: " + roms.error().message;
       }

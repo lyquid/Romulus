@@ -19,6 +19,12 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 - **GUI**: ROM checklist now shows a full status breakdown in the summary header — individual counts and colour-coded badges for Verified, Missing, Unverified, and Mismatch entries alongside the completion percentage
 - **GUI**: Added filter bar to the ROM checklist — free-text substring search (case-insensitive) and a status dropdown (All / Verified / Missing / Unverified / Mismatch) to narrow down large ROM lists
 
+### ⚡ Performance
+
+- **GUI**: Replaced `glfwPollEvents()` busy-loop with `glfwWaitEventsTimeout(1/60)` — the app now sleeps when idle instead of spinning at thousands of FPS, dropping CPU usage to near zero when no user input arrives
+- **GUI**: Disabled `ImGuiConfigFlags_ViewportsEnable` explicitly — multi-viewport is unused and was adding unnecessary overhead
+- **GUI**: Checklist status counters (Verified / Missing / Unverified / Mismatch) are now precomputed once when the checklist loads (`check_pending_task`) and stored as `ChecklistStats`; removed the O(n) per-frame iteration over `rom_checklist_`
+
 ### 🔧 Refactoring
 
 - **HashService / HashDigest**: `HashDigest` now stores raw bytes (`std::array<std::byte, N>`) instead of hex strings — 4 bytes for CRC32, 16 for MD5, 20 for SHA-1, 32 for SHA-256. Binary storage enables direct equality comparison with no string parsing, and is more compact for future DB optimisation. Display-ready lowercase hex strings are produced on demand via `to_hex_crc32()`, `to_hex_md5()`, `to_hex_sha1()`, and `to_hex_sha256()` accessor methods. All call-sites (scanner, logging) updated accordingly. A new `KnownContentProducesExpectedHexDigests` unit test pins exact hash values against externally-computed reference vectors.

@@ -105,6 +105,17 @@ private:
   int checklist_sort_col_ = -1;
   bool checklist_sort_ascending_ = true;
 
+  // Precomputed status counters — recomputed once when the checklist is loaded,
+  // not every frame, to avoid O(n) work in the render loop.
+  struct ChecklistStats {
+    std::int64_t total = 0;
+    std::int64_t verified = 0;
+    std::int64_t missing = 0;
+    std::int64_t unverified = 0;
+    std::int64_t mismatch = 0;
+  };
+  ChecklistStats checklist_stats_;
+
   // Checklist filter state
   static constexpr std::size_t k_MaxFilterLen = 256; ///< Max bytes for the name filter input
   std::array<char, k_MaxFilterLen> checklist_filter_buf_{};
