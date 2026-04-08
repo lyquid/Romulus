@@ -102,7 +102,9 @@ private:
     core::RomStatusType status = core::RomStatusType::Missing;
   };
   std::vector<RomChecklistEntry> rom_checklist_;
-  int checklist_sort_col_ = -1;
+  // Default sort: ROM Name (column 1) ascending — matches ImGuiTableColumnFlags_DefaultSort on that
+  // column.
+  int checklist_sort_col_ = 1;
   bool checklist_sort_ascending_ = true;
 
   // Precomputed status counters — recomputed once when the checklist is loaded,

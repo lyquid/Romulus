@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS dat_versions (
     version       TEXT NOT NULL,
     source_url    TEXT,
     checksum      TEXT NOT NULL,
-    imported_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    imported_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     UNIQUE(name, version)
 );
 
@@ -273,7 +273,7 @@ CREATE TABLE IF NOT EXISTS rom_status (
 CREATE TABLE IF NOT EXISTS scanned_directories (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     path      TEXT NOT NULL UNIQUE,
-    added_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    added_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
 -- Indexes for fast hash lookups
@@ -562,8 +562,9 @@ auto Database::get_or_create_system(std::string_view name) -> Result<std::int64_
 // ═══════════════════════════════════════════════════════════════
 
 auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::int64_t> {
-  auto stmt = prepare("INSERT INTO dat_versions (system_id, name, version, source_url, checksum) "
-                      "VALUES (?1, ?2, ?3, ?4, ?5)");
+  auto stmt = prepare(
+      "INSERT INTO dat_versions (system_id, name, version, source_url, checksum, imported_at) "
+      "VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', 'localtime'))");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }

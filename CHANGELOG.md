@@ -18,6 +18,11 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 - **GUI**: Foundation overhaul — applied a custom polished dark-blue theme replacing the stock ImGui dark theme; all colours, rounding values, padding, and spacing are tuned for a cohesive professional look
 - **GUI**: ROM checklist now shows a full status breakdown in the summary header — individual counts and colour-coded badges for Verified, Missing, Unverified, and Mismatch entries alongside the completion percentage
 - **GUI**: Added filter bar to the ROM checklist — free-text substring search (case-insensitive) and a status dropdown (All / Verified / Missing / Unverified / Mismatch) to narrow down large ROM lists
+- **GUI**: DAT selector dropdown is now sorted alphabetically by name; the selected DAT is tracked by ID and restored correctly after each refresh
+- **GUI**: ROM table default sort is now **ROM Name ascending** (was Status); the ImGui sort arrow reflects this from the first render
+- **GUI**: Removed the completion progress bar from the DATs tab — the text summary already conveys the same information
+- **GUI**: Right-click on any ROM Name, Size, or SHA1 cell in the DATs table copies the raw value to the clipboard; right-click on a folder path in the Folders tab copies the path. A "Right-click to copy" tooltip hints users. A toast confirms each copy.
+- **Database**: `imported_at` timestamps are now stored in **local time** (`datetime('now', 'localtime')`) rather than UTC, so the DAT selector shows the correct time for the user's timezone
 
 ### ⚡ Performance
 

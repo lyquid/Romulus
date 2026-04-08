@@ -532,10 +532,6 @@ void GuiApp::render_dats_tab() {
   }
   ImGui::NewLine();
 
-  float progress = total > 0 ? static_cast<float>(cnt_verified) / static_cast<float>(total) : 0.0F;
-  ImGui::ProgressBar(progress, ImVec2(-1.0F, 6.0F));
-  ImGui::Spacing();
-
   // ── Filter bar ──────────────────────────────────────────────
   ImGui::SetNextItemWidth(220.0F);
   ImGui::InputText("##filter", checklist_filter_buf_.data(), k_MaxFilterLen);
@@ -568,8 +564,8 @@ void GuiApp::render_dats_tab() {
                             ImGuiTableFlags_Sortable,
                         ImVec2(0, -30))) {
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_DefaultSort, 1.5F);
-    ImGui::TableSetupColumn("ROM Name", ImGuiTableColumnFlags_None, 5.0F);
+    ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_None, 1.5F);
+    ImGui::TableSetupColumn("ROM Name", ImGuiTableColumnFlags_DefaultSort, 5.0F);
     ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_None, 1.0F);
     ImGui::TableSetupColumn("SHA1", ImGuiTableColumnFlags_None, 2.5F);
     ImGui::TableHeadersRow();
@@ -611,12 +607,33 @@ void GuiApp::render_dats_tab() {
 
       ImGui::TableSetColumnIndex(k_ColRomName);
       ImGui::TextColored(color, "%s", entry.name.c_str());
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Right-click to copy");
+      }
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        ImGui::SetClipboardText(entry.name.c_str());
+        show_toast("Name copied to clipboard");
+      }
 
       ImGui::TableSetColumnIndex(k_ColSize);
       ImGui::TextUnformatted(format_size(entry.size).c_str());
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Right-click to copy (bytes)");
+      }
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        ImGui::SetClipboardText(std::to_string(entry.size).c_str());
+        show_toast("Size copied to clipboard");
+      }
 
       ImGui::TableSetColumnIndex(k_ColSha1);
       ImGui::TextUnformatted(entry.sha1.c_str());
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Right-click to copy");
+      }
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        ImGui::SetClipboardText(entry.sha1.c_str());
+        show_toast("SHA1 copied to clipboard");
+      }
 
       ImGui::PopID();
     }
@@ -670,6 +687,13 @@ void GuiApp::render_folders_tab() {
 
       ImGui::TableSetColumnIndex(0);
       ImGui::TextUnformatted(dir.path.c_str());
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Right-click to copy path");
+      }
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        ImGui::SetClipboardText(dir.path.c_str());
+        show_toast("Path copied to clipboard");
+      }
 
       ImGui::TableSetColumnIndex(1);
       ImGui::BeginDisabled(busy);
@@ -1094,14 +1118,30 @@ auto GuiApp::is_busy() const -> bool {
 void GuiApp::refresh_dat_versions() {
   auto result = svc_.list_dat_versions();
   if (result) {
-    dat_versions_ = std::move(*result);
-
-    // Reset selection if the current index is out of bounds
-    if (selected_dat_index_ >= static_cast<int>(dat_versions_.size())) {
-      selected_dat_index_ = dat_versions_.empty() ? -1 : 0;
+    // Remember the currently selected DAT by ID so selection survives the sort.
+    std::int64_t prev_selected_id = -1;
+    if (selected_dat_index_ >= 0 && selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
+      prev_selected_id = dat_versions_[static_cast<std::size_t>(selected_dat_index_)].id;
     }
 
-    // Auto-select first if nothing selected and we have data
+    dat_versions_ = std::move(*result);
+
+    // Sort alphabetically by name (case-insensitive) so the dropdown is easy to navigate.
+    std::ranges::sort(dat_versions_, [](const core::DatVersion& a, const core::DatVersion& b) {
+      return std::lexicographical_compare(
+          a.name.begin(), a.name.end(), b.name.begin(), b.name.end(), [](char lc, char rc) {
+            return ascii_lower(lc) < ascii_lower(rc);
+          });
+    });
+
+    // Restore selection: prefer the previously selected DAT (by ID), fall back to first.
+    selected_dat_index_ = -1;
+    for (int i = 0; i < static_cast<int>(dat_versions_.size()); ++i) {
+      if (dat_versions_[static_cast<std::size_t>(i)].id == prev_selected_id) {
+        selected_dat_index_ = i;
+        break;
+      }
+    }
     if (selected_dat_index_ < 0 && !dat_versions_.empty()) {
       selected_dat_index_ = 0;
     }
