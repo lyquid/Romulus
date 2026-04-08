@@ -197,7 +197,6 @@ void GuiApp::init_imgui() {
 
   auto& io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-  io.ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable; // Not used; disable to save overhead
 
   apply_custom_theme();
 
