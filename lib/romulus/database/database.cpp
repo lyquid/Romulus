@@ -1419,6 +1419,11 @@ auto Database::remove_scanned_directory(std::int64_t id) -> Result<void> {
   }
   stmt->bind_int64(1, id);
   stmt->execute();
+
+  if (sqlite3_changes(db_) == 0) {
+    return std::unexpected(
+        core::Error{core::ErrorCode::DatabaseQueryError, "Scanned directory not found"});
+  }
   return {};
 }
 

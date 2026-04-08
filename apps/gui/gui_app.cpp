@@ -42,7 +42,6 @@ constexpr float k_ToastHeight = 36.0F;
 constexpr float k_ToastMarginRight = 10.0F;
 constexpr float k_ToastMarginBottom = 50.0F;
 constexpr float k_ToastRounding = 5.0F;
-constexpr float k_ToastTextPadding = 8.0F;
 // Toast colours — encoded as per-channel alpha multipliers (0–255 range before scaling).
 constexpr float k_ToastBgAlpha = 220.0F;
 constexpr float k_ToastBorderAlpha = 180.0F;
@@ -206,6 +205,8 @@ void GuiApp::init_imgui() {
 
   auto& io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+  // Multi-viewport is unused and adds per-frame overhead — keep it explicitly off.
+  io.ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable;
 
   apply_custom_theme();
 
@@ -600,13 +601,25 @@ void GuiApp::render_dats_tab() {
                &checklist_status_filter_,
                k_StatusFilterItems,
                IM_ARRAYSIZE(k_StatusFilterItems));
-  ImGui::SameLine(0.0F, 16.0F);
-  if (ImGui::SmallButton("[^] Top")) {
-    scroll_checklist_top_ = true;
-  }
-  ImGui::SameLine(0.0F, 6.0F);
-  if (ImGui::SmallButton("[v] Bot")) {
-    scroll_checklist_bottom_ = true;
+
+  // Right-aligned Top / Bot navigation buttons — placed at the right edge of the row.
+  {
+    const float pad_x = ImGui::GetStyle().FramePadding.x;
+    const float gap = ImGui::GetStyle().ItemSpacing.x;
+    const float btn_top_w = ImGui::CalcTextSize("[^] Top").x + pad_x * 2.0F;
+    const float btn_bot_w = ImGui::CalcTextSize("[v] Bot").x + pad_x * 2.0F;
+    // SameLine keeps us on the combo's row; available width from cursor gives the true
+    // right edge without needing to account for window scroll or indent offsets.
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - btn_top_w -
+                         gap - btn_bot_w);
+    if (ImGui::SmallButton("[^] Top")) {
+      scroll_checklist_top_ = true;
+    }
+    ImGui::SameLine(0.0F, gap);
+    if (ImGui::SmallButton("[v] Bot")) {
+      scroll_checklist_bottom_ = true;
+    }
   }
   ImGui::Spacing();
 
