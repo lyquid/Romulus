@@ -41,6 +41,12 @@ constexpr float k_ToastWidth = 310.0F;
 constexpr float k_ToastHeight = 36.0F;
 constexpr float k_ToastMarginRight = 10.0F;
 constexpr float k_ToastMarginBottom = 50.0F;
+constexpr float k_ToastRounding = 5.0F;
+constexpr float k_ToastTextPadding = 8.0F;
+// Toast colours — encoded as per-channel alpha multipliers (0–255 range before scaling).
+constexpr float k_ToastBgAlpha = 220.0F;
+constexpr float k_ToastBorderAlpha = 180.0F;
+constexpr float k_ToastTextAlpha = 255.0F;
 
 // ROM checklist column indices
 constexpr int k_ColStatus = 0;
@@ -777,25 +783,31 @@ void GuiApp::render_toast() {
   }
 
   toast_timer_ -= ImGui::GetIO().DeltaTime;
-  float alpha = std::min(toast_timer_, 1.0F);
+  if (toast_timer_ <= 0.0F) {
+    return;
+  }
 
-  int fb_width = 0;
-  int fb_height = 0;
-  glfwGetFramebufferSize(window_, &fb_width, &fb_height);
+  const float alpha = std::min(toast_timer_, 1.0F);
+  const ImVec2 display_size = ImGui::GetIO().DisplaySize;
 
-  ImVec2 pos(static_cast<float>(fb_width) - k_ToastWidth - k_ToastMarginRight,
-             static_cast<float>(fb_height) - k_ToastMarginBottom);
-  ImGui::SetNextWindowPos(pos);
-  ImGui::SetNextWindowSize(ImVec2(k_ToastWidth, k_ToastHeight));
-  ImGui::SetNextWindowBgAlpha(0.85F * alpha);
+  // Position at the bottom-right of the viewport (in logical display coordinates).
+  const ImVec2 toast_min(display_size.x - k_ToastWidth - k_ToastMarginRight,
+                         display_size.y - k_ToastHeight - k_ToastMarginBottom);
+  const ImVec2 toast_max(toast_min.x + k_ToastWidth, toast_min.y + k_ToastHeight);
 
-  ImGui::Begin("##toast",
-               nullptr,
-               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing |
-                   ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs);
-  ImGui::TextColored(ImVec4(0.3F, 1.0F, 0.5F, alpha), "%s", toast_message_.c_str());
-  ImGui::End();
+  // GetForegroundDrawList() renders on top of ALL ImGui windows — no Z-order issues.
+  ImDrawList* dl = ImGui::GetForegroundDrawList();
+  dl->AddRectFilled(toast_min,
+                    toast_max,
+                    IM_COL32(30, 40, 60, static_cast<int>(k_ToastBgAlpha * alpha)),
+                    k_ToastRounding);
+  dl->AddRect(toast_min,
+              toast_max,
+              IM_COL32(100, 160, 255, static_cast<int>(k_ToastBorderAlpha * alpha)),
+              k_ToastRounding);
+  dl->AddText(ImVec2(toast_min.x + k_ToastTextPadding, toast_min.y + k_ToastTextPadding),
+              IM_COL32(77, 255, 128, static_cast<int>(k_ToastTextAlpha * alpha)),
+              toast_message_.c_str());
 }
 
 // ═════════════════════════════════════════════════════════════════

@@ -22,6 +22,7 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 - **GUI**: ROM table default sort is now **ROM Name ascending** (was Status); the ImGui sort arrow reflects this from the first render
 - **GUI**: Removed the completion progress bar from the DATs tab — the text summary already conveys the same information
 - **GUI**: Right-click on any ROM Name, Size, or SHA1 cell in the DATs table copies the raw value to the clipboard; right-click on a folder path in the Folders tab copies the path. A "Right-click to copy" tooltip hints users. A toast confirms each copy.
+- **GUI**: Fixed toast notification rendering — reimplemented using `ImGui::GetForegroundDrawList()` instead of a separate ImGui window. The old approach relied on window Z-ordering which ImGui breaks by always drawing the focused window last, making the toast invisible after the first appearance or after interacting with the table (e.g. sorting). The foreground draw list is always rendered on top of all windows, bypassing the Z-order system entirely.
 - **Database**: `imported_at` timestamps are now stored in **local time** (`datetime('now', 'localtime')`) rather than UTC, so the DAT selector shows the correct time for the user's timezone
 
 ### ⚡ Performance
