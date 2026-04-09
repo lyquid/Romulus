@@ -64,7 +64,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
                                        "Scan directory not found: " + directory.string()});
   }
 
-  auto ext_filter = extensions.has_value() ? std::move(*extensions) : get_default_extensions();
+  auto ext_filter = std::move(extensions).value_or(get_default_extensions());
 
   ROMULUS_INFO("Scanning directory: {}", directory.string());
 

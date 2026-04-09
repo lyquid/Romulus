@@ -52,13 +52,13 @@ auto to_lower(std::string value) -> std::string {
 /// Normalizes a single extension token: trims leading/trailing whitespace,
 /// ensures a leading dot, and lowercases the result.
 auto normalize_extension(std::string ext) -> std::string {
-  while (!ext.empty() && ext.front() == ' ') {
-    ext.erase(ext.begin());
+  const auto first = ext.find_first_not_of(' ');
+  const auto last = ext.find_last_not_of(' ');
+  if (first == std::string::npos) {
+    return {};
   }
-  while (!ext.empty() && ext.back() == ' ') {
-    ext.pop_back();
-  }
-  if (!ext.empty() && ext.front() != '.') {
+  ext = ext.substr(first, last - first + 1);
+  if (ext.front() != '.') {
     ext = "." + ext;
   }
   return to_lower(std::move(ext));
