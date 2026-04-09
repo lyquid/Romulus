@@ -178,6 +178,10 @@ auto RomScanner::scan(const std::filesystem::path& directory,
   auto num_threads = std::max(1u, std::thread::hardware_concurrency());
   ROMULUS_INFO("Hashing with {} threads", num_threads);
 
+  // Reserve capacity for the results vector. jobs.size() is an upper bound since some
+  // jobs may be skipped or fail to hash; this avoids reallocations under the mutex.
+  scanned_files.reserve(jobs.size());
+
   auto process_job = [&](const HashJob& job) {
     // Check if already scanned via caller-supplied predicate.
     // The predicate may be called concurrently from multiple worker threads;

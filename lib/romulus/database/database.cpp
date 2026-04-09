@@ -995,6 +995,18 @@ auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
   return files;
 }
 
+auto Database::get_all_file_paths() -> Result<std::vector<std::string>> {
+  auto stmt = prepare("SELECT path FROM files");
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+  std::vector<std::string> paths;
+  while (stmt->step()) {
+    paths.push_back(stmt->column_text(0));
+  }
+  return paths;
+}
+
 auto Database::remove_missing_files(const std::vector<std::string>& existing_paths)
     -> Result<std::int64_t> {
   // Get all file paths from DB, remove those not in existing_paths
