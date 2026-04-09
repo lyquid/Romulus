@@ -10,6 +10,7 @@
 #include "romulus/scanner/rom_scanner.hpp"
 
 #include <array>
+#include <unordered_set>
 #include <utility>
 
 namespace romulus::service {
@@ -130,7 +131,58 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 auto RomulusService::scan_directory(const std::filesystem::path& dir,
                                     std::optional<std::string> extensions)
     -> Result<core::ScanReport> {
-  return scanner::RomScanner::scan(dir, *db_, std::move(extensions));
+  // Pre-load only file paths (not full FileInfo rows) so the scanner can skip already-stored
+  // files without decoding unused hash columns.
+  auto existing_paths = db_->get_all_file_paths();
+  if (!existing_paths) {
+    return std::unexpected(existing_paths.error());
+  }
+  // Use a transparent hash/equal to avoid a temporary std::string allocation on each lookup.
+  struct StringHash {
+    using is_transparent = void;
+    auto operator()(std::string_view sv) const noexcept -> std::size_t {
+      return std::hash<std::string_view>{}(sv);
+    }
+  };
+  std::unordered_set<std::string, StringHash, std::equal_to<>> known_paths(
+      std::make_move_iterator(existing_paths->begin()),
+      std::make_move_iterator(existing_paths->end()));
+
+  auto skip_fn = [&known_paths](std::string_view path) -> bool {
+    return known_paths.contains(path);
+  };
+
+  // Run the scanner — no database access inside the scanner itself.
+  auto result = scanner::RomScanner::scan(dir, skip_fn, std::move(extensions));
+  if (!result) {
+    return std::unexpected(result.error());
+  }
+
+  // Persist all newly discovered files in a single checked transaction.
+  // On per-file upsert failure, we log and continue rather than rolling back the entire
+  // transaction — losing one file's record is preferable to discarding all scan work.
+  auto begin = db_->execute("BEGIN TRANSACTION");
+  if (!begin) {
+    return std::unexpected(begin.error());
+  }
+
+  for (const auto& file : result->files) {
+    auto upsert = db_->upsert_file(file);
+    if (!upsert) {
+      ROMULUS_WARN("DB upsert failed for '{}': {}", file.path, upsert.error().message);
+    }
+  }
+
+  auto commit = db_->execute("COMMIT");
+  if (!commit) {
+    auto rollback = db_->execute("ROLLBACK");
+    if (!rollback) {
+      ROMULUS_ERROR("Rollback failed after commit failure: {}", rollback.error().message);
+    }
+    return std::unexpected(commit.error());
+  }
+
+  return result->report;
 }
 
 auto RomulusService::verify(std::optional<std::string> system) -> Result<void> {

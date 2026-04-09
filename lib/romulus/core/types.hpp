@@ -245,6 +245,14 @@ struct ScanReport {
   std::int64_t matches_found = 0;
 };
 
+/// Result of a scan operation: statistics plus the list of discovered (newly hashed) files.
+/// The scanner itself does not interact with storage; callers are responsible for persisting
+/// the files vector (e.g. via Database::upsert_file).
+struct ScanResult {
+  ScanReport report;
+  std::vector<FileInfo> files; ///< Files discovered and hashed during this scan (excludes skipped)
+};
+
 // ── Scanned Directory ─────────────────────────────────────────
 
 /// A directory registered for ROM scanning.
