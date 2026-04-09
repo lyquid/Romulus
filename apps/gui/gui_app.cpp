@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <future>
 #include <GLFW/glfw3.h>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 
@@ -36,28 +37,50 @@ constexpr int k_WindowHeight = 720;
 constexpr auto* k_WindowTitle = "ROMULUS — ROM Collection Verifier";
 constexpr auto* k_GlslVersion = "#version 130";
 constexpr float k_ToastDuration = 2.5F;
-constexpr float k_ToastWidth = 310.0F;
-constexpr float k_ToastHeight = 36.0F;
+constexpr float k_ToastPaddingH = 16.0F; // horizontal padding on each side
+constexpr float k_ToastPaddingV = 10.0F; // vertical padding on each side
 constexpr float k_ToastMarginRight = 10.0F;
 constexpr float k_ToastMarginBottom = 50.0F;
+constexpr float k_ToastRounding = 5.0F;
+// Toast colours — encoded as per-channel alpha multipliers (0–255 range before scaling).
+constexpr float k_ToastBgAlpha = 220.0F;
+constexpr float k_ToastBorderAlpha = 180.0F;
+constexpr float k_ToastTextAlpha = 255.0F;
+
+// Active DAT banner — extra vertical padding (px) added to the computed text height.
+constexpr float k_BannerExtraPadding = 6.0F;
 
 // ROM checklist column indices
 constexpr int k_ColStatus = 0;
 constexpr int k_ColRomName = 1;
 constexpr int k_ColSize = 2;
-constexpr int k_ColCrc32 = 3;
+constexpr int k_ColSha1 = 3;
 
 // Status colours
 constexpr ImVec4 k_ColorVerified{0.2F, 0.9F, 0.3F, 1.0F};   // green
 constexpr ImVec4 k_ColorMissing{1.0F, 0.3F, 0.3F, 1.0F};    // red
-constexpr ImVec4 k_ColorUnverified{1.0F, 0.9F, 0.2F, 1.0F};  // yellow
-constexpr ImVec4 k_ColorMismatch{1.0F, 0.5F, 0.0F, 1.0F};    // orange
+constexpr ImVec4 k_ColorUnverified{1.0F, 0.9F, 0.2F, 1.0F}; // yellow
+constexpr ImVec4 k_ColorMismatch{1.0F, 0.5F, 0.0F, 1.0F};   // orange
 
 // Log panel colour scheme (RGBA)
 constexpr ImVec4 k_ColorLogWarn{1.0F, 0.75F, 0.1F, 1.0F};   // amber  — warnings
 constexpr ImVec4 k_ColorLogError{1.0F, 0.3F, 0.3F, 1.0F};   // red    — errors / critical
 constexpr ImVec4 k_ColorLogDebug{0.6F, 0.6F, 0.6F, 1.0F};   // grey   — debug / trace
 constexpr ImVec4 k_ColorLogDefault{1.0F, 1.0F, 1.0F, 1.0F}; // white  — info
+
+// Status icon labels — ASCII symbols compatible with ImGui's default font.
+// The Unicode checkmarks (✓ U+2713, ✗ U+2717) are not in the built-in ProggyClean
+// font and show as '?' on most systems.  Use plain ASCII equivalents instead.
+constexpr auto* k_IconVerified = "[OK] Verified";
+constexpr auto* k_IconMissing = "[--] Missing";
+constexpr auto* k_SymbolMissing = "[--]"; // standalone, for summary badges
+
+/// ASCII-only character case fold: maps [A-Z] → [a-z], all other bytes pass through unchanged.
+/// Safe for UTF-8 strings because non-ASCII bytes are always ≥ 0x80 and never in [A-Z].
+/// Intended to be used with std::ranges::transform to fold an entire string.
+[[nodiscard]] auto ascii_lower(char c) noexcept -> char {
+  return (c >= 'A' && c <= 'Z') ? static_cast<char>(c + ('a' - 'A')) : c;
+}
 
 void glfw_error_callback(int error, const char* description) {
   std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
@@ -88,9 +111,9 @@ auto format_size(std::int64_t bytes) -> std::string {
 auto status_label(core::RomStatusType status) -> const char* {
   switch (status) {
     case core::RomStatusType::Verified:
-      return "  Available";
+      return k_IconVerified;
     case core::RomStatusType::Missing:
-      return "  Missing";
+      return k_IconMissing;
     case core::RomStatusType::Unverified:
       return "? Unverified";
     case core::RomStatusType::Mismatch:
@@ -140,6 +163,7 @@ GuiApp::GuiApp(service::RomulusService& svc, std::shared_ptr<GuiLogSink> log_sin
 
   status_message_ = "Ready.";
   refresh_dat_versions();
+  refresh_folders();
 }
 
 GuiApp::~GuiApp() {
@@ -182,10 +206,114 @@ void GuiApp::init_imgui() {
   auto& io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-  ImGui::StyleColorsDark();
+  apply_custom_theme();
 
   ImGui_ImplGlfw_InitForOpenGL(window_, true);
   ImGui_ImplOpenGL3_Init(k_GlslVersion);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Custom theme
+// ─────────────────────────────────────────────────────────────────
+
+void GuiApp::apply_custom_theme() {
+  ImGuiStyle& style = ImGui::GetStyle();
+  ImVec4* c = style.Colors;
+
+  // ── Background & panels ──────────────────────────────────────
+  c[ImGuiCol_WindowBg] = ImVec4(0.10F, 0.10F, 0.13F, 1.00F);
+  c[ImGuiCol_ChildBg] = ImVec4(0.08F, 0.08F, 0.10F, 1.00F);
+  c[ImGuiCol_PopupBg] = ImVec4(0.10F, 0.10F, 0.13F, 0.96F);
+
+  // ── Borders ──────────────────────────────────────────────────
+  c[ImGuiCol_Border] = ImVec4(0.28F, 0.30F, 0.42F, 0.60F);
+  c[ImGuiCol_BorderShadow] = ImVec4(0.00F, 0.00F, 0.00F, 0.00F);
+
+  // ── Text ─────────────────────────────────────────────────────
+  c[ImGuiCol_Text] = ImVec4(0.92F, 0.93F, 0.95F, 1.00F);
+  c[ImGuiCol_TextDisabled] = ImVec4(0.45F, 0.48F, 0.56F, 1.00F);
+
+  // ── Frame inputs ─────────────────────────────────────────────
+  c[ImGuiCol_FrameBg] = ImVec4(0.15F, 0.16F, 0.21F, 1.00F);
+  c[ImGuiCol_FrameBgHovered] = ImVec4(0.20F, 0.22F, 0.29F, 1.00F);
+  c[ImGuiCol_FrameBgActive] = ImVec4(0.24F, 0.27F, 0.38F, 1.00F);
+
+  // ── Title bars ───────────────────────────────────────────────
+  c[ImGuiCol_TitleBg] = ImVec4(0.08F, 0.08F, 0.11F, 1.00F);
+  c[ImGuiCol_TitleBgActive] = ImVec4(0.12F, 0.15F, 0.22F, 1.00F);
+  c[ImGuiCol_TitleBgCollapsed] = ImVec4(0.08F, 0.08F, 0.11F, 0.75F);
+
+  // ── Menu bar ─────────────────────────────────────────────────
+  c[ImGuiCol_MenuBarBg] = ImVec4(0.08F, 0.09F, 0.12F, 1.00F);
+
+  // ── Scrollbar ────────────────────────────────────────────────
+  c[ImGuiCol_ScrollbarBg] = ImVec4(0.08F, 0.08F, 0.10F, 1.00F);
+  c[ImGuiCol_ScrollbarGrab] = ImVec4(0.28F, 0.32F, 0.44F, 1.00F);
+  c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.36F, 0.40F, 0.55F, 1.00F);
+  c[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.42F, 0.48F, 0.65F, 1.00F);
+
+  // ── Check marks & sliders ────────────────────────────────────
+  c[ImGuiCol_CheckMark] = ImVec4(0.40F, 0.78F, 1.00F, 1.00F);
+  c[ImGuiCol_SliderGrab] = ImVec4(0.40F, 0.62F, 0.92F, 1.00F);
+  c[ImGuiCol_SliderGrabActive] = ImVec4(0.50F, 0.72F, 1.00F, 1.00F);
+
+  // ── Buttons ──────────────────────────────────────────────────
+  c[ImGuiCol_Button] = ImVec4(0.18F, 0.34F, 0.56F, 1.00F);
+  c[ImGuiCol_ButtonHovered] = ImVec4(0.24F, 0.44F, 0.72F, 1.00F);
+  c[ImGuiCol_ButtonActive] = ImVec4(0.30F, 0.52F, 0.84F, 1.00F);
+
+  // ── Header (table headers, combo items, tree nodes) ──────────
+  c[ImGuiCol_Header] = ImVec4(0.20F, 0.32F, 0.52F, 0.80F);
+  c[ImGuiCol_HeaderHovered] = ImVec4(0.26F, 0.42F, 0.66F, 0.90F);
+  c[ImGuiCol_HeaderActive] = ImVec4(0.32F, 0.52F, 0.80F, 1.00F);
+
+  // ── Separators ───────────────────────────────────────────────
+  c[ImGuiCol_Separator] = ImVec4(0.26F, 0.29F, 0.40F, 0.50F);
+  c[ImGuiCol_SeparatorHovered] = ImVec4(0.38F, 0.50F, 0.72F, 0.80F);
+  c[ImGuiCol_SeparatorActive] = ImVec4(0.48F, 0.62F, 0.86F, 1.00F);
+
+  // ── Resize grips ─────────────────────────────────────────────
+  c[ImGuiCol_ResizeGrip] = ImVec4(0.28F, 0.42F, 0.64F, 0.25F);
+  c[ImGuiCol_ResizeGripHovered] = ImVec4(0.36F, 0.52F, 0.78F, 0.67F);
+  c[ImGuiCol_ResizeGripActive] = ImVec4(0.44F, 0.62F, 0.92F, 0.95F);
+
+  // ── Tabs ─────────────────────────────────────────────────────
+  c[ImGuiCol_Tab] = ImVec4(0.13F, 0.16F, 0.22F, 1.00F);
+  c[ImGuiCol_TabHovered] = ImVec4(0.26F, 0.42F, 0.66F, 0.90F);
+  c[ImGuiCol_TabActive] = ImVec4(0.20F, 0.34F, 0.56F, 1.00F);
+  c[ImGuiCol_TabUnfocused] = ImVec4(0.10F, 0.12F, 0.17F, 1.00F);
+  c[ImGuiCol_TabUnfocusedActive] = ImVec4(0.16F, 0.24F, 0.38F, 1.00F);
+
+  // ── Table ────────────────────────────────────────────────────
+  c[ImGuiCol_TableHeaderBg] = ImVec4(0.14F, 0.18F, 0.28F, 1.00F);
+  c[ImGuiCol_TableBorderStrong] = ImVec4(0.28F, 0.32F, 0.46F, 1.00F);
+  c[ImGuiCol_TableBorderLight] = ImVec4(0.18F, 0.22F, 0.32F, 1.00F);
+  c[ImGuiCol_TableRowBg] = ImVec4(0.00F, 0.00F, 0.00F, 0.00F);
+  c[ImGuiCol_TableRowBgAlt] = ImVec4(1.00F, 1.00F, 1.00F, 0.03F);
+
+  // ── Nav & selection ──────────────────────────────────────────
+  c[ImGuiCol_NavHighlight] = ImVec4(0.40F, 0.70F, 1.00F, 1.00F);
+  c[ImGuiCol_TextSelectedBg] = ImVec4(0.26F, 0.46F, 0.74F, 0.50F);
+  c[ImGuiCol_ModalWindowDimBg] = ImVec4(0.00F, 0.00F, 0.00F, 0.60F);
+
+  // ── Style metrics ────────────────────────────────────────────
+  style.WindowRounding = 5.0F;
+  style.ChildRounding = 4.0F;
+  style.FrameRounding = 3.0F;
+  style.GrabRounding = 3.0F;
+  style.PopupRounding = 5.0F;
+  style.TabRounding = 4.0F;
+  style.ScrollbarRounding = 6.0F;
+  style.WindowBorderSize = 1.0F;
+  style.FrameBorderSize = 0.0F;
+  style.TabBorderSize = 0.0F;
+  style.WindowPadding = ImVec2(10.0F, 10.0F);
+  style.FramePadding = ImVec2(8.0F, 4.0F);
+  style.ItemSpacing = ImVec2(8.0F, 5.0F);
+  style.ItemInnerSpacing = ImVec2(6.0F, 4.0F);
+  style.ScrollbarSize = 12.0F;
+  style.GrabMinSize = 10.0F;
+  style.IndentSpacing = 18.0F;
 }
 
 void GuiApp::shutdown() {
@@ -205,8 +333,14 @@ void GuiApp::shutdown() {
 // ═════════════════════════════════════════════════════════════════
 
 void GuiApp::run() {
+  // Sleep until an event arrives (or the timeout expires) — avoids busy-looping
+  // at thousands of FPS when idle.  glfwSwapInterval(1) caps rendering to the
+  // display refresh rate; glfwWaitEventsTimeout provides the ~60 FPS floor used
+  // when background tasks are running and no user input arrives.
+  constexpr double k_TargetFrameTimeout = 1.0 / 60.0;
+
   while (glfwWindowShouldClose(window_) == 0) {
-    glfwPollEvents();
+    glfwWaitEventsTimeout(k_TargetFrameTimeout);
 
     // Check if a background task has finished
     check_pending_task();
@@ -227,12 +361,15 @@ void GuiApp::run() {
                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_MenuBar);
 
     render_main_menu_bar();
-    render_actions_panel();
 
-    ImGui::Separator();
+    ImGui::Spacing();
     if (ImGui::BeginTabBar("##main_tabs")) {
-      if (ImGui::BeginTabItem("ROM Checklist")) {
-        render_rom_checklist_panel();
+      if (ImGui::BeginTabItem("DATs")) {
+        render_dats_tab();
+        ImGui::EndTabItem();
+      }
+      if (ImGui::BeginTabItem("Folders")) {
+        render_folders_tab();
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem("Log")) {
@@ -301,13 +438,10 @@ void GuiApp::render_main_menu_bar() {
   }
 }
 
-void GuiApp::render_actions_panel() {
+void GuiApp::render_dats_tab() {
   const bool busy = is_busy();
 
-  // ── DAT Management ──
-  ImGui::Text("DAT File");
-
-  // Import DAT button
+  // ── DAT controls ──────────────────────────────────────────────
   ImGui::BeginDisabled(busy);
   if (ImGui::Button("Import DAT")) {
     action_import_dat();
@@ -316,17 +450,15 @@ void GuiApp::render_actions_panel() {
 
   ImGui::SameLine();
 
-  // DAT Selector Dropdown
+  // DAT selector dropdown — expands to fill available width, leaving just room for "Check DAT".
   {
-    // Build combo preview string
     std::string preview = "(No DAT selected)";
-    if (selected_dat_index_ >= 0 &&
-        selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
+    if (selected_dat_index_ >= 0 && selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
       const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
       preview = dv.name + " v" + dv.version;
     }
 
-    ImGui::PushItemWidth(-260);
+    ImGui::PushItemWidth(-110);
     if (ImGui::BeginCombo("##dat_combo", preview.c_str())) {
       for (int i = 0; i < static_cast<int>(dat_versions_.size()); ++i) {
         const auto& dv = dat_versions_[static_cast<std::size_t>(i)];
@@ -334,11 +466,11 @@ void GuiApp::render_actions_panel() {
         if (!dv.imported_at.empty()) {
           label += "  (" + dv.imported_at + ")";
         }
-
         bool is_selected = (selected_dat_index_ == i);
         if (ImGui::Selectable(label.c_str(), is_selected)) {
           selected_dat_index_ = i;
-          rom_checklist_.clear(); // Clear stale checklist when switching DAT
+          rom_checklist_.clear();
+          checklist_stats_ = {};
         }
         if (is_selected) {
           ImGui::SetItemDefaultFocus();
@@ -351,93 +483,143 @@ void GuiApp::render_actions_panel() {
 
   ImGui::SameLine();
 
-  // Check DAT button
   ImGui::BeginDisabled(busy || selected_dat_index_ < 0);
   if (ImGui::Button("Check DAT")) {
     action_check_dat();
   }
   ImGui::EndDisabled();
 
-  // ── Active DAT indicator ──
-  if (selected_dat_index_ >= 0 &&
-      selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
-    const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
-    ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.4F, 0.7F, 1.0F, 1.0F), "[Active: %s v%s]",
-                       dv.name.c_str(), dv.version.c_str());
-  }
-
-  // ── ROM Directory ──
+  // ── Active DAT banner ─────────────────────────────────────────
+  // Show the selected DAT name on its own highlighted row so it is
+  // never cropped and is easy to read at a glance.
   ImGui::Spacing();
-  ImGui::Text("ROM Directory");
+  {
+    const float line_h = ImGui::GetTextLineHeightWithSpacing();
+    const float banner_h = line_h + ImGui::GetStyle().FramePadding.y * 2.0F + k_BannerExtraPadding;
+    const float v_pad = (banner_h - line_h) * 0.5F - ImGui::GetStyle().WindowPadding.y;
 
-  ImGui::BeginDisabled(busy);
-  if (ImGui::Button("Add ROM Folder")) {
-    action_add_rom_folder();
-  }
-  ImGui::EndDisabled();
+    const bool has_dat =
+        selected_dat_index_ >= 0 && selected_dat_index_ < static_cast<int>(dat_versions_.size());
+    const ImVec4 bg_col =
+        has_dat ? ImVec4(0.08F, 0.16F, 0.32F, 1.0F) : ImVec4(0.10F, 0.10F, 0.12F, 1.0F);
 
-  // Show tracked folders
-  if (!scanned_dirs_.empty()) {
-    ImGui::SameLine();
-    ImGui::BeginDisabled(busy);
-    if (ImGui::Button("Rescan All")) {
-      action_rescan_folders();
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, bg_col);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0F);
+    if (ImGui::BeginChild("##active_dat_banner",
+                          ImVec2(-1.0F, banner_h),
+                          true,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+      if (v_pad > 0.0F) {
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + v_pad);
+      }
+      if (has_dat) {
+        const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
+        ImGui::TextColored(ImVec4(0.45F, 0.75F, 1.0F, 1.0F), "Active DAT");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.55F, 0.55F, 0.60F, 1.0F), "|");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0F, 1.0F, 1.0F, 1.0F), "%s", dv.name.c_str());
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.6F, 0.75F, 0.9F, 1.0F), "v%s", dv.version.c_str());
+        if (!dv.imported_at.empty()) {
+          ImGui::SameLine();
+          ImGui::TextDisabled("  imported %s", dv.imported_at.c_str());
+        }
+      } else {
+        ImGui::TextDisabled("No DAT selected");
+      }
     }
-    ImGui::EndDisabled();
-
-    ImGui::SameLine();
-    ImGui::TextDisabled("(%zu folder%s tracked)",
-                        scanned_dirs_.size(),
-                        scanned_dirs_.size() == 1 ? "" : "s");
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
   }
-}
 
-void GuiApp::render_rom_checklist_panel() {
+  ImGui::Spacing();
+
+  // ── ROM checklist ─────────────────────────────────────────────
   if (rom_checklist_.empty()) {
+    ImGui::Spacing();
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0F);
     if (selected_dat_index_ < 0) {
-      ImGui::TextDisabled("Select a DAT and click 'Check DAT' to see the ROM checklist.");
+      ImGui::TextDisabled("Select a DAT from the dropdown above, then click 'Check DAT'.");
     } else {
       ImGui::TextDisabled("Click 'Check DAT' to verify and populate the ROM list.");
     }
     return;
   }
 
-  // Summary header
-  std::int64_t total = static_cast<std::int64_t>(rom_checklist_.size());
-  std::int64_t available = 0;
-  for (const auto& entry : rom_checklist_) {
-    if (entry.status == core::RomStatusType::Verified) {
-      ++available;
-    }
-  }
-  double pct = total > 0 ? static_cast<double>(available) / static_cast<double>(total) * 100.0 : 0.0;
+  // ── Summary counters (precomputed at checklist-load time) ──
+  const std::int64_t total = checklist_stats_.total;
+  const std::int64_t cnt_verified = checklist_stats_.verified;
+  const std::int64_t cnt_missing = checklist_stats_.missing;
+  const std::int64_t cnt_unverified = checklist_stats_.unverified;
+  const std::int64_t cnt_mismatch = checklist_stats_.mismatch;
+  double pct =
+      total > 0 ? static_cast<double>(cnt_verified) / static_cast<double>(total) * 100.0 : 0.0;
 
-  ImGui::TextColored(k_ColorVerified, "%lld", static_cast<long long>(available));
+  ImGui::TextColored(k_ColorVerified, "%lld", static_cast<long long>(cnt_verified));
   ImGui::SameLine();
-  ImGui::Text("/ %lld ROMs available (%.1f%%)", static_cast<long long>(total), pct);
+  ImGui::Text("/ %lld verified (%.1f%%)", static_cast<long long>(total), pct);
 
-  // Progress bar
-  float progress = total > 0 ? static_cast<float>(available) / static_cast<float>(total) : 0.0F;
-  ImGui::ProgressBar(progress, ImVec2(-1, 4));
+  ImGui::SameLine(0.0F, 20.0F);
+  if (cnt_missing > 0) {
+    ImGui::TextColored(
+        k_ColorMissing, "%s %lld missing", k_SymbolMissing, static_cast<long long>(cnt_missing));
+    ImGui::SameLine(0.0F, 14.0F);
+  }
+  if (cnt_unverified > 0) {
+    ImGui::TextColored(
+        k_ColorUnverified, "[??] %lld unverified", static_cast<long long>(cnt_unverified));
+    ImGui::SameLine(0.0F, 14.0F);
+  }
+  if (cnt_mismatch > 0) {
+    ImGui::TextColored(k_ColorMismatch, "[!!] %lld mismatch", static_cast<long long>(cnt_mismatch));
+    ImGui::SameLine(0.0F, 14.0F);
+  }
+  ImGui::NewLine();
+
+  // ── Filter bar ──────────────────────────────────────────────
+  ImGui::SetNextItemWidth(220.0F);
+  ImGui::InputText("##filter", checklist_filter_buf_.data(), k_MaxFilterLen);
+  // Recompute cached lowercase filter only when the user edits the field.
+  if (ImGui::IsItemEdited()) {
+    checklist_filter_lower_.assign(checklist_filter_buf_.data());
+    std::ranges::transform(checklist_filter_lower_, checklist_filter_lower_.begin(), ascii_lower);
+  }
+  ImGui::SameLine();
+  ImGui::TextDisabled("Filter");
+  ImGui::SameLine(0.0F, 16.0F);
+
+  // Order must match core::RomStatusType (Verified=0, Missing=1, Unverified=2, Mismatch=3)
+  // offset by 1 because index 0 is the "All" catch-all entry.
+  constexpr const char* k_StatusFilterItems[] = {
+      "All", "Verified", "Missing", "Unverified", "Mismatch"};
+  ImGui::SetNextItemWidth(120.0F);
+  ImGui::Combo("##status_filter",
+               &checklist_status_filter_,
+               k_StatusFilterItems,
+               IM_ARRAYSIZE(k_StatusFilterItems));
+
   ImGui::Spacing();
 
-  // Table
+  // ── ROM table + right-side nav strip ────────────────────────
+  constexpr float k_NavStripW = 24.0F;
+  const float nav_gap = ImGui::GetStyle().ItemSpacing.x;
   constexpr int k_ColumnCount = 4;
+  ImGui::BeginGroup();
   if (ImGui::BeginTable("rom_checklist_table",
                         k_ColumnCount,
                         ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                             ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp |
                             ImGuiTableFlags_Sortable,
-                        ImVec2(0, -30))) {
+                        ImVec2(-k_NavStripW - nav_gap, -30))) {
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_DefaultSort, 1.5F);
-    ImGui::TableSetupColumn("ROM Name", ImGuiTableColumnFlags_None, 5.0F);
+    ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_None, 1.5F);
+    ImGui::TableSetupColumn("ROM Name", ImGuiTableColumnFlags_DefaultSort, 5.0F);
     ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_None, 1.0F);
-    ImGui::TableSetupColumn("CRC32", ImGuiTableColumnFlags_None, 1.5F);
+    ImGui::TableSetupColumn("SHA1", ImGuiTableColumnFlags_None, 2.5F);
     ImGui::TableHeadersRow();
 
-    // Apply any pending sort
     if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
       if (sort_specs->SpecsDirty) {
         if (sort_specs->SpecsCount > 0) {
@@ -452,32 +634,167 @@ void GuiApp::render_rom_checklist_panel() {
       }
     }
 
+    // One-shot scroll requests from the Top / Bot buttons.
+    if (scroll_checklist_top_) {
+      ImGui::SetScrollY(0.0F);
+      scroll_checklist_top_ = false;
+    } else if (scroll_checklist_bottom_) {
+      ImGui::SetScrollY(ImGui::GetScrollMaxY());
+      scroll_checklist_bottom_ = false;
+    }
+
+    const std::string& filter_str = checklist_filter_lower_;
+
     for (std::size_t i = 0; i < rom_checklist_.size(); ++i) {
       const auto& entry = rom_checklist_[i];
-      ImVec4 color = status_color(entry.status);
 
+      if (checklist_status_filter_ != 0) {
+        if ((checklist_status_filter_ - 1) != static_cast<int>(entry.status)) {
+          continue;
+        }
+      }
+      if (!filter_str.empty() && entry.name_lower.find(filter_str) == std::string::npos) {
+        continue;
+      }
+
+      ImVec4 color = status_color(entry.status);
       ImGui::TableNextRow();
       ImGui::PushID(static_cast<int>(i));
 
-      // Status
       ImGui::TableSetColumnIndex(k_ColStatus);
       ImGui::TextColored(color, "%s", status_label(entry.status));
 
-      // ROM Name
       ImGui::TableSetColumnIndex(k_ColRomName);
       ImGui::TextColored(color, "%s", entry.name.c_str());
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Right-click to copy");
+      }
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        ImGui::SetClipboardText(entry.name.c_str());
+        show_toast("Name copied to clipboard");
+      }
 
-      // Size
       ImGui::TableSetColumnIndex(k_ColSize);
       ImGui::TextUnformatted(format_size(entry.size).c_str());
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Right-click to copy (bytes)");
+      }
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        ImGui::SetClipboardText(std::to_string(entry.size).c_str());
+        show_toast("Size copied to clipboard");
+      }
 
-      // CRC32
-      ImGui::TableSetColumnIndex(k_ColCrc32);
-      ImGui::TextUnformatted(entry.crc32.c_str());
+      ImGui::TableSetColumnIndex(k_ColSha1);
+      ImGui::TextUnformatted(entry.sha1.c_str());
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Right-click to copy");
+      }
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        ImGui::SetClipboardText(entry.sha1.c_str());
+        show_toast("SHA1 copied to clipboard");
+      }
 
       ImGui::PopID();
     }
     ImGui::EndTable();
+  }
+  ImGui::EndGroup();
+
+  // Side nav strip — vertically centered buttons to the right of the table.
+  ImGui::SameLine(0.0F, nav_gap);
+  {
+    const float strip_h = ImGui::GetItemRectSize().y;
+    const float btn_h = ImGui::GetFrameHeight();
+    const float total_btn_h = btn_h * 2.0F + ImGui::GetStyle().ItemSpacing.y;
+    ImGui::BeginChild("##nav_strip",
+                      ImVec2(k_NavStripW, strip_h),
+                      false,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    const float v_pad = (strip_h - total_btn_h) * 0.5F;
+    if (v_pad > 0.0F) {
+      ImGui::SetCursorPosY(ImGui::GetCursorPosY() + v_pad);
+    }
+    if (ImGui::Button("^")) {
+      scroll_checklist_top_ = true;
+    }
+    if (ImGui::Button("v")) {
+      scroll_checklist_bottom_ = true;
+    }
+    ImGui::EndChild();
+  }
+}
+
+void GuiApp::render_folders_tab() {
+  const bool busy = is_busy();
+
+  ImGui::BeginDisabled(busy);
+  if (ImGui::Button("Add Folder")) {
+    action_add_rom_folder();
+  }
+  ImGui::EndDisabled();
+
+  if (!scanned_dirs_.empty()) {
+    ImGui::SameLine();
+    ImGui::BeginDisabled(busy);
+    if (ImGui::Button("Rescan All")) {
+      action_rescan_folders();
+    }
+    ImGui::EndDisabled();
+  }
+
+  ImGui::Spacing();
+
+  if (scanned_dirs_.empty()) {
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0F);
+    ImGui::TextDisabled("No folders added yet. Click 'Add Folder' to register a ROM directory.");
+    return;
+  }
+
+  // Folder list table
+  constexpr int k_FolderCols = 2;
+  if (ImGui::BeginTable("folders_table",
+                        k_FolderCols,
+                        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
+                            ImGuiTableFlags_SizingStretchProp,
+                        ImVec2(0, -30))) {
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_None, 6.0F);
+    ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_None, 1.0F);
+    ImGui::TableHeadersRow();
+
+    std::int64_t to_remove = -1;
+    for (std::size_t i = 0; i < scanned_dirs_.size(); ++i) {
+      const auto& dir = scanned_dirs_[i];
+      ImGui::TableNextRow();
+      ImGui::PushID(static_cast<int>(i));
+
+      ImGui::TableSetColumnIndex(0);
+      ImGui::TextUnformatted(dir.path.c_str());
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Right-click to copy path");
+      }
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        ImGui::SetClipboardText(dir.path.c_str());
+        show_toast("Path copied to clipboard");
+      }
+
+      ImGui::TableSetColumnIndex(1);
+      ImGui::BeginDisabled(busy);
+      if (ImGui::SmallButton("[X]")) {
+        to_remove = dir.id;
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Remove this folder");
+      }
+      ImGui::EndDisabled();
+
+      ImGui::PopID();
+    }
+    ImGui::EndTable();
+
+    if (to_remove >= 0) {
+      action_remove_folder(to_remove);
+    }
   }
 }
 
@@ -543,25 +860,38 @@ void GuiApp::render_toast() {
   }
 
   toast_timer_ -= ImGui::GetIO().DeltaTime;
-  float alpha = std::min(toast_timer_, 1.0F);
+  if (toast_timer_ <= 0.0F) {
+    return;
+  }
 
-  int fb_width = 0;
-  int fb_height = 0;
-  glfwGetFramebufferSize(window_, &fb_width, &fb_height);
+  const float alpha = std::min(toast_timer_, 1.0F);
+  const ImVec2 display_size = ImGui::GetIO().DisplaySize;
 
-  ImVec2 pos(static_cast<float>(fb_width) - k_ToastWidth - k_ToastMarginRight,
-             static_cast<float>(fb_height) - k_ToastMarginBottom);
-  ImGui::SetNextWindowPos(pos);
-  ImGui::SetNextWindowSize(ImVec2(k_ToastWidth, k_ToastHeight));
-  ImGui::SetNextWindowBgAlpha(0.85F * alpha);
+  // Compute toast dimensions from actual text size + padding so it always fits.
+  const ImVec2 text_size = ImGui::CalcTextSize(toast_message_.c_str());
+  const float toast_w = text_size.x + k_ToastPaddingH * 2.0F;
+  const float toast_h = text_size.y + k_ToastPaddingV * 2.0F;
 
-  ImGui::Begin("##toast",
-               nullptr,
-               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing |
-                   ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs);
-  ImGui::TextColored(ImVec4(0.3F, 1.0F, 0.5F, alpha), "%s", toast_message_.c_str());
-  ImGui::End();
+  // Position at the bottom-right of the viewport (in logical display coordinates).
+  const ImVec2 toast_min(display_size.x - toast_w - k_ToastMarginRight,
+                         display_size.y - toast_h - k_ToastMarginBottom);
+  const ImVec2 toast_max(toast_min.x + toast_w, toast_min.y + toast_h);
+
+  // GetForegroundDrawList() renders on top of ALL ImGui windows — no Z-order issues.
+  ImDrawList* dl = ImGui::GetForegroundDrawList();
+  dl->AddRectFilled(toast_min,
+                    toast_max,
+                    IM_COL32(30, 40, 60, static_cast<int>(k_ToastBgAlpha * alpha)),
+                    k_ToastRounding);
+  dl->AddRect(toast_min,
+              toast_max,
+              IM_COL32(100, 160, 255, static_cast<int>(k_ToastBorderAlpha * alpha)),
+              k_ToastRounding);
+  // Center the text both horizontally and vertically within the toast box.
+  const ImVec2 text_pos(toast_min.x + k_ToastPaddingH, toast_min.y + k_ToastPaddingV);
+  dl->AddText(text_pos,
+              IM_COL32(77, 255, 128, static_cast<int>(k_ToastTextAlpha * alpha)),
+              toast_message_.c_str());
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -575,7 +905,8 @@ void GuiApp::apply_checklist_sort() {
   const int col = checklist_sort_col_;
   const bool asc = checklist_sort_ascending_;
 
-  std::stable_sort(rom_checklist_.begin(), rom_checklist_.end(),
+  std::stable_sort(rom_checklist_.begin(),
+                   rom_checklist_.end(),
                    [col, asc](const RomChecklistEntry& a, const RomChecklistEntry& b) {
                      switch (col) {
                        case k_ColStatus: {
@@ -587,8 +918,8 @@ void GuiApp::apply_checklist_sort() {
                          return asc ? a.name < b.name : b.name < a.name;
                        case k_ColSize:
                          return asc ? a.size < b.size : b.size < a.size;
-                       case k_ColCrc32:
-                         return asc ? a.crc32 < b.crc32 : b.crc32 < a.crc32;
+                       case k_ColSha1:
+                         return asc ? a.sha1 < b.sha1 : b.sha1 < a.sha1;
                        default:
                          return false;
                      }
@@ -636,23 +967,21 @@ void GuiApp::action_add_rom_folder() {
 
   auto dir = std::filesystem::path(path);
 
-  // Track the folder for future rescans (avoid duplicates)
-  bool already_tracked = false;
-  for (const auto& d : scanned_dirs_) {
-    if (std::filesystem::equivalent(d, dir)) {
-      already_tracked = true;
-      break;
-    }
-  }
-  if (!already_tracked) {
-    scanned_dirs_.push_back(dir);
-  }
-
-  // Auto-scan immediately
+  // Persist the directory to the DB (upsert — handles duplicates gracefully).
+  // The refresh_folders flag causes the in-memory list to reload on task completion.
   status_message_ = "Scanning folder... Please wait.";
   pending_task_ = PendingTask{
       .result = std::async(std::launch::async,
                            [this, d = std::move(dir)]() -> std::string {
+                             // Register in DB first; surface any failure in the result string
+                             // so the user knows the folder won't persist across restarts.
+                             auto reg = svc_.add_scan_directory(d);
+                             if (!reg) {
+                               ROMULUS_WARN("Could not register folder: {}", reg.error().message);
+                               return "Folder not saved to DB (" + reg.error().message +
+                                      "). Scan aborted.";
+                             }
+                             // Then scan
                              auto result = svc_.scan_directory(d);
                              if (!result) {
                                return "Scan failed: " + result.error().message;
@@ -662,7 +991,23 @@ void GuiApp::action_add_rom_folder() {
                            }),
       .refresh_dat_versions = false,
       .refresh_checklist = false,
+      .refresh_folders = true,
   };
+}
+
+void GuiApp::action_remove_folder(std::int64_t id) {
+  if (is_busy()) {
+    return;
+  }
+  auto result = svc_.remove_scan_directory(id);
+  if (!result) {
+    ROMULUS_WARN("Could not remove folder: {}", result.error().message);
+    status_message_ = "Failed to remove folder: " + result.error().message;
+  } else {
+    status_message_ = "Folder removed.";
+  }
+  refresh_folders();
+  show_toast(status_message_);
 }
 
 void GuiApp::action_rescan_folders() {
@@ -671,29 +1016,34 @@ void GuiApp::action_rescan_folders() {
   }
 
   status_message_ = "Rescanning all folders... Please wait.";
-  // Copy the dirs vector for the async lambda
-  auto dirs = scanned_dirs_;
+  // Collect paths from the DB snapshot for the async lambda
+  std::vector<std::string> paths;
+  paths.reserve(scanned_dirs_.size());
+  for (const auto& d : scanned_dirs_) {
+    paths.push_back(d.path);
+  }
 
   pending_task_ = PendingTask{
-      .result = std::async(std::launch::async,
-                           [this, dirs = std::move(dirs)]() -> std::string {
-                             std::int64_t total_scanned = 0;
-                             std::int64_t total_hashed = 0;
-                             for (const auto& d : dirs) {
-                               auto result = svc_.scan_directory(d);
-                               if (result) {
-                                 total_scanned += result->files_scanned;
-                                 total_hashed += result->files_hashed;
-                               } else {
-                                 ROMULUS_WARN("Rescan failed for '{}': {}",
-                                              d.string(), result.error().message);
-                               }
-                             }
-                             return "Rescan complete: " + std::to_string(total_scanned) +
-                                    " files, " + std::to_string(total_hashed) + " hashed.";
-                           }),
+      .result =
+          std::async(std::launch::async,
+                     [this, paths = std::move(paths)]() -> std::string {
+                       std::int64_t total_scanned = 0;
+                       std::int64_t total_hashed = 0;
+                       for (const auto& p : paths) {
+                         auto result = svc_.scan_directory(std::filesystem::path(p));
+                         if (result) {
+                           total_scanned += result->files_scanned;
+                           total_hashed += result->files_hashed;
+                         } else {
+                           ROMULUS_WARN("Rescan failed for '{}': {}", p, result.error().message);
+                         }
+                       }
+                       return "Rescan complete: " + std::to_string(total_scanned) + " files, " +
+                              std::to_string(total_hashed) + " hashed.";
+                     }),
       .refresh_dat_versions = false,
       .refresh_checklist = false,
+      .refresh_folders = false,
   };
 }
 
@@ -793,6 +1143,7 @@ void GuiApp::check_pending_task() {
 
   bool should_refresh_dat = pending_task_->refresh_dat_versions;
   bool should_refresh_checklist = pending_task_->refresh_checklist;
+  bool should_refresh_folders = pending_task_->refresh_folders;
   pending_task_.reset();
 
   // Handle check_dat result: populates checklist from service on main thread
@@ -804,21 +1155,36 @@ void GuiApp::check_pending_task() {
       if (roms) {
         rom_checklist_.clear();
         rom_checklist_.reserve(roms->size());
-        std::int64_t available = 0;
+        checklist_stats_ = {};
         for (const auto& [rom, st] : *roms) {
+          std::string name_lower = rom.name;
+          std::ranges::transform(name_lower, name_lower.begin(), ascii_lower);
           rom_checklist_.push_back({
               .name = rom.name,
+              .name_lower = std::move(name_lower),
               .size = rom.size,
-              .crc32 = rom.crc32,
+              .sha1 = rom.sha1,
               .status = st,
           });
-          if (st == core::RomStatusType::Verified) {
-            ++available;
+          switch (st) {
+            case core::RomStatusType::Verified:
+              ++checklist_stats_.verified;
+              break;
+            case core::RomStatusType::Missing:
+              ++checklist_stats_.missing;
+              break;
+            case core::RomStatusType::Unverified:
+              ++checklist_stats_.unverified;
+              break;
+            case core::RomStatusType::Mismatch:
+              ++checklist_stats_.mismatch;
+              break;
           }
         }
+        checklist_stats_.total = static_cast<std::int64_t>(rom_checklist_.size());
         apply_checklist_sort();
-        status_message_ = "Check complete: " + std::to_string(available) + " / " +
-                           std::to_string(rom_checklist_.size()) + " ROMs available.";
+        status_message_ = "Check complete: " + std::to_string(checklist_stats_.verified) + " / " +
+                          std::to_string(checklist_stats_.total) + " ROMs available.";
       } else {
         status_message_ = "Failed to load checklist: " + roms.error().message;
       }
@@ -829,6 +1195,9 @@ void GuiApp::check_pending_task() {
 
   if (should_refresh_dat) {
     refresh_dat_versions();
+  }
+  if (should_refresh_folders) {
+    refresh_folders();
   }
 
   show_toast(status_message_);
@@ -845,14 +1214,30 @@ auto GuiApp::is_busy() const -> bool {
 void GuiApp::refresh_dat_versions() {
   auto result = svc_.list_dat_versions();
   if (result) {
-    dat_versions_ = std::move(*result);
-
-    // Reset selection if the current index is out of bounds
-    if (selected_dat_index_ >= static_cast<int>(dat_versions_.size())) {
-      selected_dat_index_ = dat_versions_.empty() ? -1 : 0;
+    // Remember the currently selected DAT by ID so selection survives the sort.
+    std::int64_t prev_selected_id = -1;
+    if (selected_dat_index_ >= 0 && selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
+      prev_selected_id = dat_versions_[static_cast<std::size_t>(selected_dat_index_)].id;
     }
 
-    // Auto-select first if nothing selected and we have data
+    dat_versions_ = std::move(*result);
+
+    // Sort alphabetically by name (case-insensitive) so the dropdown is easy to navigate.
+    std::ranges::sort(dat_versions_, [](const core::DatVersion& a, const core::DatVersion& b) {
+      return std::lexicographical_compare(
+          a.name.begin(), a.name.end(), b.name.begin(), b.name.end(), [](char lc, char rc) {
+            return ascii_lower(lc) < ascii_lower(rc);
+          });
+    });
+
+    // Restore selection: prefer the previously selected DAT (by ID), fall back to first.
+    selected_dat_index_ = -1;
+    for (int i = 0; i < static_cast<int>(dat_versions_.size()); ++i) {
+      if (dat_versions_[static_cast<std::size_t>(i)].id == prev_selected_id) {
+        selected_dat_index_ = i;
+        break;
+      }
+    }
     if (selected_dat_index_ < 0 && !dat_versions_.empty()) {
       selected_dat_index_ = 0;
     }
@@ -860,6 +1245,15 @@ void GuiApp::refresh_dat_versions() {
     dat_versions_.clear();
     selected_dat_index_ = -1;
     ROMULUS_WARN("Failed to refresh DAT versions: {}", result.error().message);
+  }
+}
+
+void GuiApp::refresh_folders() {
+  auto result = svc_.get_scan_directories();
+  if (result) {
+    scanned_dirs_ = std::move(*result);
+  } else {
+    ROMULUS_WARN("Failed to refresh scan directories: {}", result.error().message);
   }
 }
 

@@ -195,6 +195,12 @@ public:
   /// Returns the last inserted row ID.
   [[nodiscard]] auto last_insert_id() const -> std::int64_t;
 
+  // ── Scanned Directories ──────────────────────────────────
+
+  [[nodiscard]] auto add_scanned_directory(std::string_view path) -> Result<core::ScannedDirectory>;
+  [[nodiscard]] auto get_all_scanned_directories() -> Result<std::vector<core::ScannedDirectory>>;
+  [[nodiscard]] auto remove_scanned_directory(std::int64_t id) -> Result<void>;
+
 private:
   /// Runs the schema migration (CREATE TABLE IF NOT EXISTS).
   void run_migrations();

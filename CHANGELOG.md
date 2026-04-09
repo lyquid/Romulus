@@ -7,6 +7,34 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ⚡ Features
+
+- **GUI**: Restructured main window into three tabs — **DATs** (ROM checklist with inline DAT controls), **Folders** (ROM directory management), **Log** (application log)
+- **GUI**: DATs tab ROM table now shows SHA1 instead of CRC32 as the hash column
+- **GUI**: Folders tab — lists all registered ROM scan directories loaded from the database; supports adding new folders and removing existing ones with an `[X]` button
+- **Database**: Added `scanned_directories` table — ROM scan directories are now persisted across sessions; `add_scanned_directory`, `get_all_scanned_directories`, and `remove_scanned_directory` CRUD operations added
+- **Service**: Exposed `add_scan_directory`, `get_scan_directories`, and `remove_scan_directory` methods on `RomulusService`; scan directories are registered in the DB before scanning so they survive restarts
+- **GUI**: Fixed status label display — replaced non-ASCII Unicode symbols (✓ / ✗) that rendered as `?` with ImGui's default ProggyClean font with ASCII equivalents: `[OK]`, `[--]`, `[??]`, `[!!]`
+- **GUI**: Foundation overhaul — applied a custom polished dark-blue theme replacing the stock ImGui dark theme; all colours, rounding values, padding, and spacing are tuned for a cohesive professional look
+- **GUI**: ROM checklist now shows a full status breakdown in the summary header — individual counts and colour-coded badges for Verified, Missing, Unverified, and Mismatch entries alongside the completion percentage
+- **GUI**: Added filter bar to the ROM checklist — free-text substring search (case-insensitive) and a status dropdown (All / Verified / Missing / Unverified / Mismatch) to narrow down large ROM lists
+- **GUI**: DAT selector dropdown is now sorted alphabetically by name; the selected DAT is tracked by ID and restored correctly after each refresh
+- **GUI**: ROM table default sort is now **ROM Name ascending** (was Status); the ImGui sort arrow reflects this from the first render
+- **GUI**: Removed the completion progress bar from the DATs tab — the text summary already conveys the same information
+- **GUI**: Right-click on any ROM Name, Size, or SHA1 cell in the DATs table copies the raw value to the clipboard; right-click on a folder path in the Folders tab copies the path. A "Right-click to copy" tooltip hints users. A toast confirms each copy.
+- **GUI**: Fixed toast notification rendering — reimplemented using `ImGui::GetForegroundDrawList()` instead of a separate ImGui window. The old approach relied on window Z-ordering which ImGui breaks by always drawing the focused window last, making the toast invisible after the first appearance or after interacting with the table (e.g. sorting). The foreground draw list is always rendered on top of all windows, bypassing the Z-order system entirely.
+- **GUI**: Active DAT now shown in a full-width highlighted banner below the control toolbar instead of a truncated inline label. The banner (dark-blue background, rounded corners) displays: `Active DAT | <name> <version>  imported <date>` — full name is never clipped and the selected DAT is always easy to identify at a glance. The combo dropdown is widened to fill the available toolbar space now that the inline label is removed.
+- **GUI**: Toast text is now centered both horizontally and vertically within the notification box.
+- **GUI**: Active DAT banner child window no longer shows a spurious scrollbar — added `ImGuiWindowFlags_NoScrollbar | NoScrollWithMouse`.
+- **GUI**: Added `[^] Top` and `[v] Bot` navigation buttons to the DATs tab filter bar — jump to the first or last row of the ROM table in one click while preserving the current sort order.
+- **Database**: `imported_at` timestamps are now stored in **local time** (`datetime('now', 'localtime')`) rather than UTC, so the DAT selector shows the correct time for the user's timezone
+
+### ⚡ Performance
+
+- **GUI**: Replaced `glfwPollEvents()` busy-loop with `glfwWaitEventsTimeout(1/60)` — the app now sleeps when idle instead of spinning at thousands of FPS, dropping CPU usage to near zero when no user input arrives
+- **GUI**: Disabled `ImGuiConfigFlags_ViewportsEnable` explicitly — multi-viewport is unused and was adding unnecessary overhead
+- **GUI**: Checklist status counters (Verified / Missing / Unverified / Mismatch) are now precomputed once when the checklist loads (`check_pending_task`) and stored as `ChecklistStats`; removed the O(n) per-frame iteration over `rom_checklist_`
+
 ### 🔧 Refactoring
 
 - **HashService / HashDigest**: `HashDigest` now stores raw bytes (`std::array<std::byte, N>`) instead of hex strings — 4 bytes for CRC32, 16 for MD5, 20 for SHA-1, 32 for SHA-256. Binary storage enables direct equality comparison with no string parsing, and is more compact for future DB optimisation. Display-ready lowercase hex strings are produced on demand via `to_hex_crc32()`, `to_hex_md5()`, `to_hex_sha1()`, and `to_hex_sha256()` accessor methods. All call-sites (scanner, logging) updated accordingly. A new `KnownContentProducesExpectedHexDigests` unit test pins exact hash values against externally-computed reference vectors.

@@ -53,14 +53,15 @@ protected:
     ASSERT_TRUE(db_->insert_rom(rom).has_value());
 
     // ROM 2: has a SHA256 in the DAT (e.g., enriched entry)
-    romulus::core::RomInfo rom_enriched{.game_id = *game_id,
-                                        .name = "with_sha256.bin",
-                                        .size = 200,
-                                        .crc32 = "ccdd0022",
-                                        .md5 = "ccdd0022ccdd0022ccdd0022ccdd0022",
-                                        .sha1 = "ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022",
-                                        .sha256 = "ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022",
-                                        .region = {}};
+    romulus::core::RomInfo rom_enriched{
+        .game_id = *game_id,
+        .name = "with_sha256.bin",
+        .size = 200,
+        .crc32 = "ccdd0022",
+        .md5 = "ccdd0022ccdd0022ccdd0022ccdd0022",
+        .sha1 = "ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022",
+        .sha256 = "ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022",
+        .region = {}};
     auto rom_enriched_id = db_->insert_rom(rom_enriched);
     ASSERT_TRUE(rom_enriched_id.has_value());
     rom_enriched_id_ = *rom_enriched_id;
@@ -77,38 +78,41 @@ protected:
     ASSERT_TRUE(db_->insert_rom(rom_missing).has_value());
 
     // File 1: exact match against ROM 1 via SHA1+MD5+CRC32
-    romulus::core::FileInfo file{.filename = "test.bin",
-                                 .path = "/roms/test.bin",
-                                 .size = 100,
-                                 .crc32 = "aabb0011",
-                                 .md5 = "aabb0011aabb0011aabb0011aabb0011",
-                                 .sha1 = "aabb0011aabb0011aabb0011aabb0011aabb0011",
-                                 .sha256 = "aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011",
-                                 .last_scanned = {}};
+    romulus::core::FileInfo file{
+        .filename = "test.bin",
+        .path = "/roms/test.bin",
+        .size = 100,
+        .crc32 = "aabb0011",
+        .md5 = "aabb0011aabb0011aabb0011aabb0011",
+        .sha1 = "aabb0011aabb0011aabb0011aabb0011aabb0011",
+        .sha256 = "aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011aabb0011",
+        .last_scanned = {}};
     ASSERT_TRUE(db_->upsert_file(file).has_value());
 
     // File 2: matches ROM 2 only via SHA256 — lower hashes differ
-    romulus::core::FileInfo file_sha256_only{.filename = "sha256_only.bin",
-                                             .path = "/roms/sha256_only.bin",
-                                             .size = 200,
-                                             .crc32 = "ff110044",
-                                             .md5 = "ff110044ff110044ff110044ff110044",
-                                             .sha1 = "ff110044ff110044ff110044ff110044ff110044",
-                                             .sha256 = "ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022",
-                                             .last_scanned = {}};
+    romulus::core::FileInfo file_sha256_only{
+        .filename = "sha256_only.bin",
+        .path = "/roms/sha256_only.bin",
+        .size = 200,
+        .crc32 = "ff110044",
+        .md5 = "ff110044ff110044ff110044ff110044",
+        .sha1 = "ff110044ff110044ff110044ff110044ff110044",
+        .sha256 = "ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022ccdd0022",
+        .last_scanned = {}};
     auto sha256_only_id = db_->upsert_file(file_sha256_only);
     ASSERT_TRUE(sha256_only_id.has_value());
     sha256_only_file_id_ = *sha256_only_id;
 
     // File 3: no match at all
-    romulus::core::FileInfo other{.filename = "unknown.bin",
-                                  .path = "/roms/unknown.bin",
-                                  .size = 200,
-                                  .crc32 = "00000000",
-                                  .md5 = "00000000000000000000000000000000",
-                                  .sha1 = "0000000000000000000000000000000000000000",
-                                  .sha256 = "0000000000000000000000000000000000000000000000000000000000000000",
-                                  .last_scanned = {}};
+    romulus::core::FileInfo other{
+        .filename = "unknown.bin",
+        .path = "/roms/unknown.bin",
+        .size = 200,
+        .crc32 = "00000000",
+        .md5 = "00000000000000000000000000000000",
+        .sha1 = "0000000000000000000000000000000000000000",
+        .sha256 = "0000000000000000000000000000000000000000000000000000000000000000",
+        .last_scanned = {}};
     ASSERT_TRUE(db_->upsert_file(other).has_value());
   }
 
