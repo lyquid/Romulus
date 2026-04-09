@@ -1,7 +1,6 @@
 #include "romulus/scanner/rom_scanner.hpp"
 
 #include "romulus/core/logging.hpp"
-#include "romulus/database/database.hpp"
 #include "romulus/scanner/archive_service.hpp"
 #include "romulus/scanner/hash_service.hpp"
 
@@ -86,8 +85,8 @@ auto RomScanner::matches_extension(const std::filesystem::path& path,
 }
 
 auto RomScanner::scan(const std::filesystem::path& directory,
-                      database::Database& db,
-                      std::optional<std::string> extensions) -> Result<core::ScanReport> {
+                      std::function<bool(std::string_view)> skip_check,
+                      std::optional<std::string> extensions) -> Result<core::ScanResult> {
   if (!std::filesystem::exists(directory)) {
     return std::unexpected(core::Error{core::ErrorCode::DirectoryNotFound,
                                        "Scan directory not found: " + directory.string()});
@@ -127,7 +126,8 @@ auto RomScanner::scan(const std::filesystem::path& directory,
   core::ScanReport report;
   std::atomic<std::int64_t> files_hashed{0};
   std::atomic<std::int64_t> files_skipped{0};
-  std::mutex db_mutex;
+  std::mutex result_mutex;
+  std::vector<core::FileInfo> scanned_files;
 
   // Phase 2: Expand archives into individual entries
   struct HashJob {
@@ -179,14 +179,12 @@ auto RomScanner::scan(const std::filesystem::path& directory,
   ROMULUS_INFO("Hashing with {} threads", num_threads);
 
   auto process_job = [&](const HashJob& job) {
-    // Check if already scanned
-    {
-      std::lock_guard lock(db_mutex);
-      auto existing = db.find_file_by_path(job.virtual_path);
-      if (existing && existing->has_value()) {
-        ++files_skipped;
-        return;
-      }
+    // Check if already scanned via caller-supplied predicate.
+    // The predicate may be called concurrently from multiple worker threads;
+    // it must support concurrent read access (see header documentation).
+    if (skip_check && skip_check(job.virtual_path)) {
+      ++files_skipped;
+      return;
     }
 
     // Compute hashes
@@ -199,7 +197,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
       return;
     }
 
-    // Store in DB
+    // Collect file info — storage is the caller's responsibility
     const auto sha256_hex = digest->to_hex_sha256();
     core::FileInfo file_info{
         .filename = job.is_archive_entry ? job.entry_name : job.real_path.filename().string(),
@@ -216,12 +214,8 @@ auto RomScanner::scan(const std::filesystem::path& directory,
     ROMULUS_DEBUG("Hashed '{}': SHA256={}", job.virtual_path, sha256_hex);
 
     {
-      std::lock_guard lock(db_mutex);
-      auto result = db.upsert_file(file_info);
-      if (!result) {
-        ROMULUS_WARN("DB insert failed for '{}': {}", job.virtual_path, result.error().message);
-        return;
-      }
+      std::lock_guard lock(result_mutex);
+      scanned_files.push_back(std::move(file_info));
     }
 
     ++files_hashed;
@@ -256,7 +250,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
                report.files_skipped,
                report.archives_processed);
 
-  return report;
+  return core::ScanResult{.report = report, .files = std::move(scanned_files)};
 }
 
 } // namespace romulus::scanner

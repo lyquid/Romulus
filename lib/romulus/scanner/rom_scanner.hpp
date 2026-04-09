@@ -7,13 +7,11 @@
 #include "romulus/core/types.hpp"
 
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
-
-namespace romulus::database {
-class Database;
-}
 
 namespace romulus::scanner {
 
@@ -21,18 +19,21 @@ using romulus::core::Result;
 
 /// Scans directories for ROM files (including inside archives).
 /// Supports parallel hashing via std::jthread.
+/// The scanner is pure discovery — it does not interact with any storage layer.
 class RomScanner final {
 public:
   /// Scans a directory recursively for ROM files.
-  /// @param directory Root directory to scan.
-  /// @param db Database for skip-checking (already scanned files).
-  /// @param extensions Optional comma-separated extension filter (e.g. ".nes,.gb").
-  ///                   If empty, scans all known ROM and archive extensions.
-  /// @return ScanReport with statistics.
+  /// @param directory    Root directory to scan.
+  /// @param skip_check   Optional predicate: return true for paths that should be skipped
+  ///                     (e.g. already stored in a database). Called concurrently from multiple
+  ///                     threads — the predicate must support concurrent read access.
+  /// @param extensions   Optional comma-separated extension filter (e.g. ".nes,.gb").
+  ///                     If empty, scans all known ROM and archive extensions.
+  /// @return ScanResult containing per-file hashes and summary statistics.
   [[nodiscard]] static auto scan(const std::filesystem::path& directory,
-                                 database::Database& db,
+                                 std::function<bool(std::string_view)> skip_check = {},
                                  std::optional<std::string> extensions = {})
-      -> Result<core::ScanReport>;
+      -> Result<core::ScanResult>;
 
 private:
   /// Default ROM file extensions to scan for.

@@ -10,6 +10,7 @@
 #include "romulus/scanner/rom_scanner.hpp"
 
 #include <array>
+#include <unordered_set>
 #include <utility>
 
 namespace romulus::service {
@@ -130,7 +131,48 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 auto RomulusService::scan_directory(const std::filesystem::path& dir,
                                     std::optional<std::string> extensions)
     -> Result<core::ScanReport> {
-  return scanner::RomScanner::scan(dir, *db_, std::move(extensions));
+  // Pre-load known paths so the scanner can skip already-stored files without
+  // touching the database directly (pure separation of concerns).
+  auto existing = db_->get_all_files();
+  if (!existing) {
+    return std::unexpected(existing.error());
+  }
+  // Use a transparent hash/equal to avoid a temporary std::string allocation on each lookup.
+  struct StringHash {
+    using is_transparent = void;
+    auto operator()(std::string_view sv) const noexcept -> std::size_t {
+      return std::hash<std::string_view>{}(sv);
+    }
+  };
+  std::unordered_set<std::string, StringHash, std::equal_to<>> known_paths;
+  known_paths.reserve(existing->size());
+  for (const auto& f : *existing) {
+    known_paths.insert(f.path);
+  }
+
+  auto skip_fn = [&known_paths](std::string_view path) -> bool {
+    return known_paths.contains(path);
+  };
+
+  // Run the scanner — no database access inside the scanner itself.
+  auto result = scanner::RomScanner::scan(dir, skip_fn, std::move(extensions));
+  if (!result) {
+    return std::unexpected(result.error());
+  }
+
+  // Persist all newly discovered files in a single transaction.
+  // On per-file upsert failure, we log and continue rather than rolling back the entire
+  // transaction — losing one file's record is preferable to discarding all scan work.
+  auto txn = db_->begin_transaction();
+  for (const auto& file : result->files) {
+    auto upsert = db_->upsert_file(file);
+    if (!upsert) {
+      ROMULUS_WARN("DB upsert failed for '{}': {}", file.path, upsert.error().message);
+    }
+  }
+  txn.commit();
+
+  return result->report;
 }
 
 auto RomulusService::verify(std::optional<std::string> system) -> Result<void> {
