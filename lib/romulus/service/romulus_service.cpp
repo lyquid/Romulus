@@ -129,7 +129,7 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 // ═══════════════════════════════════════════════════════════════
 
 auto RomulusService::scan_directory(const std::filesystem::path& dir,
-                                    std::optional<std::string> extensions)
+                                    std::optional<std::vector<std::string>> extensions)
     -> Result<core::ScanReport> {
   // Pre-load only file paths (not full FileInfo rows) so the scanner can skip already-stored
   // files without decoding unused hash columns.

@@ -8,38 +8,10 @@
 #include <atomic>
 #include <mutex>
 #include <ranges>
-#include <sstream>
 #include <thread>
 #include <vector>
 
 namespace romulus::scanner {
-
-namespace {
-
-auto split_extensions(const std::string& ext_str) -> std::vector<std::string> {
-  std::vector<std::string> exts;
-  std::istringstream stream(ext_str);
-  std::string token;
-  while (std::getline(stream, token, ',')) {
-    // Trim and ensure leading dot
-    auto trimmed = token;
-    while (!trimmed.empty() && trimmed.front() == ' ') {
-      trimmed.erase(trimmed.begin());
-    }
-    if (!trimmed.empty() && trimmed.front() != '.') {
-      trimmed = "." + trimmed;
-    }
-    std::transform(trimmed.begin(), trimmed.end(), trimmed.begin(), [](unsigned char c) {
-      return static_cast<char>(std::tolower(c));
-    });
-    if (!trimmed.empty()) {
-      exts.push_back(trimmed);
-    }
-  }
-  return exts;
-}
-
-} // namespace
 
 auto RomScanner::get_default_extensions() -> std::vector<std::string> {
   return {
@@ -86,14 +58,13 @@ auto RomScanner::matches_extension(const std::filesystem::path& path,
 
 auto RomScanner::scan(const std::filesystem::path& directory,
                       std::function<bool(std::string_view)> skip_check,
-                      std::optional<std::string> extensions) -> Result<core::ScanResult> {
+                      std::optional<std::vector<std::string>> extensions) -> Result<core::ScanResult> {
   if (!std::filesystem::exists(directory)) {
     return std::unexpected(core::Error{core::ErrorCode::DirectoryNotFound,
                                        "Scan directory not found: " + directory.string()});
   }
 
-  auto ext_filter =
-      extensions.has_value() ? split_extensions(*extensions) : get_default_extensions();
+  auto ext_filter = extensions.has_value() ? std::move(*extensions) : get_default_extensions();
 
   ROMULUS_INFO("Scanning directory: {}", directory.string());
 
