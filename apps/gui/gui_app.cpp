@@ -205,8 +205,6 @@ void GuiApp::init_imgui() {
 
   auto& io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-  // Multi-viewport is unused and adds per-frame overhead — keep it explicitly off.
-  io.ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable;
 
   apply_custom_theme();
 
@@ -605,7 +603,7 @@ void GuiApp::render_dats_tab() {
   ImGui::Spacing();
 
   // ── ROM table + right-side nav strip ────────────────────────
-  constexpr float k_NavStripW = 72.0F;
+  constexpr float k_NavStripW = 24.0F;
   const float nav_gap = ImGui::GetStyle().ItemSpacing.x;
   constexpr int k_ColumnCount = 4;
   ImGui::BeginGroup();
@@ -716,10 +714,10 @@ void GuiApp::render_dats_tab() {
     if (v_pad > 0.0F) {
       ImGui::SetCursorPosY(ImGui::GetCursorPosY() + v_pad);
     }
-    if (ImGui::Button("[^] Top", ImVec2(-1.0F, 0.0F))) {
+    if (ImGui::Button("^")) {
       scroll_checklist_top_ = true;
     }
-    if (ImGui::Button("[v] Bot", ImVec2(-1.0F, 0.0F))) {
+    if (ImGui::Button("v")) {
       scroll_checklist_bottom_ = true;
     }
     ImGui::EndChild();
