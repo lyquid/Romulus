@@ -37,8 +37,8 @@ constexpr int k_WindowHeight = 720;
 constexpr auto* k_WindowTitle = "ROMULUS — ROM Collection Verifier";
 constexpr auto* k_GlslVersion = "#version 130";
 constexpr float k_ToastDuration = 2.5F;
-constexpr float k_ToastWidth = 310.0F;
-constexpr float k_ToastHeight = 36.0F;
+constexpr float k_ToastPaddingH = 16.0F; // horizontal padding on each side
+constexpr float k_ToastPaddingV = 10.0F; // vertical padding on each side
 constexpr float k_ToastMarginRight = 10.0F;
 constexpr float k_ToastMarginBottom = 50.0F;
 constexpr float k_ToastRounding = 5.0F;
@@ -867,10 +867,15 @@ void GuiApp::render_toast() {
   const float alpha = std::min(toast_timer_, 1.0F);
   const ImVec2 display_size = ImGui::GetIO().DisplaySize;
 
+  // Compute toast dimensions from actual text size + padding so it always fits.
+  const ImVec2 text_size = ImGui::CalcTextSize(toast_message_.c_str());
+  const float toast_w = text_size.x + k_ToastPaddingH * 2.0F;
+  const float toast_h = text_size.y + k_ToastPaddingV * 2.0F;
+
   // Position at the bottom-right of the viewport (in logical display coordinates).
-  const ImVec2 toast_min(display_size.x - k_ToastWidth - k_ToastMarginRight,
-                         display_size.y - k_ToastHeight - k_ToastMarginBottom);
-  const ImVec2 toast_max(toast_min.x + k_ToastWidth, toast_min.y + k_ToastHeight);
+  const ImVec2 toast_min(display_size.x - toast_w - k_ToastMarginRight,
+                         display_size.y - toast_h - k_ToastMarginBottom);
+  const ImVec2 toast_max(toast_min.x + toast_w, toast_min.y + toast_h);
 
   // GetForegroundDrawList() renders on top of ALL ImGui windows — no Z-order issues.
   ImDrawList* dl = ImGui::GetForegroundDrawList();
@@ -883,9 +888,7 @@ void GuiApp::render_toast() {
               IM_COL32(100, 160, 255, static_cast<int>(k_ToastBorderAlpha * alpha)),
               k_ToastRounding);
   // Center the text both horizontally and vertically within the toast box.
-  const ImVec2 text_size = ImGui::CalcTextSize(toast_message_.c_str());
-  const ImVec2 text_pos(toast_min.x + (k_ToastWidth - text_size.x) * 0.5F,
-                        toast_min.y + (k_ToastHeight - text_size.y) * 0.5F);
+  const ImVec2 text_pos(toast_min.x + k_ToastPaddingH, toast_min.y + k_ToastPaddingV);
   dl->AddText(text_pos,
               IM_COL32(77, 255, 128, static_cast<int>(k_ToastTextAlpha * alpha)),
               toast_message_.c_str());
