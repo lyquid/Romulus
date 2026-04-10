@@ -58,16 +58,16 @@ TEST_F(FullScanTest, ImportDatAndScanDirectory) {
   EXPECT_EQ(summary->total_roms, 3); // 3 ROMs in sample.dat
 }
 
-TEST_F(FullScanTest, ListSystemsAfterImport) {
+TEST_F(FullScanTest, ListDatVersionsAfterImport) {
   romulus::service::RomulusService svc(db_path_);
 
   auto dat = svc.import_dat(k_FixturesDir / "sample.dat");
   ASSERT_TRUE(dat.has_value());
 
-  auto systems = svc.list_systems();
-  ASSERT_TRUE(systems.has_value());
-  EXPECT_EQ(systems->size(), 1);
-  EXPECT_EQ(systems->front().name, "Test System - Sample");
+  auto dats = svc.list_dat_versions();
+  ASSERT_TRUE(dats.has_value());
+  EXPECT_EQ(dats->size(), 1u);
+  EXPECT_EQ(dats->front().name, "Test System - Sample");
 }
 
 TEST_F(FullScanTest, GetAllFilesReturnsScannedFiles) {
@@ -98,18 +98,18 @@ TEST_F(FullScanTest, PurgeDatabaseClearsAllData) {
   ASSERT_TRUE(scan.has_value()) << scan.error().message;
 
   // Verify data exists
-  auto systems = svc.list_systems();
-  ASSERT_TRUE(systems.has_value());
-  EXPECT_FALSE(systems->empty());
+  auto dats = svc.list_dat_versions();
+  ASSERT_TRUE(dats.has_value());
+  EXPECT_FALSE(dats->empty());
 
   // Purge
   auto purge = svc.purge_database();
   ASSERT_TRUE(purge.has_value()) << purge.error().message;
 
   // Verify all data is gone
-  auto systems_after = svc.list_systems();
-  ASSERT_TRUE(systems_after.has_value());
-  EXPECT_TRUE(systems_after->empty());
+  auto dats_after = svc.list_dat_versions();
+  ASSERT_TRUE(dats_after.has_value());
+  EXPECT_TRUE(dats_after->empty());
 
   auto files_after = svc.get_all_files();
   ASSERT_TRUE(files_after.has_value());

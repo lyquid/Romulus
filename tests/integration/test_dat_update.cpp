@@ -60,15 +60,15 @@ TEST_F(DatUpdateTest, ImportingSameDatTwiceIsIdempotent) {
   EXPECT_EQ(dat1->version, dat2->version);
 }
 
-TEST_F(DatUpdateTest, SystemCountDoesNotIncreaseOnReimport) {
+TEST_F(DatUpdateTest, DatCountDoesNotIncreaseOnReimport) {
   romulus::service::RomulusService svc(db_path_);
 
   auto dat1 = svc.import_dat(k_FixturesDir / "sample.dat");
   auto dat2 = svc.import_dat(k_FixturesDir / "sample.dat");
 
-  auto systems = svc.list_systems();
-  ASSERT_TRUE(systems.has_value());
-  EXPECT_EQ(systems->size(), 1);
+  auto dats = svc.list_dat_versions();
+  ASSERT_TRUE(dats.has_value());
+  EXPECT_EQ(dats->size(), 1u);
 }
 
 TEST_F(DatUpdateTest, RepoArchiveImportIsIdempotent) {

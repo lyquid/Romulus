@@ -98,7 +98,7 @@ auto ReportGenerator::summary_text(database::Database& db,
   out << "╔══════════════════════════════════════════════════╗\n";
   out << "║           ROMULUS — Collection Summary           ║\n";
   out << "╠══════════════════════════════════════════════════╣\n";
-  out << "║ System:     " << std::setw(36) << std::left << summary->system_name << " ║\n";
+  out << "║ System:     " << std::setw(36) << std::left << summary->dat_name << " ║\n";
   out << "╠══════════════════════════════════════════════════╣\n";
   out << "║ Total ROMs: " << std::setw(36) << summary->total_roms << " ║\n";
   out << "║ Verified:   " << std::setw(36)
@@ -122,7 +122,7 @@ auto ReportGenerator::summary_csv(database::Database& db,
 
   std::ostringstream out;
   out << "system,total_roms,verified,missing,unverified,mismatch,verified_pct\n";
-  out << csv_escape(summary->system_name) << "," << summary->total_roms << "," << summary->verified
+  out << csv_escape(summary->dat_name) << "," << summary->total_roms << "," << summary->verified
       << "," << summary->missing << "," << summary->unverified << "," << summary->mismatch << ","
       << std::fixed << std::setprecision(1) << summary->verified_percent() << "\n";
 
@@ -137,7 +137,7 @@ auto ReportGenerator::summary_json(database::Database& db,
   }
 
   nlohmann::json j;
-  j["system"] = summary->system_name;
+  j["system"] = summary->dat_name;
   j["total_roms"] = summary->total_roms;
   j["verified"] = summary->verified;
   j["missing"] = summary->missing;
@@ -162,11 +162,11 @@ auto ReportGenerator::missing_text(database::Database& db,
   std::ostringstream out;
   out << "\n═══ Missing ROMs (" << missing->size() << ") ═══\n\n";
 
-  std::string current_system;
+  std::string current_dat;
   for (const auto& rom : *missing) {
-    if (rom.system_name != current_system) {
-      current_system = rom.system_name;
-      out << "── " << current_system << " ──\n";
+    if (rom.dat_name != current_dat) {
+      current_dat = rom.dat_name;
+      out << "── " << current_dat << " ──\n";
     }
     out << "  " << rom.game_name << " / " << rom.rom_name << "\n";
   }
@@ -184,7 +184,7 @@ auto ReportGenerator::missing_csv(database::Database& db,
   std::ostringstream out;
   out << "system,game,rom,sha1\n";
   for (const auto& rom : *missing) {
-    out << csv_escape(rom.system_name) << "," << csv_escape(rom.game_name) << ","
+    out << csv_escape(rom.dat_name) << "," << csv_escape(rom.game_name) << ","
         << csv_escape(rom.rom_name) << "," << rom.sha1 << "\n";
   }
 
@@ -201,7 +201,7 @@ auto ReportGenerator::missing_json(database::Database& db,
   nlohmann::json j = nlohmann::json::array();
   for (const auto& rom : *missing) {
     j.push_back({
-        {"system", rom.system_name},
+        {"system", rom.dat_name},
         {"game", rom.game_name},
         {"rom", rom.rom_name},
         {"sha1", rom.sha1},
@@ -282,8 +282,8 @@ auto ReportGenerator::duplicates_json(database::Database& db,
 // ═══════════════════════════════════════════════════════════════
 
 auto ReportGenerator::unverified_text(database::Database& db,
-                                      std::optional<std::int64_t> sys) -> Result<std::string> {
-  auto unverified = db.get_unverified_files(sys);
+                                      std::optional<std::int64_t> /*sys*/) -> Result<std::string> {
+  auto unverified = db.get_unverified_files();
   if (!unverified) {
     return std::unexpected(unverified.error());
   }
@@ -302,8 +302,8 @@ auto ReportGenerator::unverified_text(database::Database& db,
 }
 
 auto ReportGenerator::unverified_csv(database::Database& db,
-                                     std::optional<std::int64_t> sys) -> Result<std::string> {
-  auto unverified = db.get_unverified_files(sys);
+                                     std::optional<std::int64_t> /*sys*/) -> Result<std::string> {
+  auto unverified = db.get_unverified_files();
   if (!unverified) {
     return std::unexpected(unverified.error());
   }
@@ -320,8 +320,8 @@ auto ReportGenerator::unverified_csv(database::Database& db,
 }
 
 auto ReportGenerator::unverified_json(database::Database& db,
-                                      std::optional<std::int64_t> sys) -> Result<std::string> {
-  auto unverified = db.get_unverified_files(sys);
+                                      std::optional<std::int64_t> /*sys*/) -> Result<std::string> {
+  auto unverified = db.get_unverified_files();
   if (!unverified) {
     return std::unexpected(unverified.error());
   }

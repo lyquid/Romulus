@@ -107,30 +107,16 @@ public:
   /// Creates an RAII transaction guard.
   [[nodiscard]] auto begin_transaction() -> TransactionGuard;
 
-  // ── Systems ──────────────────────────────────────────────
-
-  [[nodiscard]] auto insert_system(const core::SystemInfo& system) -> Result<std::int64_t>;
-  [[nodiscard]] auto find_system_by_name(std::string_view name)
-      -> Result<std::optional<core::SystemInfo>>;
-  [[nodiscard]] auto get_all_systems() -> Result<std::vector<core::SystemInfo>>;
-  [[nodiscard]] auto get_or_create_system(std::string_view name) -> Result<std::int64_t>;
-
   // ── DAT Versions ─────────────────────────────────────────
 
   [[nodiscard]] auto insert_dat_version(const core::DatVersion& dat) -> Result<std::int64_t>;
   [[nodiscard]] auto find_dat_version(std::string_view name, std::string_view version)
       -> Result<std::optional<core::DatVersion>>;
-  [[nodiscard]] auto get_latest_dat_version(std::int64_t system_id)
+  [[nodiscard]] auto find_dat_version_by_checksum(std::string_view checksum)
       -> Result<std::optional<core::DatVersion>>;
   [[nodiscard]] auto get_all_dat_versions() -> Result<std::vector<core::DatVersion>>;
   [[nodiscard]] auto get_roms_for_dat_version(std::int64_t dat_version_id)
       -> Result<std::vector<core::RomInfo>>;
-
-  // ── Games ────────────────────────────────────────────────
-
-  [[nodiscard]] auto insert_game(const core::GameInfo& game) -> Result<std::int64_t>;
-  [[nodiscard]] auto get_games_by_dat_version(std::int64_t dat_version_id)
-      -> Result<std::vector<core::GameInfo>>;
 
   // ── ROMs ─────────────────────────────────────────────────
 
@@ -142,8 +128,7 @@ public:
   [[nodiscard]] auto find_rom_by_md5(std::string_view md5) -> Result<std::optional<core::RomInfo>>;
   [[nodiscard]] auto find_rom_by_crc32(std::string_view crc32)
       -> Result<std::vector<core::RomInfo>>;
-  [[nodiscard]] auto get_all_roms_for_system(std::int64_t system_id)
-      -> Result<std::vector<core::RomInfo>>;
+  [[nodiscard]] auto get_all_roms() -> Result<std::vector<core::RomInfo>>;
 
   // ── Files ────────────────────────────────────────────────
 
@@ -176,20 +161,17 @@ public:
       -> Result<std::vector<core::MatchResult>>;
   [[nodiscard]] auto clear_matches() -> Result<void>;
 
-  // ── ROM Status ───────────────────────────────────────────
+  // ── Status (computed dynamically from rom_matches + files) ───
 
-  [[nodiscard]] auto upsert_rom_status(std::int64_t rom_id,
-                                       core::RomStatusType status) -> Result<void>;
-  [[nodiscard]] auto get_rom_status(std::int64_t rom_id)
-      -> Result<std::optional<core::RomStatusEntry>>;
-  [[nodiscard]] auto get_collection_summary(std::optional<std::int64_t> system_id = {})
+  /// Computes the status of a single ROM by inspecting rom_matches and files.
+  [[nodiscard]] auto get_computed_rom_status(std::int64_t rom_id) -> Result<core::RomStatusType>;
+  [[nodiscard]] auto get_collection_summary(std::optional<std::int64_t> dat_version_id = {})
       -> Result<core::CollectionSummary>;
-  [[nodiscard]] auto get_missing_roms(std::optional<std::int64_t> system_id = {})
+  [[nodiscard]] auto get_missing_roms(std::optional<std::int64_t> dat_version_id = {})
       -> Result<std::vector<core::MissingRom>>;
-  [[nodiscard]] auto get_duplicate_files(std::optional<std::int64_t> system_id = {})
+  [[nodiscard]] auto get_duplicate_files(std::optional<std::int64_t> dat_version_id = {})
       -> Result<std::vector<core::DuplicateFile>>;
-  [[nodiscard]] auto get_unverified_files(std::optional<std::int64_t> system_id = {})
-      -> Result<std::vector<core::FileInfo>>;
+  [[nodiscard]] auto get_unverified_files() -> Result<std::vector<core::FileInfo>>;
 
   // ── Utilities ────────────────────────────────────────────
 

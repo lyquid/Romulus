@@ -58,7 +58,7 @@ romulus report summary
 | 🧠 **Smart Scanning** | Skips unchanged files, tracks modifications — smarter than a save-state |
 | 🎯 **Multi-Hash Matching** | SHA1 > MD5 > CRC32 priority — triple-verified, like a 100% save file |
 | 📊 **Reports** | Summary, missing ROMs, duplicates in text/CSV/JSON — the high score board |
-| 🌍 **Multi-System** | Track multiple systems in one database — all your cartridges, one shelf |
+| 🗂️ **Multi-DAT** | Import and track multiple DAT files in one database — all your cartridges, one shelf |
 
 ---
 
@@ -172,13 +172,13 @@ romulus verify
 romulus sync path/to/dat.dat /path/to/roms
 
 # 📊 Reports — Check your high scores
-romulus report summary                    # 📝 Text summary
-romulus report missing --format json      # ❓ Missing ROMs as JSON
-romulus report summary --format csv       # 📋 CSV export
-romulus report summary --system "Nintendo - Game Boy"
+romulus report summary                   # 📝 Text summary
+romulus report missing --format json     # ❓ Missing ROMs as JSON
+romulus report summary --format csv      # 📋 CSV export
+romulus report summary --dat "Nintendo - Game Boy"
 
-# 🌍 List known systems — Your game library
-romulus systems
+# 📂 List imported DAT versions — Your rulebook
+romulus dats
 
 # ⚡ Quick status check — How's the party doing?
 romulus status

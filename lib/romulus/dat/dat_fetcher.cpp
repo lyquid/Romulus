@@ -76,19 +76,14 @@ auto DatFetcher::has_version_changed(const std::filesystem::path& path,
     return std::unexpected(checksum.error());
   }
 
-  auto latest = db.get_latest_dat_version(0); // System ID not known yet
-  if (!latest) {
-    return std::unexpected(latest.error());
+  // Check by checksum — uniquely identifies a DAT file regardless of name/version.
+  auto existing = db.find_dat_version_by_checksum(*checksum);
+  if (!existing) {
+    return std::unexpected(existing.error());
   }
 
-  if (!latest->has_value()) {
+  if (!existing->has_value()) {
     ROMULUS_INFO("No previous DAT version found for '{}' — treating as new", dat_name);
-    return true;
-  }
-
-  if (latest->value().checksum != *checksum) {
-    ROMULUS_INFO(
-        "DAT version changed for '{}': {} -> {}", dat_name, latest->value().checksum, *checksum);
     return true;
   }
 

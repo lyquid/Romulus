@@ -4,6 +4,7 @@
 
 #include <sqlite3.h>
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -241,42 +242,30 @@ void TransactionGuard::rollback() {
 namespace {
 
 constexpr std::string_view k_Schema = R"SQL(
-CREATE TABLE IF NOT EXISTS systems (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT NOT NULL UNIQUE,
-    short_name  TEXT,
-    extensions  TEXT
-);
-
 CREATE TABLE IF NOT EXISTS dat_versions (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    system_id     INTEGER NOT NULL REFERENCES systems(id),
     name          TEXT NOT NULL,
     version       TEXT NOT NULL,
     source_url    TEXT,
     checksum      TEXT NOT NULL,
     imported_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-    UNIQUE(name, version)
+    UNIQUE(checksum)
 );
 
-CREATE TABLE IF NOT EXISTS games (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    name            TEXT NOT NULL,
-    system_id       INTEGER NOT NULL REFERENCES systems(id),
-    dat_version_id  INTEGER NOT NULL REFERENCES dat_versions(id),
-    UNIQUE(name, system_id, dat_version_id)
-);
-
+-- ROMs are the expected entries from DAT files.
+-- expected_sha1 is the authoritative hash declared by the DAT, stored as BLOB(20).
+-- All hash columns are BLOB for uniform storage (no mixed TEXT/BLOB chaos).
 CREATE TABLE IF NOT EXISTS roms (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    game_id  INTEGER NOT NULL REFERENCES games(id),
-    name     TEXT NOT NULL,
-    size     INTEGER,
-    crc32    TEXT,
-    md5      TEXT,
-    sha1     TEXT,
-    sha256   TEXT,
-    region   TEXT
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    dat_version_id  INTEGER NOT NULL REFERENCES dat_versions(id),
+    game_name       TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    size            INTEGER,
+    crc32           BLOB,
+    md5             BLOB,
+    expected_sha1   BLOB,
+    sha256          BLOB,
+    region          TEXT
 );
 
 CREATE TABLE IF NOT EXISTS global_roms (
@@ -290,26 +279,21 @@ CREATE TABLE IF NOT EXISTS global_roms (
 CREATE TABLE IF NOT EXISTS files (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     filename      TEXT NOT NULL,
-    path          TEXT NOT NULL UNIQUE,
+    path          TEXT NOT NULL,
     size          INTEGER NOT NULL,
     crc32         BLOB,
     md5           BLOB,
-    sha1          BLOB REFERENCES global_roms(sha1),
-    sha256        BLOB NOT NULL,
-    last_scanned  TEXT NOT NULL DEFAULT (datetime('now'))
+    sha1          BLOB NOT NULL REFERENCES global_roms(sha1),
+    sha256        BLOB,
+    last_scanned  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(path COLLATE NOCASE)
 );
 
 CREATE TABLE IF NOT EXISTS rom_matches (
-    rom_id        INTEGER NOT NULL REFERENCES roms(id),
+    rom_id          INTEGER NOT NULL REFERENCES roms(id),
     global_rom_sha1 BLOB NOT NULL REFERENCES global_roms(sha1),
-    match_type    TEXT NOT NULL,
+    match_type      INTEGER NOT NULL,
     PRIMARY KEY (rom_id, global_rom_sha1)
-);
-
-CREATE TABLE IF NOT EXISTS rom_status (
-    rom_id        INTEGER PRIMARY KEY REFERENCES roms(id),
-    status        TEXT NOT NULL,
-    last_updated  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Persists ROM scan directory paths across application sessions.
@@ -321,88 +305,55 @@ CREATE TABLE IF NOT EXISTS scanned_directories (
 );
 
 -- Indexes for fast hash lookups
-CREATE INDEX IF NOT EXISTS idx_roms_sha1 ON roms(sha1);
+CREATE INDEX IF NOT EXISTS idx_roms_expected_sha1 ON roms(expected_sha1);
 CREATE INDEX IF NOT EXISTS idx_roms_md5 ON roms(md5);
 CREATE INDEX IF NOT EXISTS idx_roms_crc32 ON roms(crc32);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_roms_sha256 ON roms(sha256) WHERE sha256 IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_files_sha1 ON files(sha1);
 CREATE INDEX IF NOT EXISTS idx_files_crc32 ON files(crc32);
 CREATE INDEX IF NOT EXISTS idx_files_sha256 ON files(sha256);
-CREATE INDEX IF NOT EXISTS idx_global_roms_sha1 ON global_roms(sha1);
 CREATE INDEX IF NOT EXISTS idx_global_roms_md5 ON global_roms(md5) WHERE md5 IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_rom_status_status ON rom_status(status);
+-- Hot path: look up matches by file sha1 (global_rom_sha1)
+CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 )SQL";
 
-auto match_type_to_string(core::MatchType type) -> std::string_view {
+auto match_type_to_int(core::MatchType type) -> int {
   switch (type) {
     case core::MatchType::Exact:
-      return "exact";
+      return 0;
     case core::MatchType::Sha256Only:
-      return "sha256_only";
+      return 1;
     case core::MatchType::Sha1Only:
-      return "sha1_only";
+      return 2;
     case core::MatchType::Md5Only:
-      return "md5_only";
+      return 3;
     case core::MatchType::Crc32Only:
-      return "crc32_only";
+      return 4;
     case core::MatchType::SizeOnly:
-      return "size_only";
+      return 5;
     case core::MatchType::NoMatch:
-      return "no_match";
+      return 6;
   }
-  return "unknown";
+  return 6;
 }
 
-auto string_to_match_type(std::string_view str) -> core::MatchType {
-  if (str == "exact") {
-    return core::MatchType::Exact;
+auto int_to_match_type(int value) -> core::MatchType {
+  switch (value) {
+    case 0:
+      return core::MatchType::Exact;
+    case 1:
+      return core::MatchType::Sha256Only;
+    case 2:
+      return core::MatchType::Sha1Only;
+    case 3:
+      return core::MatchType::Md5Only;
+    case 4:
+      return core::MatchType::Crc32Only;
+    case 5:
+      return core::MatchType::SizeOnly;
+    default:
+      return core::MatchType::NoMatch;
   }
-  if (str == "sha256_only") {
-    return core::MatchType::Sha256Only;
-  }
-  if (str == "sha1_only") {
-    return core::MatchType::Sha1Only;
-  }
-  if (str == "md5_only") {
-    return core::MatchType::Md5Only;
-  }
-  if (str == "crc32_only") {
-    return core::MatchType::Crc32Only;
-  }
-  if (str == "size_only") {
-    return core::MatchType::SizeOnly;
-  }
-  return core::MatchType::NoMatch;
-}
-
-auto status_to_string(core::RomStatusType status) -> std::string_view {
-  switch (status) {
-    case core::RomStatusType::Verified:
-      return "verified";
-    case core::RomStatusType::Missing:
-      return "missing";
-    case core::RomStatusType::Unverified:
-      return "unverified";
-    case core::RomStatusType::Mismatch:
-      return "mismatch";
-  }
-  return "unknown";
-}
-
-auto string_to_status(std::string_view str) -> core::RomStatusType {
-  if (str == "verified") {
-    return core::RomStatusType::Verified;
-  }
-  if (str == "missing") {
-    return core::RomStatusType::Missing;
-  }
-  if (str == "unverified") {
-    return core::RomStatusType::Unverified;
-  }
-  if (str == "mismatch") {
-    return core::RomStatusType::Mismatch;
-  }
-  return core::RomStatusType::Missing;
 }
 
 } // namespace
@@ -453,43 +404,6 @@ void Database::configure_connection() {
 }
 
 void Database::run_migrations() {
-  // Upgrade existing databases: add new columns if they do not exist yet.
-  // These must run BEFORE k_Schema so that the CREATE INDEX statements referencing
-  // sha256/filename do not fail with "no such column" on pre-existing databases.
-  // Only "duplicate column name" errors are suppressed; all others emit a warning.
-  auto try_alter = [this](const char* sql) {
-    char* msg = nullptr;
-    int alter_rc = sqlite3_exec(db_, sql, nullptr, nullptr, &msg);
-    if (alter_rc != SQLITE_OK && msg != nullptr) {
-      std::string err(msg);
-      sqlite3_free(msg);
-      // SQLite reports "duplicate column name" when a column already exists; treat as no-op.
-      // "no such table" fires on fresh databases before k_Schema creates them; also no-op.
-      if (err.find("duplicate column name") != std::string::npos ||
-          err.find("no such table") != std::string::npos) {
-        return;
-      }
-      // Duplicate SHA256 values already in DB will block creating the unique index.
-      // SQLite uses "UNIQUE constraint failed" for both DML and index-creation failures.
-      // We check for the keywords broadly to cover all formulations.
-      if (err.find("UNIQUE constraint") != std::string::npos ||
-          err.find("unique constraint") != std::string::npos) {
-        ROMULUS_WARN("Schema upgrade warning: could not create unique index on roms.sha256 "
-                     "because duplicate SHA256 values already exist. "
-                     "SHA256 uniqueness will not be enforced until duplicates are resolved.");
-        return;
-      }
-      ROMULUS_WARN("Schema upgrade warning: {}", err);
-    }
-  };
-
-  try_alter("ALTER TABLE roms ADD COLUMN sha256 TEXT");
-  try_alter("ALTER TABLE files ADD COLUMN sha256 TEXT NOT NULL DEFAULT ''");
-  try_alter("ALTER TABLE files ADD COLUMN filename TEXT NOT NULL DEFAULT ''");
-  // Enforce uniqueness for upgraded databases (new DBs get it via k_Schema).
-  try_alter(
-      "CREATE UNIQUE INDEX IF NOT EXISTS idx_roms_sha256 ON roms(sha256) WHERE sha256 IS NOT NULL");
-
   // Apply the main schema (CREATE TABLE/INDEX IF NOT EXISTS — safe to run on any DB state).
   char* err_msg = nullptr;
   int rc = sqlite3_exec(db_, std::string(k_Schema).c_str(), nullptr, nullptr, &err_msg);
@@ -532,92 +446,21 @@ auto Database::last_insert_id() const -> std::int64_t {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Systems CRUD
-// ═══════════════════════════════════════════════════════════════
-
-auto Database::insert_system(const core::SystemInfo& system) -> Result<std::int64_t> {
-  auto stmt = prepare("INSERT INTO systems (name, short_name, extensions) VALUES (?1, ?2, ?3)");
-  if (!stmt) {
-    return std::unexpected(stmt.error());
-  }
-
-  stmt->bind_text(1, system.name);
-  stmt->bind_text(2, system.short_name);
-  stmt->bind_text(3, system.extensions);
-  stmt->execute();
-
-  return last_insert_id();
-}
-
-auto Database::find_system_by_name(std::string_view name)
-    -> Result<std::optional<core::SystemInfo>> {
-  auto stmt = prepare("SELECT id, name, short_name, extensions FROM systems WHERE name = ?1");
-  if (!stmt) {
-    return std::unexpected(stmt.error());
-  }
-
-  stmt->bind_text(1, name);
-  if (!stmt->step()) {
-    return std::nullopt;
-  }
-
-  return core::SystemInfo{
-      .id = stmt->column_int64(0),
-      .name = stmt->column_text(1),
-      .short_name = stmt->column_text(2),
-      .extensions = stmt->column_text(3),
-  };
-}
-
-auto Database::get_all_systems() -> Result<std::vector<core::SystemInfo>> {
-  auto stmt = prepare("SELECT id, name, short_name, extensions FROM systems ORDER BY name");
-  if (!stmt) {
-    return std::unexpected(stmt.error());
-  }
-
-  std::vector<core::SystemInfo> systems;
-  while (stmt->step()) {
-    systems.push_back({
-        .id = stmt->column_int64(0),
-        .name = stmt->column_text(1),
-        .short_name = stmt->column_text(2),
-        .extensions = stmt->column_text(3),
-    });
-  }
-  return systems;
-}
-
-auto Database::get_or_create_system(std::string_view name) -> Result<std::int64_t> {
-  auto found = find_system_by_name(name);
-  if (!found) {
-    return std::unexpected(found.error());
-  }
-
-  if (found->has_value()) {
-    return found->value().id;
-  }
-
-  core::SystemInfo sys{.name = std::string(name), .short_name = {}, .extensions = {}};
-  return insert_system(sys);
-}
-
-// ═══════════════════════════════════════════════════════════════
 // DAT Versions CRUD
 // ═══════════════════════════════════════════════════════════════
 
 auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::int64_t> {
   auto stmt = prepare(
-      "INSERT INTO dat_versions (system_id, name, version, source_url, checksum, imported_at) "
-      "VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', 'localtime'))");
+      "INSERT INTO dat_versions (name, version, source_url, checksum, imported_at) "
+      "VALUES (?1, ?2, ?3, ?4, datetime('now', 'localtime'))");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_int64(1, dat.system_id);
-  stmt->bind_text(2, dat.name);
-  stmt->bind_text(3, dat.version);
-  stmt->bind_text(4, dat.source_url);
-  stmt->bind_text(5, dat.checksum);
+  stmt->bind_text(1, dat.name);
+  stmt->bind_text(2, dat.version);
+  stmt->bind_text(3, dat.source_url);
+  stmt->bind_text(4, dat.checksum);
   stmt->execute();
 
   return last_insert_id();
@@ -625,7 +468,7 @@ auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::in
 
 auto Database::find_dat_version(std::string_view name, std::string_view version)
     -> Result<std::optional<core::DatVersion>> {
-  auto stmt = prepare("SELECT id, system_id, name, version, source_url, checksum, imported_at "
+  auto stmt = prepare("SELECT id, name, version, source_url, checksum, imported_at "
                       "FROM dat_versions WHERE name = ?1 AND version = ?2");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -639,41 +482,39 @@ auto Database::find_dat_version(std::string_view name, std::string_view version)
 
   return core::DatVersion{
       .id = stmt->column_int64(0),
-      .system_id = stmt->column_int64(1),
-      .name = stmt->column_text(2),
-      .version = stmt->column_text(3),
-      .source_url = stmt->column_text(4),
-      .checksum = stmt->column_text(5),
-      .imported_at = stmt->column_text(6),
+      .name = stmt->column_text(1),
+      .version = stmt->column_text(2),
+      .source_url = stmt->column_text(3),
+      .checksum = stmt->column_text(4),
+      .imported_at = stmt->column_text(5),
   };
 }
 
-auto Database::get_latest_dat_version(std::int64_t system_id)
+auto Database::find_dat_version_by_checksum(std::string_view checksum)
     -> Result<std::optional<core::DatVersion>> {
-  auto stmt = prepare("SELECT id, system_id, name, version, source_url, checksum, imported_at "
-                      "FROM dat_versions WHERE system_id = ?1 ORDER BY imported_at DESC LIMIT 1");
+  auto stmt = prepare("SELECT id, name, version, source_url, checksum, imported_at "
+                      "FROM dat_versions WHERE checksum = ?1 LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_int64(1, system_id);
+  stmt->bind_text(1, checksum);
   if (!stmt->step()) {
     return std::nullopt;
   }
 
   return core::DatVersion{
       .id = stmt->column_int64(0),
-      .system_id = stmt->column_int64(1),
-      .name = stmt->column_text(2),
-      .version = stmt->column_text(3),
-      .source_url = stmt->column_text(4),
-      .checksum = stmt->column_text(5),
-      .imported_at = stmt->column_text(6),
+      .name = stmt->column_text(1),
+      .version = stmt->column_text(2),
+      .source_url = stmt->column_text(3),
+      .checksum = stmt->column_text(4),
+      .imported_at = stmt->column_text(5),
   };
 }
 
 auto Database::get_all_dat_versions() -> Result<std::vector<core::DatVersion>> {
-  auto stmt = prepare("SELECT id, system_id, name, version, source_url, checksum, imported_at "
+  auto stmt = prepare("SELECT id, name, version, source_url, checksum, imported_at "
                       "FROM dat_versions ORDER BY imported_at DESC");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -683,12 +524,11 @@ auto Database::get_all_dat_versions() -> Result<std::vector<core::DatVersion>> {
   while (stmt->step()) {
     versions.push_back({
         .id = stmt->column_int64(0),
-        .system_id = stmt->column_int64(1),
-        .name = stmt->column_text(2),
-        .version = stmt->column_text(3),
-        .source_url = stmt->column_text(4),
-        .checksum = stmt->column_text(5),
-        .imported_at = stmt->column_text(6),
+        .name = stmt->column_text(1),
+        .version = stmt->column_text(2),
+        .source_url = stmt->column_text(3),
+        .checksum = stmt->column_text(4),
+        .imported_at = stmt->column_text(5),
     });
   }
   return versions;
@@ -696,10 +536,10 @@ auto Database::get_all_dat_versions() -> Result<std::vector<core::DatVersion>> {
 
 auto Database::get_roms_for_dat_version(std::int64_t dat_version_id)
     -> Result<std::vector<core::RomInfo>> {
-  auto stmt = prepare("SELECT r.id, r.game_id, r.name, r.size, r.crc32, r.md5, r.sha1, r.sha256, "
-                      "r.region "
-                      "FROM roms r JOIN games g ON r.game_id = g.id "
-                      "WHERE g.dat_version_id = ?1 ORDER BY r.name");
+  auto stmt = prepare(
+      "SELECT id, dat_version_id, game_name, name, size, "
+      "crc32, md5, expected_sha1, sha256, region "
+      "FROM roms WHERE dat_version_id = ?1 ORDER BY name");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -710,76 +550,18 @@ auto Database::get_roms_for_dat_version(std::int64_t dat_version_id)
   while (stmt->step()) {
     roms.push_back({
         .id = stmt->column_int64(0),
-        .game_id = stmt->column_int64(1),
-        .name = stmt->column_text(2),
-        .size = stmt->column_int64(3),
-        .crc32 = stmt->column_text(4),
-        .md5 = stmt->column_text(5),
-        .sha1 = stmt->column_text(6),
-        .sha256 = stmt->column_text(7),
-        .region = stmt->column_text(8),
+        .dat_version_id = stmt->column_int64(1),
+        .game_name = stmt->column_text(2),
+        .name = stmt->column_text(3),
+        .size = stmt->column_int64(4),
+        .crc32 = bytes_to_hex(stmt->column_blob(5)),
+        .md5 = bytes_to_hex(stmt->column_blob(6)),
+        .sha1 = bytes_to_hex(stmt->column_blob(7)),
+        .sha256 = bytes_to_hex(stmt->column_blob(8)),
+        .region = stmt->column_text(9),
     });
   }
   return roms;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Games CRUD
-// ═══════════════════════════════════════════════════════════════
-
-auto Database::insert_game(const core::GameInfo& game) -> Result<std::int64_t> {
-  auto stmt = prepare("INSERT OR IGNORE INTO games (name, system_id, dat_version_id) "
-                      "VALUES (?1, ?2, ?3)");
-  if (!stmt) {
-    return std::unexpected(stmt.error());
-  }
-
-  stmt->bind_text(1, game.name);
-  stmt->bind_int64(2, game.system_id);
-  stmt->bind_int64(3, game.dat_version_id);
-  stmt->execute();
-
-  auto id = last_insert_id();
-  if (id == 0) {
-    // Already existed — look it up
-    auto find =
-        prepare("SELECT id FROM games WHERE name = ?1 AND system_id = ?2 AND dat_version_id = ?3");
-    if (!find) {
-      return std::unexpected(find.error());
-    }
-    find->bind_text(1, game.name);
-    find->bind_int64(2, game.system_id);
-    find->bind_int64(3, game.dat_version_id);
-    if (find->step()) {
-      id = find->column_int64(0);
-    }
-  }
-
-  return id;
-}
-
-auto Database::get_games_by_dat_version(std::int64_t dat_version_id)
-    -> Result<std::vector<core::GameInfo>> {
-  auto stmt =
-      prepare("SELECT id, name, system_id, dat_version_id FROM games WHERE dat_version_id = ?1");
-  if (!stmt) {
-    return std::unexpected(stmt.error());
-  }
-
-  stmt->bind_int64(1, dat_version_id);
-
-  std::vector<core::GameInfo> games;
-  while (stmt->step()) {
-    games.push_back({
-        .id = stmt->column_int64(0),
-        .name = stmt->column_text(1),
-        .description = {},
-        .system_id = stmt->column_int64(2),
-        .dat_version_id = stmt->column_int64(3),
-        .roms = {},
-    });
-  }
-  return games;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -787,154 +569,167 @@ auto Database::get_games_by_dat_version(std::int64_t dat_version_id)
 // ═══════════════════════════════════════════════════════════════
 
 auto Database::insert_rom(const core::RomInfo& rom) -> Result<std::int64_t> {
-  auto stmt = prepare("INSERT INTO roms (game_id, name, size, crc32, md5, sha1, sha256, region) "
-                      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)");
+  auto stmt =
+      prepare("INSERT INTO roms (dat_version_id, game_name, name, size, crc32, md5, "
+              "expected_sha1, sha256, region) "
+              "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_int64(1, rom.game_id);
-  stmt->bind_text(2, rom.name);
-  stmt->bind_int64(3, rom.size);
-  stmt->bind_text(4, rom.crc32);
-  stmt->bind_text(5, rom.md5);
-  stmt->bind_text(6, rom.sha1);
+  stmt->bind_int64(1, rom.dat_version_id);
+  stmt->bind_text(2, rom.game_name);
+  stmt->bind_text(3, rom.name);
+  stmt->bind_int64(4, rom.size);
+  stmt->bind_blob(5, hex_to_bytes(rom.crc32));
+  stmt->bind_blob(6, hex_to_bytes(rom.md5));
+  stmt->bind_blob(7, hex_to_bytes(rom.sha1));
   if (rom.sha256.empty()) {
-    stmt->bind_null(7);
+    stmt->bind_null(8);
   } else {
-    stmt->bind_text(7, rom.sha256);
+    stmt->bind_blob(8, hex_to_bytes(rom.sha256));
   }
-  stmt->bind_text(8, rom.region);
+  stmt->bind_text(9, rom.region);
   stmt->execute();
 
   return last_insert_id();
 }
 
 auto Database::find_rom_by_sha1(std::string_view sha1) -> Result<std::optional<core::RomInfo>> {
-  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, sha256, region "
-                      "FROM roms WHERE sha1 = ?1 LIMIT 1");
+  auto stmt =
+      prepare("SELECT id, dat_version_id, game_name, name, size, crc32, md5, "
+              "expected_sha1, sha256, region "
+              "FROM roms WHERE expected_sha1 = ?1 LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_text(1, sha1);
+  stmt->bind_blob(1, hex_to_bytes(sha1));
   if (!stmt->step()) {
     return std::nullopt;
   }
 
   return core::RomInfo{
       .id = stmt->column_int64(0),
-      .game_id = stmt->column_int64(1),
-      .name = stmt->column_text(2),
-      .size = stmt->column_int64(3),
-      .crc32 = stmt->column_text(4),
-      .md5 = stmt->column_text(5),
-      .sha1 = stmt->column_text(6),
-      .sha256 = stmt->column_text(7),
-      .region = stmt->column_text(8),
+      .dat_version_id = stmt->column_int64(1),
+      .game_name = stmt->column_text(2),
+      .name = stmt->column_text(3),
+      .size = stmt->column_int64(4),
+      .crc32 = bytes_to_hex(stmt->column_blob(5)),
+      .md5 = bytes_to_hex(stmt->column_blob(6)),
+      .sha1 = bytes_to_hex(stmt->column_blob(7)),
+      .sha256 = bytes_to_hex(stmt->column_blob(8)),
+      .region = stmt->column_text(9),
   };
 }
 
-auto Database::find_rom_by_sha256(std::string_view sha256) -> Result<std::optional<core::RomInfo>> {
-  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, sha256, region "
-                      "FROM roms WHERE sha256 = ?1 LIMIT 1");
+auto Database::find_rom_by_sha256(std::string_view sha256)
+    -> Result<std::optional<core::RomInfo>> {
+  auto stmt =
+      prepare("SELECT id, dat_version_id, game_name, name, size, crc32, md5, "
+              "expected_sha1, sha256, region "
+              "FROM roms WHERE sha256 = ?1 LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_text(1, sha256);
+  stmt->bind_blob(1, hex_to_bytes(sha256));
   if (!stmt->step()) {
     return std::nullopt;
   }
 
   return core::RomInfo{
       .id = stmt->column_int64(0),
-      .game_id = stmt->column_int64(1),
-      .name = stmt->column_text(2),
-      .size = stmt->column_int64(3),
-      .crc32 = stmt->column_text(4),
-      .md5 = stmt->column_text(5),
-      .sha1 = stmt->column_text(6),
-      .sha256 = stmt->column_text(7),
-      .region = stmt->column_text(8),
+      .dat_version_id = stmt->column_int64(1),
+      .game_name = stmt->column_text(2),
+      .name = stmt->column_text(3),
+      .size = stmt->column_int64(4),
+      .crc32 = bytes_to_hex(stmt->column_blob(5)),
+      .md5 = bytes_to_hex(stmt->column_blob(6)),
+      .sha1 = bytes_to_hex(stmt->column_blob(7)),
+      .sha256 = bytes_to_hex(stmt->column_blob(8)),
+      .region = stmt->column_text(9),
   };
 }
 
 auto Database::find_rom_by_md5(std::string_view md5) -> Result<std::optional<core::RomInfo>> {
-  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, sha256, region "
-                      "FROM roms WHERE md5 = ?1 LIMIT 1");
+  auto stmt =
+      prepare("SELECT id, dat_version_id, game_name, name, size, crc32, md5, "
+              "expected_sha1, sha256, region "
+              "FROM roms WHERE md5 = ?1 LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_text(1, md5);
+  stmt->bind_blob(1, hex_to_bytes(md5));
   if (!stmt->step()) {
     return std::nullopt;
   }
 
   return core::RomInfo{
       .id = stmt->column_int64(0),
-      .game_id = stmt->column_int64(1),
-      .name = stmt->column_text(2),
-      .size = stmt->column_int64(3),
-      .crc32 = stmt->column_text(4),
-      .md5 = stmt->column_text(5),
-      .sha1 = stmt->column_text(6),
-      .sha256 = stmt->column_text(7),
-      .region = stmt->column_text(8),
+      .dat_version_id = stmt->column_int64(1),
+      .game_name = stmt->column_text(2),
+      .name = stmt->column_text(3),
+      .size = stmt->column_int64(4),
+      .crc32 = bytes_to_hex(stmt->column_blob(5)),
+      .md5 = bytes_to_hex(stmt->column_blob(6)),
+      .sha1 = bytes_to_hex(stmt->column_blob(7)),
+      .sha256 = bytes_to_hex(stmt->column_blob(8)),
+      .region = stmt->column_text(9),
   };
 }
 
 auto Database::find_rom_by_crc32(std::string_view crc32) -> Result<std::vector<core::RomInfo>> {
-  auto stmt = prepare("SELECT id, game_id, name, size, crc32, md5, sha1, sha256, region "
-                      "FROM roms WHERE crc32 = ?1");
+  auto stmt =
+      prepare("SELECT id, dat_version_id, game_name, name, size, crc32, md5, "
+              "expected_sha1, sha256, region "
+              "FROM roms WHERE crc32 = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_text(1, crc32);
+  stmt->bind_blob(1, hex_to_bytes(crc32));
 
   std::vector<core::RomInfo> roms;
   while (stmt->step()) {
     roms.push_back({
         .id = stmt->column_int64(0),
-        .game_id = stmt->column_int64(1),
-        .name = stmt->column_text(2),
-        .size = stmt->column_int64(3),
-        .crc32 = stmt->column_text(4),
-        .md5 = stmt->column_text(5),
-        .sha1 = stmt->column_text(6),
-        .sha256 = stmt->column_text(7),
-        .region = stmt->column_text(8),
+        .dat_version_id = stmt->column_int64(1),
+        .game_name = stmt->column_text(2),
+        .name = stmt->column_text(3),
+        .size = stmt->column_int64(4),
+        .crc32 = bytes_to_hex(stmt->column_blob(5)),
+        .md5 = bytes_to_hex(stmt->column_blob(6)),
+        .sha1 = bytes_to_hex(stmt->column_blob(7)),
+        .sha256 = bytes_to_hex(stmt->column_blob(8)),
+        .region = stmt->column_text(9),
     });
   }
   return roms;
 }
 
-auto Database::get_all_roms_for_system(std::int64_t system_id)
-    -> Result<std::vector<core::RomInfo>> {
-  auto stmt = prepare("SELECT r.id, r.game_id, r.name, r.size, r.crc32, r.md5, r.sha1, r.sha256, "
-                      "r.region "
-                      "FROM roms r JOIN games g ON r.game_id = g.id "
-                      "WHERE g.system_id = ?1");
+auto Database::get_all_roms() -> Result<std::vector<core::RomInfo>> {
+  auto stmt =
+      prepare("SELECT id, dat_version_id, game_name, name, size, crc32, md5, "
+              "expected_sha1, sha256, region FROM roms ORDER BY dat_version_id, name");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
-
-  stmt->bind_int64(1, system_id);
 
   std::vector<core::RomInfo> roms;
   while (stmt->step()) {
     roms.push_back({
         .id = stmt->column_int64(0),
-        .game_id = stmt->column_int64(1),
-        .name = stmt->column_text(2),
-        .size = stmt->column_int64(3),
-        .crc32 = stmt->column_text(4),
-        .md5 = stmt->column_text(5),
-        .sha1 = stmt->column_text(6),
-        .sha256 = stmt->column_text(7),
-        .region = stmt->column_text(8),
+        .dat_version_id = stmt->column_int64(1),
+        .game_name = stmt->column_text(2),
+        .name = stmt->column_text(3),
+        .size = stmt->column_int64(4),
+        .crc32 = bytes_to_hex(stmt->column_blob(5)),
+        .md5 = bytes_to_hex(stmt->column_blob(6)),
+        .sha1 = bytes_to_hex(stmt->column_blob(7)),
+        .sha256 = bytes_to_hex(stmt->column_blob(8)),
+        .region = stmt->column_text(9),
     });
   }
   return roms;
@@ -975,7 +770,11 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
   stmt->bind_blob(4, hex_to_bytes(file.crc32));
   stmt->bind_blob(5, hex_to_bytes(file.md5));
   stmt->bind_blob(6, hex_to_bytes(file.sha1));
-  stmt->bind_blob(7, hex_to_bytes(file.sha256));
+  if (file.sha256.empty()) {
+    stmt->bind_null(7);
+  } else {
+    stmt->bind_blob(7, hex_to_bytes(file.sha256));
+  }
   stmt->execute();
 
   // Get the id (either inserted or updated)
@@ -1202,7 +1001,7 @@ auto Database::insert_rom_match(const core::MatchResult& match) -> Result<void> 
 
   stmt->bind_int64(1, match.rom_id);
   stmt->bind_blob(2, hex_to_bytes(match.global_rom_sha1));
-  stmt->bind_text(3, match_type_to_string(match.match_type));
+  stmt->bind_int64(3, match_type_to_int(match.match_type));
   stmt->execute();
 
   return {};
@@ -1222,7 +1021,7 @@ auto Database::get_matches_for_rom(std::int64_t rom_id) -> Result<std::vector<co
     matches.push_back({
         .rom_id = stmt->column_int64(0),
         .global_rom_sha1 = bytes_to_hex(stmt->column_blob(1)),
-        .match_type = string_to_match_type(stmt->column_text(2)),
+        .match_type = int_to_match_type(static_cast<int>(stmt->column_int64(2))),
     });
   }
   return matches;
@@ -1233,84 +1032,100 @@ auto Database::clear_matches() -> Result<void> {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ROM Status CRUD
+// Computed Status (from rom_matches + files — no separate status table)
 // ═══════════════════════════════════════════════════════════════
 
-auto Database::upsert_rom_status(std::int64_t rom_id, core::RomStatusType status) -> Result<void> {
-  auto stmt = prepare("INSERT INTO rom_status (rom_id, status, last_updated) "
-                      "VALUES (?1, ?2, datetime('now')) "
-                      "ON CONFLICT(rom_id) DO UPDATE SET "
-                      "status = excluded.status, last_updated = datetime('now')");
+auto Database::get_computed_rom_status(std::int64_t rom_id) -> Result<core::RomStatusType> {
+  // Query all matches for this ROM, left-joining to files to detect which ones
+  // have a physical file on disk.
+  auto stmt = prepare(
+      "SELECT rm.match_type, (f.sha1 IS NOT NULL) AS has_file "
+      "FROM rom_matches rm "
+      "LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1 "
+      "WHERE rm.rom_id = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
   stmt->bind_int64(1, rom_id);
-  stmt->bind_text(2, status_to_string(status));
-  stmt->execute();
 
-  return {};
-}
+  bool has_any_match = false;
+  bool has_exact = false;
+  bool has_partial = false;
 
-auto Database::get_rom_status(std::int64_t rom_id) -> Result<std::optional<core::RomStatusEntry>> {
-  auto stmt = prepare("SELECT rom_id, status, last_updated FROM rom_status WHERE rom_id = ?1");
-  if (!stmt) {
-    return std::unexpected(stmt.error());
+  while (stmt->step()) {
+    has_any_match = true;
+    const bool file_exists = stmt->column_int64(1) != 0;
+    if (file_exists) {
+      const auto mt = int_to_match_type(static_cast<int>(stmt->column_int64(0)));
+      if (mt == core::MatchType::Exact) {
+        has_exact = true;
+      } else if (mt != core::MatchType::NoMatch) {
+        has_partial = true;
+      }
+    }
   }
 
-  stmt->bind_int64(1, rom_id);
-  if (!stmt->step()) {
-    return std::nullopt;
+  if (!has_any_match) {
+    return core::RomStatusType::Missing;
   }
-
-  return core::RomStatusEntry{
-      .rom_id = stmt->column_int64(0),
-      .status = string_to_status(stmt->column_text(1)),
-      .last_updated = stmt->column_text(2),
-  };
+  if (has_exact) {
+    return core::RomStatusType::Verified;
+  }
+  if (has_partial) {
+    return core::RomStatusType::Unverified;
+  }
+  return core::RomStatusType::Mismatch;
 }
 
-auto Database::get_collection_summary(std::optional<std::int64_t> system_id)
+auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id)
     -> Result<core::CollectionSummary> {
-  std::string sql;
-  if (system_id.has_value()) {
-    sql = "SELECT "
-          "  COALESCE(s.name, 'All Systems'), "
-          "  COUNT(DISTINCT r.id), "
-          "  SUM(CASE WHEN rs.status = 'verified' THEN 1 ELSE 0 END), "
-          "  SUM(CASE WHEN rs.status = 'missing' OR rs.status IS NULL THEN 1 ELSE 0 END), "
-          "  SUM(CASE WHEN rs.status = 'unverified' THEN 1 ELSE 0 END), "
-          "  SUM(CASE WHEN rs.status = 'mismatch' THEN 1 ELSE 0 END) "
-          "FROM roms r "
-          "JOIN games g ON r.game_id = g.id "
-          "JOIN systems s ON g.system_id = s.id "
-          "LEFT JOIN rom_status rs ON r.id = rs.rom_id "
-          "WHERE g.system_id = ?1";
-  } else {
-    sql = "SELECT "
-          "  'All Systems', "
-          "  COUNT(DISTINCT r.id), "
-          "  SUM(CASE WHEN rs.status = 'verified' THEN 1 ELSE 0 END), "
-          "  SUM(CASE WHEN rs.status = 'missing' OR rs.status IS NULL THEN 1 ELSE 0 END), "
-          "  SUM(CASE WHEN rs.status = 'unverified' THEN 1 ELSE 0 END), "
-          "  SUM(CASE WHEN rs.status = 'mismatch' THEN 1 ELSE 0 END) "
-          "FROM roms r "
-          "JOIN games g ON r.game_id = g.id "
-          "LEFT JOIN rom_status rs ON r.id = rs.rom_id";
+  // Compute status dynamically using a CTE.
+  // Status mapping: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch
+  std::string sql =
+      "WITH computed AS ("
+      "  SELECT r.id AS rom_id,"
+      "    CASE"
+      "      WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1"
+      "      WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
+      "           THEN 0"
+      "      WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2"
+      "      ELSE 3"
+      "    END AS status"
+      "  FROM roms r"
+      "  LEFT JOIN rom_matches rm ON r.id = rm.rom_id"
+      "  LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1";
+
+  if (dat_version_id.has_value()) {
+    sql += "  WHERE r.dat_version_id = ?1";
   }
+
+  sql +=
+      "  GROUP BY r.id"
+      ")"
+      "SELECT"
+      "  COALESCE((SELECT name FROM dat_versions WHERE id = ?1), 'All DATs'),"
+      "  COUNT(*),"
+      "  SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END),"
+      "  SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END),"
+      "  SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END),"
+      "  SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END)"
+      " FROM computed";
 
   auto stmt = prepare(sql);
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  if (system_id.has_value()) {
-    stmt->bind_int64(1, *system_id);
+  if (dat_version_id.has_value()) {
+    stmt->bind_int64(1, *dat_version_id);
+  } else {
+    stmt->bind_null(1);
   }
 
   core::CollectionSummary summary;
   if (stmt->step()) {
-    summary.system_name = stmt->column_text(0);
+    summary.dat_name = stmt->column_text(0);
     summary.total_roms = stmt->column_int64(1);
     summary.verified = stmt->column_int64(2);
     summary.missing = stmt->column_int64(3);
@@ -1320,27 +1135,32 @@ auto Database::get_collection_summary(std::optional<std::int64_t> system_id)
   return summary;
 }
 
-auto Database::get_missing_roms(std::optional<std::int64_t> system_id)
+auto Database::get_missing_roms(std::optional<std::int64_t> dat_version_id)
     -> Result<std::vector<core::MissingRom>> {
-  std::string sql = "SELECT g.name, r.name, s.name, r.sha1 "
-                    "FROM roms r "
-                    "JOIN games g ON r.game_id = g.id "
-                    "JOIN systems s ON g.system_id = s.id "
-                    "LEFT JOIN rom_status rs ON r.id = rs.rom_id "
-                    "WHERE rs.status = 'missing' OR rs.status IS NULL";
+  // A ROM is "missing" if it has no matching file on disk.
+  std::string sql =
+      "SELECT r.game_name, r.name, dv.name, "
+      "  COALESCE(lower(hex(r.expected_sha1)), '') "
+      "FROM roms r "
+      "JOIN dat_versions dv ON r.dat_version_id = dv.id "
+      "WHERE NOT EXISTS ("
+      "  SELECT 1 FROM rom_matches rm "
+      "  JOIN files f ON rm.global_rom_sha1 = f.sha1 "
+      "  WHERE rm.rom_id = r.id"
+      ")";
 
-  if (system_id.has_value()) {
-    sql += " AND g.system_id = ?1";
+  if (dat_version_id.has_value()) {
+    sql += " AND r.dat_version_id = ?1";
   }
-  sql += " ORDER BY s.name, g.name, r.name";
+  sql += " ORDER BY dv.name, r.game_name, r.name";
 
   auto stmt = prepare(sql);
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  if (system_id.has_value()) {
-    stmt->bind_int64(1, *system_id);
+  if (dat_version_id.has_value()) {
+    stmt->bind_int64(1, *dat_version_id);
   }
 
   std::vector<core::MissingRom> missing;
@@ -1348,29 +1168,28 @@ auto Database::get_missing_roms(std::optional<std::int64_t> system_id)
     missing.push_back({
         .game_name = stmt->column_text(0),
         .rom_name = stmt->column_text(1),
-        .system_name = stmt->column_text(2),
+        .dat_name = stmt->column_text(2),
         .sha1 = stmt->column_text(3),
     });
   }
   return missing;
 }
 
-auto Database::get_duplicate_files(std::optional<std::int64_t> system_id)
+auto Database::get_duplicate_files(std::optional<std::int64_t> dat_version_id)
     -> Result<std::vector<core::DuplicateFile>> {
   // Find files that share the same global ROM identity (sha1) with at least one other file.
-  // A "duplicate" means multiple physical disk files resolve to the same global_rom_sha1.
-  std::string sql = "SELECT f.path, r.name, g.name "
-                    "FROM files f "
-                    "JOIN global_roms gr ON f.sha1 = gr.sha1 "
-                    "JOIN rom_matches rm ON rm.global_rom_sha1 = gr.sha1 "
-                    "JOIN roms r ON rm.rom_id = r.id "
-                    "JOIN games g ON r.game_id = g.id "
-                    "WHERE f.sha1 IN ("
-                    "  SELECT sha1 FROM files GROUP BY sha1 HAVING COUNT(*) > 1"
-                    ")";
+  std::string sql =
+      "SELECT f.path, r.name, r.game_name "
+      "FROM files f "
+      "JOIN global_roms gr ON f.sha1 = gr.sha1 "
+      "JOIN rom_matches rm ON rm.global_rom_sha1 = gr.sha1 "
+      "JOIN roms r ON rm.rom_id = r.id "
+      "WHERE f.sha1 IN ("
+      "  SELECT sha1 FROM files GROUP BY sha1 HAVING COUNT(*) > 1"
+      ")";
 
-  if (system_id.has_value()) {
-    sql += " AND g.system_id = ?1";
+  if (dat_version_id.has_value()) {
+    sql += " AND r.dat_version_id = ?1";
   }
   sql += " ORDER BY r.name, f.path";
 
@@ -1379,8 +1198,8 @@ auto Database::get_duplicate_files(std::optional<std::int64_t> system_id)
     return std::unexpected(stmt.error());
   }
 
-  if (system_id.has_value()) {
-    stmt->bind_int64(1, *system_id);
+  if (dat_version_id.has_value()) {
+    stmt->bind_int64(1, *dat_version_id);
   }
 
   std::vector<core::DuplicateFile> dupes;
@@ -1394,10 +1213,9 @@ auto Database::get_duplicate_files(std::optional<std::int64_t> system_id)
   return dupes;
 }
 
-auto Database::get_unverified_files(std::optional<std::int64_t> /*system_id*/)
-    -> Result<std::vector<core::FileInfo>> {
-  // Use LEFT JOIN to find files with no matches in a single query
-  std::string sql =
+auto Database::get_unverified_files() -> Result<std::vector<core::FileInfo>> {
+  // Use LEFT JOIN to find files with no matches in a single query.
+  const std::string_view sql =
       "SELECT f.id, f.filename, f.path, f.size, f.crc32, f.md5, f.sha1, f.sha256, f.last_scanned "
       "FROM files f "
       "LEFT JOIN rom_matches rm ON f.sha1 = rm.global_rom_sha1 "

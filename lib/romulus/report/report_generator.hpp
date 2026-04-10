@@ -24,12 +24,12 @@ public:
   /// @param db Database to query.
   /// @param type Report type (summary, missing, duplicates, unverified).
   /// @param format Output format (text, csv, json).
-  /// @param system_id Optional system filter.
+  /// @param dat_version_id Optional DAT version filter.
   /// @return Formatted report string.
   [[nodiscard]] static auto generate(database::Database& db,
                                      core::ReportType type,
                                      core::ReportFormat format,
-                                     std::optional<std::int64_t> system_id = {})
+                                     std::optional<std::int64_t> dat_version_id = {})
       -> Result<std::string>;
 
 private:
