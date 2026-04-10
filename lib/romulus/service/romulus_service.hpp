@@ -44,7 +44,7 @@ public:
 
   /// Scans a directory for ROM files and hashes them.
   [[nodiscard]] auto scan_directory(const std::filesystem::path& dir,
-                                    std::optional<std::string> extensions = {})
+                                    std::optional<std::vector<std::string>> extensions = {})
       -> Result<core::ScanReport>;
 
   /// Runs matching + classification on all files.

@@ -27,12 +27,13 @@ public:
   /// @param skip_check   Optional predicate: return true for paths that should be skipped
   ///                     (e.g. already stored in a database). Called concurrently from multiple
   ///                     threads — the predicate must support concurrent read access.
-  /// @param extensions   Optional comma-separated extension filter (e.g. ".nes,.gb").
+  /// @param extensions   Optional pre-parsed extension filter (e.g. {".nes", ".gb"}).
+  ///                     Each entry must be lowercase and include the leading dot.
   ///                     If empty, scans all known ROM and archive extensions.
   /// @return ScanResult containing per-file hashes and summary statistics.
   [[nodiscard]] static auto scan(const std::filesystem::path& directory,
                                  std::function<bool(std::string_view)> skip_check = {},
-                                 std::optional<std::string> extensions = {})
+                                 std::optional<std::vector<std::string>> extensions = {})
       -> Result<core::ScanResult>;
 
 private:

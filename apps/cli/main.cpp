@@ -49,6 +49,31 @@ auto to_lower(std::string value) -> std::string {
   return value;
 }
 
+/// Normalizes a single extension token: trims leading/trailing whitespace
+/// (spaces, tabs, newlines, etc.), ensures a leading dot, and lowercases the result.
+auto normalize_extension(std::string ext) -> std::string {
+  constexpr std::string_view k_Whitespace = " \t\n\r\f\v";
+  const auto first = ext.find_first_not_of(k_Whitespace);
+  if (first == std::string::npos) {
+    return {};
+  }
+  const auto last = ext.find_last_not_of(k_Whitespace);
+  ext = ext.substr(first, last - first + 1);
+  if (ext.front() != '.') {
+    ext = "." + ext;
+  }
+  return to_lower(std::move(ext));
+}
+
+/// Normalizes a list of raw extension tokens (in-place).
+auto normalize_extensions(std::vector<std::string> exts) -> std::vector<std::string> {
+  for (auto& ext : exts) {
+    ext = normalize_extension(std::move(ext));
+  }
+  std::erase_if(exts, [](const std::string& e) { return e.empty() || e == "."; });
+  return exts;
+}
+
 auto is_dat_candidate(const std::filesystem::path& path) -> bool {
   const auto extension = to_lower(path.extension().string());
   return extension == ".dat" || extension == ".xml" ||
@@ -133,9 +158,10 @@ int main(int argc, char** argv) {
   // ── scan ───────────────────────────────────────────────────
   auto* cmd_scan = app.add_subcommand("scan", "Scan a directory for ROM files");
   std::string scan_dir;
-  std::string scan_extensions;
+  std::vector<std::string> scan_extensions;
   cmd_scan->add_option("directory", scan_dir, "Directory to scan")->required();
-  cmd_scan->add_option("--extensions,-e", scan_extensions, "File extensions (comma-separated)");
+  cmd_scan->add_option("--extensions,-e", scan_extensions, "File extensions (comma-separated, e.g. .nes,.gb)")
+      ->delimiter(',');
 
   // ── verify ─────────────────────────────────────────────────
   auto* cmd_verify = app.add_subcommand("verify", "Match files and classify ROMs");
@@ -199,9 +225,11 @@ int main(int argc, char** argv) {
 
     // ── scan ─────────────────────────────────────────────────
     else if (cmd_scan->parsed()) {
-      auto ext =
-          scan_extensions.empty() ? std::nullopt : std::optional<std::string>{scan_extensions};
-      auto result = svc.scan_directory(scan_dir, ext);
+      auto normalized = normalize_extensions(std::move(scan_extensions));
+      auto ext = normalized.empty()
+                     ? std::nullopt
+                     : std::optional<std::vector<std::string>>{std::move(normalized)};
+      auto result = svc.scan_directory(scan_dir, std::move(ext));
       if (!result) {
         std::print(stderr, "Error: {}\n", result.error().message);
         return 1;
