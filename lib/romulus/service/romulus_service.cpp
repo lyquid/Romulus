@@ -16,7 +16,7 @@
 namespace romulus::service {
 
 RomulusService::RomulusService(const std::filesystem::path& db_path)
-    : db_(std::make_unique<database::Database>(db_path)) {
+    : db_path_(db_path), db_(std::make_unique<database::Database>(db_path)) {
   ROMULUS_INFO("ROMULUS service initialized");
 }
 
@@ -359,6 +359,22 @@ auto RomulusService::generate_report(core::ReportType type,
     return std::unexpected(sys_id.error());
   }
   return report::ReportGenerator::generate(*db_, type, format, *sys_id);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DB Explorer
+// ═══════════════════════════════════════════════════════════════
+
+auto RomulusService::get_db_path() const -> std::filesystem::path {
+  return db_path_;
+}
+
+auto RomulusService::get_db_table_names() -> Result<std::vector<std::string>> {
+  return db_->get_table_names();
+}
+
+auto RomulusService::query_db_table(std::string_view table_name) -> Result<core::TableQueryResult> {
+  return db_->query_table_data(table_name);
 }
 
 // ═══════════════════════════════════════════════════════════════

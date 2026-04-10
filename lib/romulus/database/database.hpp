@@ -203,6 +203,17 @@ public:
   [[nodiscard]] auto get_all_scanned_directories() -> Result<std::vector<core::ScannedDirectory>>;
   [[nodiscard]] auto remove_scanned_directory(std::int64_t id) -> Result<void>;
 
+  // ── DB Explorer ──────────────────────────────────────────
+
+  /// Returns the names of all user-defined tables (excludes sqlite_* internal tables).
+  [[nodiscard]] auto get_table_names() -> Result<std::vector<std::string>>;
+
+  /// Queries all rows from the named table (up to k_TableQueryRowLimit rows).
+  /// Returns column headers and row data as strings.
+  /// @param table_name Must be a name returned by get_table_names().
+  [[nodiscard]] auto query_table_data(std::string_view table_name)
+      -> Result<core::TableQueryResult>;
+
 private:
   /// Runs the schema migration (CREATE TABLE IF NOT EXISTS).
   void run_migrations();

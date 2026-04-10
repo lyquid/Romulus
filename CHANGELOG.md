@@ -9,6 +9,12 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ### ⚡ Features
 
+- **GUI**: Added **DB tab** — a read-only database explorer. Displays the active database in a selector combo, a "Read DB" button that loads all table names, a tables dropdown, and a scrollable read-only table viewer showing up to 1 000 rows per table. Right-click any cell to copy its value to the clipboard. Purely observational — no edits possible.
+- **Database**: Added `get_table_names()` — returns all user-defined table names from `sqlite_master` (excludes internal `sqlite_*` tables).
+- **Database**: Added `query_table_data(table_name)` — returns column headers and up to 1 000 rows as strings for any named table (uses `PRAGMA table_info` + `SELECT * ... LIMIT 1000`).
+- **Service**: Added `get_db_path()`, `get_db_table_names()`, and `query_db_table()` on `RomulusService` to expose the DB explorer API to the GUI layer.
+- **Core**: Added `TableQueryResult` struct to `core/types.hpp` — carries `columns` (column names) and `rows` (vector of string vectors) for raw table query results.
+
 - **Scanner**: Introduced `ScannedROM` struct in `core/types.hpp` — a first-class abstraction for a ROM discovered during scanning. `ScannedROM` carries `archive_path` (physical file or containing archive), `entry_name` (optional; set for archive entries), `size`, and a `HashDigest`. Helper methods `is_archive_entry()`, `filename()`, and `virtual_path()` encode the archive multiplicity directly in the type. `ScanResult::files` now holds `std::vector<ScannedROM>` instead of `std::vector<FileInfo>`, making it explicit that one archive file can produce many ROM records. The service layer converts `ScannedROM` → `FileInfo` before DB persistence; the `FileInfo` struct and all database APIs are unchanged.
 
 - **GUI**: Restructured main window into three tabs — **DATs** (ROM checklist with inline DAT controls), **Folders** (ROM directory management), **Log** (application log)

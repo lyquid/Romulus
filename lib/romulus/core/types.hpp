@@ -322,4 +322,13 @@ enum class ReportType {
   Unverified,
 };
 
+// ── DB Explorer ───────────────────────────────────────────────
+
+/// Raw result from querying an arbitrary database table.
+/// Used by the read-only DB Explorer in the GUI.
+struct TableQueryResult {
+  std::vector<std::string> columns; ///< Column names, in declaration order
+  std::vector<std::vector<std::string>> rows; ///< Each row as a vector of text values
+};
+
 } // namespace romulus::core

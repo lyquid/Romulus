@@ -372,6 +372,10 @@ void GuiApp::run() {
         render_folders_tab();
         ImGui::EndTabItem();
       }
+      if (ImGui::BeginTabItem("DB")) {
+        render_db_tab();
+        ImGui::EndTabItem();
+      }
       if (ImGui::BeginTabItem("Log")) {
         render_log_panel();
         ImGui::EndTabItem();
@@ -795,6 +799,154 @@ void GuiApp::render_folders_tab() {
     if (to_remove >= 0) {
       action_remove_folder(to_remove);
     }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// DB Tab
+// ─────────────────────────────────────────────────────────────────
+
+void GuiApp::render_db_tab() {
+  const bool busy = is_busy();
+
+  // ── Database selector ─────────────────────────────────────────
+  // Shows the active database path. Displayed as a (currently single-entry)
+  // combo for future-proofing — a future version may allow switching databases.
+  {
+    const std::string db_display = svc_.get_db_path().string();
+    ImGui::PushItemWidth(-110);
+    if (ImGui::BeginCombo("##db_selector", db_display.c_str())) {
+      bool is_selected = true;
+      ImGui::Selectable(db_display.c_str(), is_selected);
+      if (is_selected) {
+        ImGui::SetItemDefaultFocus();
+      }
+      ImGui::EndCombo();
+    }
+    ImGui::PopItemWidth();
+  }
+
+  ImGui::SameLine();
+
+  // ── Read DB button ────────────────────────────────────────────
+  ImGui::BeginDisabled(busy);
+  if (ImGui::Button("Read DB")) {
+    auto result = svc_.get_db_table_names();
+    if (result) {
+      db_table_names_ = std::move(*result);
+      selected_db_table_index_ = -1;
+      db_table_data_ = {};
+      db_tab_loaded_ = true;
+    } else {
+      ROMULUS_WARN("DB Explorer: failed to read table names: {}", result.error().message);
+      show_toast("Failed to read DB: " + result.error().message);
+    }
+  }
+  ImGui::EndDisabled();
+
+  ImGui::Spacing();
+
+  if (!db_tab_loaded_) {
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0F);
+    ImGui::TextDisabled("Click 'Read DB' to explore the database tables.");
+    return;
+  }
+
+  if (db_table_names_.empty()) {
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0F);
+    ImGui::TextDisabled("No tables found in the database.");
+    return;
+  }
+
+  // ── Tables dropdown ───────────────────────────────────────────
+  {
+    const std::string table_preview =
+        (selected_db_table_index_ >= 0 &&
+         selected_db_table_index_ < static_cast<int>(db_table_names_.size()))
+            ? db_table_names_[static_cast<std::size_t>(selected_db_table_index_)]
+            : "(Select a table)";
+
+    ImGui::PushItemWidth(300.0F);
+    if (ImGui::BeginCombo("##db_table_combo", table_preview.c_str())) {
+      for (int i = 0; i < static_cast<int>(db_table_names_.size()); ++i) {
+        bool is_selected = (selected_db_table_index_ == i);
+        if (ImGui::Selectable(db_table_names_[static_cast<std::size_t>(i)].c_str(),
+                              is_selected)) {
+          selected_db_table_index_ = i;
+          // Load the selected table's data immediately.
+          auto data = svc_.query_db_table(db_table_names_[static_cast<std::size_t>(i)]);
+          if (data) {
+            db_table_data_ = std::move(*data);
+          } else {
+            ROMULUS_WARN("DB Explorer: failed to query table '{}': {}",
+                         db_table_names_[static_cast<std::size_t>(i)],
+                         data.error().message);
+            show_toast("Failed to read table: " + data.error().message);
+            db_table_data_ = {};
+          }
+        }
+        if (is_selected) {
+          ImGui::SetItemDefaultFocus();
+        }
+      }
+      ImGui::EndCombo();
+    }
+    ImGui::PopItemWidth();
+  }
+
+  if (selected_db_table_index_ < 0) {
+    ImGui::Spacing();
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0F);
+    ImGui::TextDisabled("Select a table from the dropdown above to view its contents.");
+    return;
+  }
+
+  ImGui::SameLine();
+  ImGui::TextDisabled("(%zu rows)", db_table_data_.rows.size());
+
+  ImGui::Spacing();
+
+  // ── Table viewer ──────────────────────────────────────────────
+  if (db_table_data_.columns.empty()) {
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0F);
+    ImGui::TextDisabled("No data available for this table.");
+    return;
+  }
+
+  const int col_count = static_cast<int>(db_table_data_.columns.size());
+  constexpr ImGuiTableFlags k_TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                           ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY |
+                                           ImGuiTableFlags_SizingFixedFit |
+                                           ImGuiTableFlags_Resizable;
+
+  if (ImGui::BeginTable("##db_table_view", col_count, k_TableFlags, ImVec2(0, -30))) {
+    ImGui::TableSetupScrollFreeze(0, 1);
+    for (int c = 0; c < col_count; ++c) {
+      ImGui::TableSetupColumn(db_table_data_.columns[static_cast<std::size_t>(c)].c_str(),
+                              ImGuiTableColumnFlags_None);
+    }
+    ImGui::TableHeadersRow();
+
+    for (std::size_t r = 0; r < db_table_data_.rows.size(); ++r) {
+      ImGui::TableNextRow();
+      ImGui::PushID(static_cast<int>(r));
+      const auto& row = db_table_data_.rows[r];
+      for (int c = 0; c < col_count; ++c) {
+        ImGui::TableSetColumnIndex(c);
+        const std::string& cell =
+            (c < static_cast<int>(row.size())) ? row[static_cast<std::size_t>(c)] : "";
+        ImGui::TextUnformatted(cell.c_str());
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("Right-click to copy");
+        }
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+          ImGui::SetClipboardText(cell.c_str());
+          show_toast("Copied to clipboard");
+        }
+      }
+      ImGui::PopID();
+    }
+    ImGui::EndTable();
   }
 }
 

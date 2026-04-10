@@ -1439,4 +1439,65 @@ auto Database::remove_scanned_directory(std::int64_t id) -> Result<void> {
   return {};
 }
 
+// ═══════════════════════════════════════════════════════════════
+// DB Explorer
+// ═══════════════════════════════════════════════════════════════
+
+auto Database::get_table_names() -> Result<std::vector<std::string>> {
+  auto stmt = prepare("SELECT name FROM sqlite_master "
+                      "WHERE type='table' AND name NOT LIKE 'sqlite_%' "
+                      "ORDER BY name");
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+  std::vector<std::string> names;
+  while (stmt->step()) {
+    names.push_back(stmt->column_text(0));
+  }
+  return names;
+}
+
+auto Database::query_table_data(std::string_view table_name) -> Result<core::TableQueryResult> {
+  // Use PRAGMA table_info to get column names (column index 1 = name).
+  // This avoids needing sqlite3_column_name() on the data statement.
+  const std::string pragma_sql =
+      "PRAGMA table_info(\"" + std::string(table_name) + "\")";
+  auto pragma_stmt = prepare(pragma_sql);
+  if (!pragma_stmt) {
+    return std::unexpected(pragma_stmt.error());
+  }
+
+  core::TableQueryResult result;
+  while (pragma_stmt->step()) {
+    result.columns.push_back(pragma_stmt->column_text(1));
+  }
+
+  if (result.columns.empty()) {
+    return std::unexpected(
+        core::Error{core::ErrorCode::DatabaseQueryError,
+                    "Table '" + std::string(table_name) + "' not found or has no columns"});
+  }
+
+  // Query rows — cap at a reasonable limit to avoid overwhelming the UI.
+  constexpr int k_TableQueryRowLimit = 1000;
+  const std::string select_sql =
+      "SELECT * FROM \"" + std::string(table_name) + "\" LIMIT " +
+      std::to_string(k_TableQueryRowLimit);
+  auto select_stmt = prepare(select_sql);
+  if (!select_stmt) {
+    return std::unexpected(select_stmt.error());
+  }
+
+  const auto col_count = static_cast<int>(result.columns.size());
+  while (select_stmt->step()) {
+    std::vector<std::string> row;
+    row.reserve(static_cast<std::size_t>(col_count));
+    for (int i = 0; i < col_count; ++i) {
+      row.push_back(select_stmt->column_text(i));
+    }
+    result.rows.push_back(std::move(row));
+  }
+  return result;
+}
+
 } // namespace romulus::database

@@ -35,6 +35,9 @@ public:
   RomulusService(const RomulusService&) = delete;
   auto operator=(const RomulusService&) -> RomulusService& = delete;
 
+  /// Returns the filesystem path of the underlying database file.
+  [[nodiscard]] auto get_db_path() const -> std::filesystem::path;
+
   // ── DAT Operations ───────────────────────────────────────
 
   /// Imports a local DAT file into the database.
@@ -89,11 +92,21 @@ public:
                                      core::ReportFormat format,
                                      std::optional<std::string> system = {}) -> Result<std::string>;
 
+  // ── DB Explorer ──────────────────────────────────────────
+
+  /// Returns the names of all user-defined tables in the database.
+  [[nodiscard]] auto get_db_table_names() -> Result<std::vector<std::string>>;
+
+  /// Queries all rows (up to the internal row limit) from the named table.
+  [[nodiscard]] auto query_db_table(std::string_view table_name)
+      -> Result<core::TableQueryResult>;
+
 private:
   /// Resolves a system name to its ID. Returns nullopt if no filter.
   [[nodiscard]] auto resolve_system_id(const std::optional<std::string>& system)
       -> Result<std::optional<std::int64_t>>;
 
+  std::filesystem::path db_path_;
   std::unique_ptr<database::Database> db_;
 };
 
