@@ -166,7 +166,18 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
     return std::unexpected(begin.error());
   }
 
-  for (const auto& file : result->files) {
+  for (const auto& rom : result->files) {
+    const core::FileInfo file{
+        .filename = rom.filename(),
+        .path = rom.virtual_path(),
+        .size = rom.size,
+        .crc32 = rom.hash_digest.to_hex_crc32(),
+        .md5 = rom.hash_digest.to_hex_md5(),
+        .sha1 = rom.hash_digest.to_hex_sha1(),
+        .sha256 = rom.hash_digest.to_hex_sha256(),
+        .last_scanned = {},
+        .is_archive_entry = rom.is_archive_entry(),
+    };
     auto upsert = db_->upsert_file(file);
     if (!upsert) {
       ROMULUS_WARN("DB upsert failed for '{}': {}", file.path, upsert.error().message);

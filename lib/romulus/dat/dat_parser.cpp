@@ -84,7 +84,8 @@ auto load_document_from_archive(const std::filesystem::path& dat_path,
   if (!result) {
     return std::unexpected(core::Error{core::ErrorCode::DatParseError,
                                        "Failed to parse XML '" + dat_path.string() +
-                                           "::" + dat_entries->front().name +
+                                           std::string(core::k_ArchiveEntrySeparator) +
+                                           dat_entries->front().name +
                                            "': " + result.description()});
   }
 

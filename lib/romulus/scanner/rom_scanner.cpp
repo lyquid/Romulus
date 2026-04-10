@@ -100,11 +100,13 @@ auto RomScanner::scan(const std::filesystem::path& directory,
   std::atomic<std::int64_t> files_hashed{0};
   std::atomic<std::int64_t> files_skipped{0};
   std::mutex result_mutex;
-  std::vector<core::FileInfo> scanned_files;
+  std::vector<core::ScannedROM> scanned_files;
 
   // Phase 2: Expand archives into individual entries
   struct HashJob {
-    std::string virtual_path; // path or archive::entry
+    // Pre-computed virtual path used for the skip_check predicate before ScannedROM is created.
+    // Mirrors the ScannedROM::virtual_path() format: "path" or "archive::entry".
+    std::string virtual_path;
     std::int64_t size;
     std::filesystem::path real_path;
     std::string entry_name;        // display name; empty for regular files
@@ -124,7 +126,8 @@ auto RomScanner::scan(const std::filesystem::path& directory,
       }
       for (const auto& entry : *entries) {
         jobs.push_back({
-            .virtual_path = candidate.path.string() + "::" + entry.name,
+            .virtual_path = candidate.path.string() +
+                            std::string(core::k_ArchiveEntrySeparator) + entry.name,
             .size = entry.size,
             .real_path = candidate.path,
             .entry_name = entry.name,
@@ -174,25 +177,21 @@ auto RomScanner::scan(const std::filesystem::path& directory,
       return;
     }
 
-    // Collect file info — storage is the caller's responsibility
+    // Collect ROM info — storage is the caller's responsibility
     const auto sha256_hex = digest->to_hex_sha256();
-    core::FileInfo file_info{
-        .filename = job.is_archive_entry ? job.entry_name : job.real_path.filename().string(),
-        .path = job.virtual_path,
+    core::ScannedROM scanned_rom{
+        .archive_path = job.real_path,
+        .entry_name = job.is_archive_entry ? std::optional<std::string>{job.entry_name}
+                                           : std::nullopt,
         .size = job.size,
-        .crc32 = digest->to_hex_crc32(),
-        .md5 = digest->to_hex_md5(),
-        .sha1 = digest->to_hex_sha1(),
-        .sha256 = sha256_hex,
-        .last_scanned = {},
-        .is_archive_entry = job.is_archive_entry,
+        .hash_digest = *digest,
     };
 
     ROMULUS_DEBUG("Hashed '{}': SHA256={}", job.virtual_path, sha256_hex);
 
     {
       std::lock_guard lock(result_mutex);
-      scanned_files.push_back(std::move(file_info));
+      scanned_files.push_back(std::move(scanned_rom));
     }
 
     ++files_hashed;
