@@ -373,20 +373,15 @@ auto RomulusService::query_db_table(std::string_view table_name) -> Result<core:
 
 auto RomulusService::resolve_dat_version_id(const std::string& dat_name)
     -> Result<std::int64_t> {
-  auto versions = db_->get_all_dat_versions();
-  if (!versions) {
-    return std::unexpected(versions.error());
+  auto found = db_->find_dat_version_by_name(dat_name);
+  if (!found) {
+    return std::unexpected(found.error());
   }
-
-  // Find the most recently imported DAT with the given name.
-  for (const auto& dv : *versions) {
-    if (dv.name == dat_name) {
-      return dv.id;
-    }
+  if (!found->has_value()) {
+    return std::unexpected(
+        core::Error{core::ErrorCode::NotFound, "DAT not found: '" + dat_name + "'"});
   }
-
-  return std::unexpected(
-      core::Error{core::ErrorCode::NotFound, "DAT not found: '" + dat_name + "'"});
+  return found->value().id;
 }
 
 } // namespace romulus::service

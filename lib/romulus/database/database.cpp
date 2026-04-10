@@ -513,6 +513,31 @@ auto Database::find_dat_version_by_checksum(std::string_view checksum)
   };
 }
 
+auto Database::find_dat_version_by_name(std::string_view name)
+    -> Result<std::optional<core::DatVersion>> {
+  // Returns the most recently imported DAT with the given name (most recent first).
+  auto stmt = prepare("SELECT id, name, version, source_url, checksum, imported_at "
+                      "FROM dat_versions WHERE name = ?1 ORDER BY imported_at DESC LIMIT 1");
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+
+  stmt->bind_text(1, name);
+  if (!stmt->step()) {
+    return std::nullopt;
+  }
+
+  return core::DatVersion{
+      .id = stmt->column_int64(0),
+      .name = stmt->column_text(1),
+      .version = stmt->column_text(2),
+      .source_url = stmt->column_text(3),
+      .checksum = stmt->column_text(4),
+      .imported_at = stmt->column_text(5),
+  };
+}
+
+
 auto Database::get_all_dat_versions() -> Result<std::vector<core::DatVersion>> {
   auto stmt = prepare("SELECT id, name, version, source_url, checksum, imported_at "
                       "FROM dat_versions ORDER BY imported_at DESC");
@@ -1086,11 +1111,11 @@ auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id
       "WITH computed AS ("
       "  SELECT r.id AS rom_id,"
       "    CASE"
-      "      WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1"
+      "      WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1"  // 1=Missing: no match entry
       "      WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
-      "           THEN 0"
-      "      WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2"
-      "      ELSE 3"
+      "           THEN 0"  // 0=Verified: exact match (type=0) with file on disk
+      "      WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2"  // 2=Unverified: partial match + file present
+      "      ELSE 3"  // 3=Mismatch: match exists but file deleted
       "    END AS status"
       "  FROM roms r"
       "  LEFT JOIN rom_matches rm ON r.id = rm.rom_id"
@@ -1104,12 +1129,12 @@ auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id
       "  GROUP BY r.id"
       ")"
       "SELECT"
-      "  COALESCE((SELECT name FROM dat_versions WHERE id = ?1), 'All DATs'),"
+      "  COALESCE((SELECT name FROM dat_versions WHERE id IS ?1), 'All DATs'),"
       "  COUNT(*),"
-      "  SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END),"
-      "  SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END),"
-      "  SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END),"
-      "  SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END)"
+      "  SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END),"  // 0=Verified
+      "  SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END),"  // 1=Missing
+      "  SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END),"  // 2=Unverified
+      "  SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END)"   // 3=Mismatch
       " FROM computed";
 
   auto stmt = prepare(sql);

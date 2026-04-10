@@ -114,6 +114,8 @@ public:
       -> Result<std::optional<core::DatVersion>>;
   [[nodiscard]] auto find_dat_version_by_checksum(std::string_view checksum)
       -> Result<std::optional<core::DatVersion>>;
+  [[nodiscard]] auto find_dat_version_by_name(std::string_view name)
+      -> Result<std::optional<core::DatVersion>>;
   [[nodiscard]] auto get_all_dat_versions() -> Result<std::vector<core::DatVersion>>;
   [[nodiscard]] auto get_roms_for_dat_version(std::int64_t dat_version_id)
       -> Result<std::vector<core::RomInfo>>;
