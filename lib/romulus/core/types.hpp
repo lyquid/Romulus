@@ -205,7 +205,9 @@ struct ArchiveEntry {
 
 // ── Scanned ROM ──────────────────────────────────────────────
 
-/// Separator used in virtual paths between the archive path and the entry name.
+/// Canonical separator between an archive file path and an in-archive entry name.
+/// Used in virtual paths (scanner output), error messages, and anywhere the
+/// "archive::entry" notation is needed.
 /// Example: "/roms/game.zip::game.nes"
 inline constexpr std::string_view k_ArchiveEntrySeparator = "::";
 
@@ -225,10 +227,13 @@ struct ScannedROM {
 
   /// Returns the display filename.
   /// For bare files:      the filename component of archive_path.
-  /// For archive entries: the entry name.
+  /// For archive entries: the leaf filename component of the in-archive path.
   /// @pre archive_path must be a valid file path when entry_name is absent.
   [[nodiscard]] auto filename() const -> std::string {
-    return entry_name ? *entry_name : archive_path.filename().string();
+    if (entry_name) {
+      return std::filesystem::path(*entry_name).filename().string();
+    }
+    return archive_path.filename().string();
   }
 
   /// Returns the canonical virtual path used as the unique storage key.
