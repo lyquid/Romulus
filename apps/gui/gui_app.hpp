@@ -54,6 +54,7 @@ private:
   void render_main_menu_bar();
   void render_dats_tab();
   void render_folders_tab();
+  void render_db_tab();
   void render_log_panel();
   void render_status_bar();
   void render_toast();
@@ -152,6 +153,12 @@ private:
   // Log panel cached state — updated only when the sink signals new content
   std::vector<LogEntry> log_entries_cache_;
   std::uint64_t log_generation_ = 0; ///< Last-seen generation from the log sink
+
+  // DB Explorer tab state
+  std::vector<std::string> db_table_names_;  ///< Table names loaded by "Read DB"
+  int selected_db_table_index_ = -1;         ///< Currently selected table index
+  core::TableQueryResult db_table_data_;     ///< Data for the currently selected table
+  bool db_tab_loaded_ = false;               ///< True once "Read DB" has been invoked
 };
 
 } // namespace romulus::gui

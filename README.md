@@ -140,12 +140,13 @@ sudo apt install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-d
 ```
 
 **GUI features:**
-- Three-tab layout: **DATs** (ROM checklist + DAT controls), **Folders** (scan directory management), **Log** (application log)
+- Four-tab layout: **DATs** (ROM checklist + DAT controls), **Folders** (scan directory management), **DB** (read-only database explorer), **Log** (application log)
 - DAT import, folder scanning, verification, and database purge
 - ROM checklist table with Status, ROM Name, Size, and SHA1 columns
 - Filter bar: free-text name filter + status dropdown (All / Verified / Missing / Unverified / Mismatch)
 - Status breakdown summary: color-coded verified/missing/unverified/mismatch counts with completion percentage
 - Active DAT shown in a full-width highlighted banner (name, version, import date)
+- **DB tab**: database path in a disabled text field + Browse button (future use); "Read DB" loads all tables; select a table to see a Schema panel (column type + PK/NN/UQ/FK badges) and a full-rows read-only scrollable grid; right-click any cell to copy
 - Scanned ROM directories persisted in the database — loaded automatically on startup
 - Right-click any ROM Name, Size, SHA1 cell, or folder path to copy the value to clipboard (with toast notification)
 - Browse buttons open native file/folder picker dialogs

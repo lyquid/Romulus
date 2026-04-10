@@ -9,6 +9,13 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ### ⚡ Features
 
+- **GUI**: Added **DB tab** — a read-only database explorer. Database path shown in a disabled text field (with a placeholder Browse button for future use). "Read DB" button loads all table names, a tables dropdown selects a table, a collapsible Schema panel shows column metadata (type + `[PK]`/`[NN]`/`[UQ]`/`[FK]→table.column` badges), and a scrollable read-only data grid shows all rows. Right-click any cell to copy its value to the clipboard.
+- **Database**: Added `get_table_names()` — returns all user-defined table names from `sqlite_master` (excludes internal `sqlite_*` tables).
+- **Database**: Added `query_table_data(table_name)` — returns full column metadata (PK/NN/UQ/FK flags via `PRAGMA table_info`, `PRAGMA index_list`, `PRAGMA index_info`, `PRAGMA foreign_key_list`) and all rows with BLOB→hex conversion; no row limit.
+- **Database**: Added `PreparedStatement::column_display_text()` — BLOB columns rendered as lowercase hex, NULL rendered as "(NULL)", other types via `sqlite3_column_text`.
+- **Service**: Added `get_db_path()`, `get_db_table_names()`, and `query_db_table()` on `RomulusService` to expose the DB explorer API to the GUI layer.
+- **Core**: Added `ColumnInfo` struct and updated `TableQueryResult` to use `std::vector<ColumnInfo>` for rich column metadata.
+
 - **Scanner**: Introduced `ScannedROM` struct in `core/types.hpp` — a first-class abstraction for a ROM discovered during scanning. `ScannedROM` carries `archive_path` (physical file or containing archive), `entry_name` (optional; set for archive entries), `size`, and a `HashDigest`. Helper methods `is_archive_entry()`, `filename()`, and `virtual_path()` encode the archive multiplicity directly in the type. `ScanResult::files` now holds `std::vector<ScannedROM>` instead of `std::vector<FileInfo>`, making it explicit that one archive file can produce many ROM records. The service layer converts `ScannedROM` → `FileInfo` before DB persistence; the `FileInfo` struct and all database APIs are unchanged.
 
 - **GUI**: Restructured main window into three tabs — **DATs** (ROM checklist with inline DAT controls), **Folders** (ROM directory management), **Log** (application log)
