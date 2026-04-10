@@ -324,11 +324,23 @@ enum class ReportType {
 
 // ── DB Explorer ───────────────────────────────────────────────
 
+/// Metadata for a single column in the DB Explorer schema view.
+struct ColumnInfo {
+  std::string name;             ///< Column name
+  std::string type;             ///< Declared SQLite type (e.g. "INTEGER", "TEXT", "BLOB")
+  bool not_null = false;        ///< Has NOT NULL constraint
+  bool is_primary_key = false;  ///< Part of the primary key
+  int pk_order = 0;             ///< Position within a compound PK (1-based); 0 if not PK
+  bool is_unique = false;       ///< Has an explicit UNIQUE index (separate from PK)
+  std::string fk_table;         ///< Referenced table (empty if not a foreign key)
+  std::string fk_column;        ///< Referenced column (empty if not a foreign key)
+};
+
 /// Raw result from querying an arbitrary database table.
 /// Used by the read-only DB Explorer in the GUI.
 struct TableQueryResult {
-  std::vector<std::string> columns; ///< Column names, in declaration order
-  std::vector<std::vector<std::string>> rows; ///< Each row as a vector of text values
+  std::vector<ColumnInfo> columns;            ///< Column metadata, in declaration order
+  std::vector<std::vector<std::string>> rows; ///< Each row as a vector of display strings
 };
 
 } // namespace romulus::core

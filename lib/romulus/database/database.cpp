@@ -47,9 +47,6 @@ auto bytes_to_hex(const std::vector<uint8_t>& bytes) -> std::string {
   return hex;
 }
 
-/// Maximum number of rows returned by query_table_data() per call.
-constexpr int k_TableQueryRowLimit = 1000;
-
 } // namespace
 
 // ═══════════════════════════════════════════════════════════════
@@ -148,6 +145,33 @@ auto PreparedStatement::column_blob(int index) const -> std::vector<uint8_t> {
   }
   const auto* p = static_cast<const uint8_t*>(blob);
   return std::vector<uint8_t>(p, p + bytes);
+}
+
+auto PreparedStatement::column_display_text(int index) const -> std::string {
+  const int col_type = sqlite3_column_type(stmt_, index);
+  if (col_type == SQLITE_NULL) {
+    return "(NULL)";
+  }
+  if (col_type == SQLITE_BLOB) {
+    // Render raw binary data as a lowercase hex string.
+    const void* blob = sqlite3_column_blob(stmt_, index);
+    const int bytes = sqlite3_column_bytes(stmt_, index);
+    if (!blob || bytes == 0) {
+      return "";
+    }
+    static constexpr char k_HexChars[] = "0123456789abcdef";
+    std::string hex;
+    hex.reserve(static_cast<std::size_t>(bytes) * 2);
+    const auto* p = static_cast<const uint8_t*>(blob);
+    for (int i = 0; i < bytes; ++i) {
+      hex.push_back(k_HexChars[p[i] >> 4U]);
+      hex.push_back(k_HexChars[p[i] & 0x0FU]);
+    }
+    return hex;
+  }
+  // SQLITE_INTEGER, SQLITE_FLOAT, SQLITE_TEXT — readable via sqlite3_column_text.
+  const auto* text = reinterpret_cast<const char*>(sqlite3_column_text(stmt_, index));
+  return text ? std::string(text) : "";
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1461,9 +1485,7 @@ auto Database::get_table_names() -> Result<std::vector<std::string>> {
 }
 
 auto Database::query_table_data(std::string_view table_name) -> Result<core::TableQueryResult> {
-  // Validate table_name against the actual list of tables to prevent SQL injection.
-  // Even though we double-quote the identifier, an attacker-controlled name containing
-  // embedded quotes could break out; validation is the safest defence in depth.
+  // Validate table_name against known tables (defence against SQL injection).
   auto known_tables = get_table_names();
   if (!known_tables) {
     return std::unexpected(known_tables.error());
@@ -1477,31 +1499,95 @@ auto Database::query_table_data(std::string_view table_name) -> Result<core::Tab
                     "Table '" + std::string(table_name) + "' does not exist"});
   }
 
-  // Use PRAGMA table_info to get column names (column index 1 = name).
-  // This avoids needing sqlite3_column_name() on the data statement.
-  const std::string pragma_sql =
-      "PRAGMA table_info(\"" + std::string(table_name) + "\")";
-  auto pragma_stmt = prepare(pragma_sql);
+  const std::string tname{table_name}; // validated above — safe to use in SQL literals
+
+  // ── Step 1: Column metadata from PRAGMA table_info ──────────────
+  // Columns: cid | name | type | notnull | dflt_value | pk
+  //          0     1      2      3         4             5
+  // pk = 0 means not a PK; pk > 0 is the 1-based position within a compound PK.
+  auto pragma_stmt = prepare("PRAGMA table_info(\"" + tname + "\")");
   if (!pragma_stmt) {
     return std::unexpected(pragma_stmt.error());
   }
 
   core::TableQueryResult result;
   while (pragma_stmt->step()) {
-    result.columns.push_back(pragma_stmt->column_text(1));
+    core::ColumnInfo col;
+    col.name           = pragma_stmt->column_text(1);
+    col.type           = pragma_stmt->column_text(2);
+    col.not_null       = pragma_stmt->column_int64(3) != 0;
+    const auto pk_ord  = pragma_stmt->column_int64(5);
+    col.pk_order       = static_cast<int>(pk_ord);
+    col.is_primary_key = pk_ord > 0;
+    result.columns.push_back(std::move(col));
   }
 
   if (result.columns.empty()) {
     return std::unexpected(
         core::Error{core::ErrorCode::DatabaseQueryError,
-                    "Table '" + std::string(table_name) + "' has no columns"});
+                    "Table '" + tname + "' has no columns"});
   }
 
-  // Query rows — cap at k_TableQueryRowLimit to avoid overwhelming the UI.
-  const std::string select_sql =
-      "SELECT * FROM \"" + std::string(table_name) + "\" LIMIT " +
-      std::to_string(k_TableQueryRowLimit);
-  auto select_stmt = prepare(select_sql);
+  // Helper: locate a column by name (linear search — tables have few columns).
+  auto find_col = [&result](const std::string& name) -> std::optional<std::size_t> {
+    for (std::size_t i = 0; i < result.columns.size(); ++i) {
+      if (result.columns[i].name == name) {
+        return i;
+      }
+    }
+    return std::nullopt;
+  };
+
+  // ── Step 2: Unique columns from PRAGMA index_list ────────────────
+  // Columns: seq | name | unique | origin | partial
+  //          0     1      2        3        4
+  // origin = 'pk' for the implicit PK index; 'u' for UNIQUE constraints; 'c' for CREATE INDEX.
+  {
+    auto idx_list = prepare("PRAGMA index_list(\"" + tname + "\")");
+    if (idx_list) {
+      while (idx_list->step()) {
+        const bool is_unique  = idx_list->column_int64(2) != 0;
+        const std::string origin = idx_list->column_text(3);
+        // Skip non-unique or pk-origin indexes (pk columns already flagged in Step 1).
+        if (!is_unique || origin == "pk") {
+          continue;
+        }
+        const std::string idx_name = idx_list->column_text(1);
+        auto idx_info = prepare("PRAGMA index_info(\"" + idx_name + "\")");
+        if (!idx_info) {
+          continue;
+        }
+        // Columns: seqno | cid | name
+        while (idx_info->step()) {
+          if (auto pos = find_col(idx_info->column_text(2))) {
+            result.columns[*pos].is_unique = true;
+          }
+        }
+      }
+    }
+  }
+
+  // ── Step 3: Foreign key columns from PRAGMA foreign_key_list ────
+  // Columns: id | seq | table | from | to | on_update | on_delete | match
+  //          0    1     2       3      4    5            6           7
+  {
+    auto fk_list = prepare("PRAGMA foreign_key_list(\"" + tname + "\")");
+    if (fk_list) {
+      while (fk_list->step()) {
+        const std::string fk_table = fk_list->column_text(2);
+        const std::string from_col = fk_list->column_text(3);
+        const std::string to_col   = fk_list->column_text(4);
+        if (auto pos = find_col(from_col)) {
+          result.columns[*pos].fk_table  = fk_table;
+          result.columns[*pos].fk_column = to_col;
+        }
+      }
+    }
+  }
+
+  // ── Step 4: All rows — no artificial row limit ───────────────────
+  // BLOBs are converted to lowercase hex by column_display_text().
+  auto select_stmt = prepare("SELECT * FROM \"" + tname + "\"");
   if (!select_stmt) {
     return std::unexpected(select_stmt.error());
   }
@@ -1511,7 +1597,7 @@ auto Database::query_table_data(std::string_view table_name) -> Result<core::Tab
     std::vector<std::string> row;
     row.reserve(static_cast<std::size_t>(col_count));
     for (int i = 0; i < col_count; ++i) {
-      row.push_back(select_stmt->column_text(i));
+      row.push_back(select_stmt->column_display_text(i));
     }
     result.rows.push_back(std::move(row));
   }
