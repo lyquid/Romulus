@@ -49,14 +49,15 @@ auto to_lower(std::string value) -> std::string {
   return value;
 }
 
-/// Normalizes a single extension token: trims leading/trailing whitespace,
-/// ensures a leading dot, and lowercases the result.
+/// Normalizes a single extension token: trims leading/trailing whitespace
+/// (spaces, tabs, newlines, etc.), ensures a leading dot, and lowercases the result.
 auto normalize_extension(std::string ext) -> std::string {
-  const auto first = ext.find_first_not_of(' ');
-  const auto last = ext.find_last_not_of(' ');
+  constexpr std::string_view k_Whitespace = " \t\n\r\f\v";
+  const auto first = ext.find_first_not_of(k_Whitespace);
   if (first == std::string::npos) {
     return {};
   }
+  const auto last = ext.find_last_not_of(k_Whitespace);
   ext = ext.substr(first, last - first + 1);
   if (ext.front() != '.') {
     ext = "." + ext;
