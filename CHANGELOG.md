@@ -9,6 +9,8 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ### ⚡ Features
 
+- **Scanner**: Introduced `ScannedROM` struct in `core/types.hpp` — a first-class abstraction for a ROM discovered during scanning. `ScannedROM` carries `archive_path` (physical file or containing archive), `entry_name` (optional; set for archive entries), `size`, and a `HashDigest`. Helper methods `is_archive_entry()`, `filename()`, and `virtual_path()` encode the archive multiplicity directly in the type. `ScanResult::files` now holds `std::vector<ScannedROM>` instead of `std::vector<FileInfo>`, making it explicit that one archive file can produce many ROM records. The service layer converts `ScannedROM` → `FileInfo` before DB persistence; the `FileInfo` struct and all database APIs are unchanged.
+
 - **GUI**: Restructured main window into three tabs — **DATs** (ROM checklist with inline DAT controls), **Folders** (ROM directory management), **Log** (application log)
 - **GUI**: DATs tab ROM table now shows SHA1 instead of CRC32 as the hash column
 - **GUI**: Folders tab — lists all registered ROM scan directories loaded from the database; supports adding new folders and removing existing ones with an `[X]` button

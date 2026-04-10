@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -202,6 +203,45 @@ struct ArchiveEntry {
   std::int64_t size = 0; ///< Uncompressed size
 };
 
+// ── Scanned ROM ──────────────────────────────────────────────
+
+/// Separator used in virtual paths between the archive path and the entry name.
+/// Example: "/roms/game.zip::game.nes"
+inline constexpr std::string_view k_ArchiveEntrySeparator = "::";
+
+/// A single ROM discovered during scanning.
+/// One archive file can produce many ScannedROMs — one per entry inside the archive.
+///
+/// For bare ROM files:   archive_path = file path,    entry_name = std::nullopt
+/// For archive entries:  archive_path = archive path, entry_name = filename inside the archive
+struct ScannedROM {
+  std::filesystem::path archive_path;    ///< Physical file on disk (or the archive containing this entry)
+  std::optional<std::string> entry_name; ///< Set when this ROM lives inside an archive; absent for bare files
+  std::int64_t size = 0;                 ///< Uncompressed ROM size in bytes
+  HashDigest hash_digest;                ///< CRC32, MD5, SHA1, and SHA256 computed in a single pass
+
+  /// Returns true when this ROM was extracted from an archive entry.
+  [[nodiscard]] auto is_archive_entry() const noexcept -> bool { return entry_name.has_value(); }
+
+  /// Returns the display filename.
+  /// For bare files:      the filename component of archive_path.
+  /// For archive entries: the entry name.
+  /// @pre archive_path must be a valid file path when entry_name is absent.
+  [[nodiscard]] auto filename() const -> std::string {
+    return entry_name ? *entry_name : archive_path.filename().string();
+  }
+
+  /// Returns the canonical virtual path used as the unique storage key.
+  /// For bare files:      "/path/to/game.rom"
+  /// For archive entries: "/path/to/archive.zip::game.rom"
+  [[nodiscard]] auto virtual_path() const -> std::string {
+    if (entry_name) {
+      return archive_path.string() + std::string(k_ArchiveEntrySeparator) + *entry_name;
+    }
+    return archive_path.string();
+  }
+};
+
 // ── Reports ──────────────────────────────────────────────────
 
 /// Collection summary statistics.
@@ -245,12 +285,12 @@ struct ScanReport {
   std::int64_t matches_found = 0;
 };
 
-/// Result of a scan operation: statistics plus the list of discovered (newly hashed) files.
+/// Result of a scan operation: statistics plus the list of discovered (newly hashed) ROMs.
 /// The scanner itself does not interact with storage; callers are responsible for persisting
 /// the files vector (e.g. via Database::upsert_file).
 struct ScanResult {
   ScanReport report;
-  std::vector<FileInfo> files; ///< Files discovered and hashed during this scan (excludes skipped)
+  std::vector<ScannedROM> files; ///< ROMs discovered and hashed during this scan (excludes skipped)
 };
 
 // ── Scanned Directory ─────────────────────────────────────────
