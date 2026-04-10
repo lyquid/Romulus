@@ -902,7 +902,7 @@ void GuiApp::render_db_tab() {
   }
 
   ImGui::SameLine();
-  ImGui::TextDisabled("(%zu rows)", db_table_data_.rows.size());
+  ImGui::TextDisabled("(%lu rows)", static_cast<unsigned long>(db_table_data_.rows.size()));
 
   ImGui::Spacing();
 

@@ -47,6 +47,9 @@ auto bytes_to_hex(const std::vector<uint8_t>& bytes) -> std::string {
   return hex;
 }
 
+/// Maximum number of rows returned by query_table_data() per call.
+constexpr int k_TableQueryRowLimit = 1000;
+
 } // namespace
 
 // ═══════════════════════════════════════════════════════════════
@@ -1458,6 +1461,22 @@ auto Database::get_table_names() -> Result<std::vector<std::string>> {
 }
 
 auto Database::query_table_data(std::string_view table_name) -> Result<core::TableQueryResult> {
+  // Validate table_name against the actual list of tables to prevent SQL injection.
+  // Even though we double-quote the identifier, an attacker-controlled name containing
+  // embedded quotes could break out; validation is the safest defence in depth.
+  auto known_tables = get_table_names();
+  if (!known_tables) {
+    return std::unexpected(known_tables.error());
+  }
+  const bool is_known = std::ranges::any_of(*known_tables, [table_name](const std::string& n) {
+    return n == table_name;
+  });
+  if (!is_known) {
+    return std::unexpected(
+        core::Error{core::ErrorCode::DatabaseQueryError,
+                    "Table '" + std::string(table_name) + "' does not exist"});
+  }
+
   // Use PRAGMA table_info to get column names (column index 1 = name).
   // This avoids needing sqlite3_column_name() on the data statement.
   const std::string pragma_sql =
@@ -1475,11 +1494,10 @@ auto Database::query_table_data(std::string_view table_name) -> Result<core::Tab
   if (result.columns.empty()) {
     return std::unexpected(
         core::Error{core::ErrorCode::DatabaseQueryError,
-                    "Table '" + std::string(table_name) + "' not found or has no columns"});
+                    "Table '" + std::string(table_name) + "' has no columns"});
   }
 
-  // Query rows — cap at a reasonable limit to avoid overwhelming the UI.
-  constexpr int k_TableQueryRowLimit = 1000;
+  // Query rows — cap at k_TableQueryRowLimit to avoid overwhelming the UI.
   const std::string select_sql =
       "SELECT * FROM \"" + std::string(table_name) + "\" LIMIT " +
       std::to_string(k_TableQueryRowLimit);
