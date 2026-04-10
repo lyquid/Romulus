@@ -22,7 +22,6 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
-#include <cstring>
 #include <future>
 #include <GLFW/glfw3.h>
 #include <ranges>
@@ -814,9 +813,11 @@ void GuiApp::render_db_tab() {
   // Shows the full path to the active SQLite database.
   // Both fields are disabled for now — future versions may allow switching DBs.
   {
-    const std::string db_path_str = svc_.get_db_path().string();
     std::array<char, 512> path_buf{};
-    std::strncpy(path_buf.data(), db_path_str.c_str(), path_buf.size() - 1);
+    const std::string db_path_str = svc_.get_db_path().string();
+    const auto copy_len = std::min(db_path_str.size(), path_buf.size() - 1U);
+    db_path_str.copy(path_buf.data(), copy_len);
+    path_buf[copy_len] = '\0';
 
     ImGui::BeginDisabled(true);
     ImGui::PushItemWidth(-220.0F);
