@@ -64,8 +64,19 @@ TEST_F(DatabaseTest, DatVersionUniqueByChecksum) {
   };
   auto id1 = db_->insert_dat_version(dat);
   ASSERT_TRUE(id1.has_value());
-  // Inserting the same checksum again should throw (UNIQUE constraint)
-  EXPECT_THROW(db_->insert_dat_version(dat), std::runtime_error);
+  // The service layer prevents duplicate imports via find_dat_version_by_checksum before insert.
+  // Direct insert of a duplicate checksum throws due to the UNIQUE constraint.
+  EXPECT_THROW(
+      {
+        try {
+          auto r = db_->insert_dat_version(dat);
+          (void)r;
+        } catch (const std::runtime_error& ex) {
+          EXPECT_NE(std::string_view{ex.what()}.find("UNIQUE constraint failed"), std::string_view::npos);
+          throw;
+        }
+      },
+      std::runtime_error);
 }
 
 TEST_F(DatabaseTest, InsertAndRetrieveRom) {

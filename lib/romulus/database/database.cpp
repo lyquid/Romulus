@@ -1129,7 +1129,7 @@ auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id
       "  GROUP BY r.id"
       ")"
       "SELECT"
-      "  COALESCE((SELECT name FROM dat_versions WHERE id IS ?1), 'All DATs'),"
+      "  COALESCE((SELECT name FROM dat_versions WHERE id = ?1), 'All DATs'),"
       "  COUNT(*),"
       "  SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END),"  // 0=Verified
       "  SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END),"  // 1=Missing

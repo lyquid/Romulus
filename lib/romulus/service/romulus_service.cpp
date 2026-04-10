@@ -41,7 +41,9 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
     return std::unexpected(checksum.error());
   }
 
-  // Check if already imported by checksum (fast path — avoids full parse on re-import)
+  // Check if already imported by checksum (fast path — avoids full parse on re-import).
+  // Two DAT files with the same checksum are treated as identical regardless of name/version;
+  // this prevents re-importing a file that was merely renamed or repackaged.
   auto existing_by_checksum = db_->find_dat_version_by_checksum(*checksum);
   if (existing_by_checksum && existing_by_checksum->has_value()) {
     ROMULUS_INFO("DAT already imported (checksum match): '{}'",
