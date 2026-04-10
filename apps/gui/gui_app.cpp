@@ -861,6 +861,9 @@ void GuiApp::render_db_tab() {
   }
 
   // ── Tables dropdown ───────────────────────────────────────────
+  // Disabled when a background task is running — both the combo interaction
+  // and the resulting svc_.query_db_table() call touch the same SQLite
+  // connection used by the background task, which is not thread-safe.
   {
     const std::string table_preview =
         (selected_db_table_index_ >= 0 &&
@@ -868,6 +871,7 @@ void GuiApp::render_db_tab() {
             ? db_table_names_[static_cast<std::size_t>(selected_db_table_index_)]
             : "(Select a table)";
 
+    ImGui::BeginDisabled(busy);
     ImGui::PushItemWidth(300.0F);
     if (ImGui::BeginCombo("##db_table_combo", table_preview.c_str())) {
       for (int i = 0; i < static_cast<int>(db_table_names_.size()); ++i) {
@@ -893,6 +897,7 @@ void GuiApp::render_db_tab() {
       ImGui::EndCombo();
     }
     ImGui::PopItemWidth();
+    ImGui::EndDisabled();
   }
 
   if (selected_db_table_index_ < 0) {
@@ -903,7 +908,7 @@ void GuiApp::render_db_tab() {
   }
 
   ImGui::SameLine();
-  ImGui::TextDisabled("(%lu rows)", static_cast<unsigned long>(db_table_data_.rows.size()));
+  ImGui::TextDisabled("(%zu rows)", db_table_data_.rows.size());
 
   ImGui::Spacing();
 

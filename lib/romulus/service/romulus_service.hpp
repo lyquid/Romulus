@@ -97,7 +97,8 @@ public:
   /// Returns the names of all user-defined tables in the database.
   [[nodiscard]] auto get_db_table_names() -> Result<std::vector<std::string>>;
 
-  /// Queries all rows (up to the internal row limit) from the named table.
+  /// Queries all rows from the named table.
+  /// Callers should be aware that large tables may incur significant query and memory cost.
   [[nodiscard]] auto query_db_table(std::string_view table_name)
       -> Result<core::TableQueryResult>;
 

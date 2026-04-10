@@ -47,6 +47,23 @@ auto bytes_to_hex(const std::vector<uint8_t>& bytes) -> std::string {
   return hex;
 }
 
+/// Wraps an SQLite identifier in double-quotes and escapes any embedded
+/// double-quote characters by doubling them (SQLite quoting rules).
+/// Example: my"table → "my""table"
+[[nodiscard]] auto quote_identifier(const std::string& name) -> std::string {
+  std::string out;
+  out.reserve(name.size() + 2U);
+  out += '"';
+  for (const char c : name) {
+    out += c;
+    if (c == '"') {
+      out += '"'; // double embedded quotes
+    }
+  }
+  out += '"';
+  return out;
+}
+
 } // namespace
 
 // ═══════════════════════════════════════════════════════════════
@@ -1499,13 +1516,13 @@ auto Database::query_table_data(std::string_view table_name) -> Result<core::Tab
                     "Table '" + std::string(table_name) + "' does not exist"});
   }
 
-  const std::string tname{table_name}; // validated above — safe to use in SQL literals
+  const std::string tname{table_name}; // validated above
 
   // ── Step 1: Column metadata from PRAGMA table_info ──────────────
   // Columns: cid | name | type | notnull | dflt_value | pk
   //          0     1      2      3         4             5
   // pk = 0 means not a PK; pk > 0 is the 1-based position within a compound PK.
-  auto pragma_stmt = prepare("PRAGMA table_info(\"" + tname + "\")");
+  auto pragma_stmt = prepare("PRAGMA table_info(" + quote_identifier(tname) + ")");
   if (!pragma_stmt) {
     return std::unexpected(pragma_stmt.error());
   }
@@ -1543,7 +1560,7 @@ auto Database::query_table_data(std::string_view table_name) -> Result<core::Tab
   //          0     1      2        3        4
   // origin = 'pk' for the implicit PK index; 'u' for UNIQUE constraints; 'c' for CREATE INDEX.
   {
-    auto idx_list = prepare("PRAGMA index_list(\"" + tname + "\")");
+    auto idx_list = prepare("PRAGMA index_list(" + quote_identifier(tname) + ")");
     if (idx_list) {
       while (idx_list->step()) {
         const bool is_unique  = idx_list->column_int64(2) != 0;
@@ -1553,7 +1570,7 @@ auto Database::query_table_data(std::string_view table_name) -> Result<core::Tab
           continue;
         }
         const std::string idx_name = idx_list->column_text(1);
-        auto idx_info = prepare("PRAGMA index_info(\"" + idx_name + "\")");
+        auto idx_info = prepare("PRAGMA index_info(" + quote_identifier(idx_name) + ")");
         if (!idx_info) {
           continue;
         }
@@ -1571,7 +1588,7 @@ auto Database::query_table_data(std::string_view table_name) -> Result<core::Tab
   // Columns: id | seq | table | from | to | on_update | on_delete | match
   //          0    1     2       3      4    5            6           7
   {
-    auto fk_list = prepare("PRAGMA foreign_key_list(\"" + tname + "\")");
+    auto fk_list = prepare("PRAGMA foreign_key_list(" + quote_identifier(tname) + ")");
     if (fk_list) {
       while (fk_list->step()) {
         const std::string fk_table = fk_list->column_text(2);
@@ -1587,7 +1604,7 @@ auto Database::query_table_data(std::string_view table_name) -> Result<core::Tab
 
   // ── Step 4: All rows — no artificial row limit ───────────────────
   // BLOBs are converted to lowercase hex by column_display_text().
-  auto select_stmt = prepare("SELECT * FROM \"" + tname + "\"");
+  auto select_stmt = prepare("SELECT * FROM " + quote_identifier(tname));
   if (!select_stmt) {
     return std::unexpected(select_stmt.error());
   }
