@@ -27,6 +27,7 @@
 #include <ranges>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 
 namespace romulus::gui {
 
@@ -50,11 +51,18 @@ constexpr float k_ToastTextAlpha = 255.0F;
 // Active DAT banner — extra vertical padding (px) added to the computed text height.
 constexpr float k_BannerExtraPadding = 6.0F;
 
-// ROM checklist column indices
+// ROM checklist / detail panel column indices
 constexpr int k_ColStatus = 0;
 constexpr int k_ColRomName = 1;
 constexpr int k_ColSize = 2;
 constexpr int k_ColSha1 = 3;
+constexpr int k_ColMd5 = 4;
+constexpr int k_ColCrc32 = 5;
+
+// Game panel column indices
+constexpr int k_GameColStatus = 0;
+constexpr int k_GameColName = 1;
+constexpr int k_GameColRomCount = 2;
 
 // Status colours
 constexpr ImVec4 k_ColorVerified{0.2F, 0.9F, 0.3F, 1.0F};   // green
@@ -134,6 +142,21 @@ auto status_color(core::RomStatusType status) -> ImVec4 {
       return k_ColorMismatch;
   }
   return k_ColorMissing;
+}
+
+/// Compact single-badge icon for a status — used in the games table Status column.
+auto status_icon(core::RomStatusType status) -> const char* {
+  switch (status) {
+    case core::RomStatusType::Verified:
+      return "[OK]";
+    case core::RomStatusType::Missing:
+      return "[--]";
+    case core::RomStatusType::Unverified:
+      return "[??]";
+    case core::RomStatusType::Mismatch:
+      return "[!!]";
+  }
+  return "[??]";
 }
 
 auto status_sort_order(core::RomStatusType status) -> int {
@@ -474,6 +497,8 @@ void GuiApp::render_dats_tab() {
         if (ImGui::Selectable(label.c_str(), is_selected)) {
           selected_dat_index_ = i;
           rom_checklist_.clear();
+          game_checklist_.clear();
+          selected_game_id_ = -1;
           checklist_stats_ = {};
         }
         if (is_selected) {
@@ -494,8 +519,6 @@ void GuiApp::render_dats_tab() {
   ImGui::EndDisabled();
 
   // ── Active DAT banner ─────────────────────────────────────────
-  // Show the selected DAT name on its own highlighted row so it is
-  // never cropped and is easy to read at a glance.
   ImGui::Spacing();
   {
     const float line_h = ImGui::GetTextLineHeightWithSpacing();
@@ -540,7 +563,7 @@ void GuiApp::render_dats_tab() {
 
   ImGui::Spacing();
 
-  // ── ROM checklist ─────────────────────────────────────────────
+  // ── Empty state ────────────────────────────────────────────────
   if (rom_checklist_.empty()) {
     ImGui::Spacing();
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0F);
@@ -552,180 +575,352 @@ void GuiApp::render_dats_tab() {
     return;
   }
 
-  // ── Summary counters (precomputed at checklist-load time) ──
+  // ── Summary bar ───────────────────────────────────────────────
   const std::int64_t total = checklist_stats_.total;
   const std::int64_t cnt_verified = checklist_stats_.verified;
   const std::int64_t cnt_missing = checklist_stats_.missing;
   const std::int64_t cnt_unverified = checklist_stats_.unverified;
   const std::int64_t cnt_mismatch = checklist_stats_.mismatch;
-  double pct =
+  const std::int64_t games_total = checklist_stats_.games_total;
+  const double pct =
       total > 0 ? static_cast<double>(cnt_verified) / static_cast<double>(total) * 100.0 : 0.0;
 
+  ImGui::TextDisabled("%lld games", static_cast<long long>(games_total));
+  ImGui::SameLine(0.0F, 14.0F);
+  ImGui::TextColored(ImVec4(0.35F, 0.35F, 0.42F, 1.0F), "|");
+  ImGui::SameLine(0.0F, 14.0F);
   ImGui::TextColored(k_ColorVerified, "%lld", static_cast<long long>(cnt_verified));
   ImGui::SameLine();
-  ImGui::Text("/ %lld verified (%.1f%%)", static_cast<long long>(total), pct);
-
-  ImGui::SameLine(0.0F, 20.0F);
+  ImGui::Text("/ %lld ROMs verified (%.1f%%)", static_cast<long long>(total), pct);
   if (cnt_missing > 0) {
+    ImGui::SameLine(0.0F, 14.0F);
     ImGui::TextColored(
         k_ColorMissing, "%s %lld missing", k_SymbolMissing, static_cast<long long>(cnt_missing));
-    ImGui::SameLine(0.0F, 14.0F);
   }
   if (cnt_unverified > 0) {
+    ImGui::SameLine(0.0F, 14.0F);
     ImGui::TextColored(
         k_ColorUnverified, "[??] %lld unverified", static_cast<long long>(cnt_unverified));
-    ImGui::SameLine(0.0F, 14.0F);
   }
   if (cnt_mismatch > 0) {
-    ImGui::TextColored(k_ColorMismatch, "[!!] %lld mismatch", static_cast<long long>(cnt_mismatch));
     ImGui::SameLine(0.0F, 14.0F);
+    ImGui::TextColored(k_ColorMismatch, "[!!] %lld mismatch", static_cast<long long>(cnt_mismatch));
   }
-  ImGui::NewLine();
-
-  // ── Filter bar ──────────────────────────────────────────────
-  ImGui::SetNextItemWidth(220.0F);
-  ImGui::InputText("##filter", checklist_filter_buf_.data(), k_MaxFilterLen);
-  // Recompute cached lowercase filter only when the user edits the field.
-  if (ImGui::IsItemEdited()) {
-    checklist_filter_lower_.assign(checklist_filter_buf_.data());
-    std::ranges::transform(checklist_filter_lower_, checklist_filter_lower_.begin(), ascii_lower);
-  }
-  ImGui::SameLine();
-  ImGui::TextDisabled("Filter");
-  ImGui::SameLine(0.0F, 16.0F);
-
-  // Order must match core::RomStatusType (Verified=0, Missing=1, Unverified=2, Mismatch=3)
-  // offset by 1 because index 0 is the "All" catch-all entry.
-  constexpr const char* k_StatusFilterItems[] = {
-      "All", "Verified", "Missing", "Unverified", "Mismatch"};
-  ImGui::SetNextItemWidth(120.0F);
-  ImGui::Combo("##status_filter",
-               &checklist_status_filter_,
-               k_StatusFilterItems,
-               IM_ARRAYSIZE(k_StatusFilterItems));
 
   ImGui::Spacing();
 
-  // ── ROM table + right-side nav strip ────────────────────────
-  constexpr float k_NavStripW = 24.0F;
-  const float nav_gap = ImGui::GetStyle().ItemSpacing.x;
-  constexpr int k_ColumnCount = 4;
-  ImGui::BeginGroup();
-  if (ImGui::BeginTable("rom_checklist_table",
-                        k_ColumnCount,
-                        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
-                            ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp |
-                            ImGuiTableFlags_Sortable,
-                        ImVec2(-k_NavStripW - nav_gap, -30))) {
-    ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_None, 1.5F);
-    ImGui::TableSetupColumn("ROM Name", ImGuiTableColumnFlags_DefaultSort, 5.0F);
-    ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_None, 1.0F);
-    ImGui::TableSetupColumn("SHA1", ImGuiTableColumnFlags_None, 2.5F);
-    ImGui::TableHeadersRow();
+  // ── Master-detail split layout ────────────────────────────────
+  // Left panel (38 %): sortable, filterable game list.
+  // Right panel (62 %): ROM detail for the selected game.
+  constexpr float k_LeftFraction = 0.38F;
+  constexpr float k_PanelGap = 6.0F; // px between the two panels
+  const float avail_w = ImGui::GetContentRegionAvail().x;
+  const float left_w = std::floor(avail_w * k_LeftFraction);
+  const float right_w = avail_w - left_w - k_PanelGap;
 
-    if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
-      if (sort_specs->SpecsDirty) {
-        if (sort_specs->SpecsCount > 0) {
-          checklist_sort_col_ = sort_specs->Specs[0].ColumnIndex;
-          checklist_sort_ascending_ =
-              (sort_specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
-        } else {
-          checklist_sort_col_ = -1;
+  // ── Left panel: Games ─────────────────────────────────────────
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0F, 6.0F));
+  ImGui::BeginChild("##games_panel", ImVec2(left_w, 0.0F), true);
+  ImGui::PopStyleVar();
+
+  {
+    // Filter bar
+    constexpr float k_StatusComboW = 110.0F;
+    ImGui::SetNextItemWidth(
+        ImGui::GetContentRegionAvail().x - k_StatusComboW - ImGui::GetStyle().ItemSpacing.x);
+    ImGui::InputText("##game_filter", game_filter_buf_.data(), k_MaxFilterLen);
+    if (ImGui::IsItemEdited()) {
+      game_filter_lower_.assign(game_filter_buf_.data());
+      std::ranges::transform(game_filter_lower_, game_filter_lower_.begin(), ascii_lower);
+    }
+    ImGui::SameLine();
+    constexpr const char* k_StatusFilterItems[] = {
+        "All", "Verified", "Missing", "Unverified", "Mismatch"};
+    ImGui::SetNextItemWidth(k_StatusComboW);
+    ImGui::Combo("##game_status_filter",
+                 &game_status_filter_,
+                 k_StatusFilterItems,
+                 IM_ARRAYSIZE(k_StatusFilterItems));
+
+    ImGui::Spacing();
+
+    // Games table + right-side nav strip
+    constexpr float k_NavStripW = 24.0F;
+    const float nav_gap = ImGui::GetStyle().ItemSpacing.x;
+    constexpr int k_GameColumnCount = 3;
+
+    ImGui::BeginGroup();
+    if (ImGui::BeginTable("game_checklist_table",
+                          k_GameColumnCount,
+                          ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                              ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+                              ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Sortable,
+                          ImVec2(-k_NavStripW - nav_gap, 0.0F))) {
+      ImGui::TableSetupScrollFreeze(0, 1);
+      ImGui::TableSetupColumn("St", ImGuiTableColumnFlags_None, 0.9F);
+      ImGui::TableSetupColumn("Game Name", ImGuiTableColumnFlags_DefaultSort, 6.0F);
+      ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_None, 0.5F);
+      ImGui::TableHeadersRow();
+
+      if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
+        if (sort_specs->SpecsDirty) {
+          if (sort_specs->SpecsCount > 0) {
+            game_sort_col_ = sort_specs->Specs[0].ColumnIndex;
+            game_sort_ascending_ =
+                (sort_specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
+          } else {
+            game_sort_col_ = -1;
+          }
+          apply_game_sort();
+          sort_specs->SpecsDirty = false;
         }
-        apply_checklist_sort();
-        sort_specs->SpecsDirty = false;
       }
-    }
 
-    // One-shot scroll requests from the Top / Bot buttons.
-    if (scroll_checklist_top_) {
-      ImGui::SetScrollY(0.0F);
-      scroll_checklist_top_ = false;
-    } else if (scroll_checklist_bottom_) {
-      ImGui::SetScrollY(ImGui::GetScrollMaxY());
-      scroll_checklist_bottom_ = false;
-    }
+      if (scroll_game_top_) {
+        ImGui::SetScrollY(0.0F);
+        scroll_game_top_ = false;
+      } else if (scroll_game_bottom_) {
+        ImGui::SetScrollY(ImGui::GetScrollMaxY());
+        scroll_game_bottom_ = false;
+      }
 
-    const std::string& filter_str = checklist_filter_lower_;
+      const std::string& filter_str = game_filter_lower_;
 
-    for (std::size_t i = 0; i < rom_checklist_.size(); ++i) {
-      const auto& entry = rom_checklist_[i];
+      for (std::size_t i = 0; i < game_checklist_.size(); ++i) {
+        const auto& entry = game_checklist_[i];
 
-      if (checklist_status_filter_ != 0) {
-        if ((checklist_status_filter_ - 1) != static_cast<int>(entry.status)) {
+        // Status filter
+        if (game_status_filter_ != 0 &&
+            (game_status_filter_ - 1) != static_cast<int>(entry.status)) {
           continue;
         }
-      }
-      if (!filter_str.empty() && entry.name_lower.find(filter_str) == std::string::npos) {
-        continue;
-      }
+        // Name filter
+        if (!filter_str.empty() &&
+            entry.name_lower.find(filter_str) == std::string::npos) {
+          continue;
+        }
 
-      ImVec4 color = status_color(entry.status);
-      ImGui::TableNextRow();
-      ImGui::PushID(static_cast<int>(i));
+        const bool is_selected = (entry.game_id == selected_game_id_);
+        const ImVec4 color = status_color(entry.status);
 
-      ImGui::TableSetColumnIndex(k_ColStatus);
-      ImGui::TextColored(color, "%s", status_label(entry.status));
+        ImGui::TableNextRow();
+        ImGui::PushID(static_cast<int>(i));
 
-      ImGui::TableSetColumnIndex(k_ColRomName);
-      ImGui::TextColored(color, "%s", entry.name.c_str());
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Right-click to copy");
-      }
-      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-        ImGui::SetClipboardText(entry.name.c_str());
-        show_toast("Name copied to clipboard");
-      }
+        // Highlight the selected row with a distinct background.
+        if (is_selected) {
+          ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(38, 82, 160, 200));
+          ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, IM_COL32(38, 82, 160, 200));
+        }
 
-      ImGui::TableSetColumnIndex(k_ColSize);
-      ImGui::TextUnformatted(format_size(entry.size).c_str());
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Right-click to copy (bytes)");
-      }
-      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-        ImGui::SetClipboardText(std::to_string(entry.size).c_str());
-        show_toast("Size copied to clipboard");
-      }
+        // Col 0: compact status badge
+        ImGui::TableSetColumnIndex(k_GameColStatus);
+        ImGui::TextColored(color, "%s", status_icon(entry.status));
 
-      ImGui::TableSetColumnIndex(k_ColSha1);
-      ImGui::TextUnformatted(entry.sha1.c_str());
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Right-click to copy");
-      }
-      if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-        ImGui::SetClipboardText(entry.sha1.c_str());
-        show_toast("SHA1 copied to clipboard");
-      }
+        // Col 1: game name — Selectable spanning remaining columns for full-row click.
+        ImGui::TableSetColumnIndex(k_GameColName);
+        if (ImGui::Selectable(entry.name.c_str(),
+                              is_selected,
+                              ImGuiSelectableFlags_SpanAllColumns,
+                              ImVec2(0.0F, 0.0F))) {
+          selected_game_id_ = entry.game_id;
+          // Reset ROM detail scroll so it lands at the top for the new game.
+          scroll_checklist_top_ = true;
+        }
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("Right-click to copy name");
+        }
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+          ImGui::SetClipboardText(entry.name.c_str());
+          show_toast("Game name copied to clipboard");
+        }
 
-      ImGui::PopID();
+        // Col 2: ROM count
+        ImGui::TableSetColumnIndex(k_GameColRomCount);
+        ImGui::Text("%d", entry.rom_count);
+
+        ImGui::PopID();
+      }
+      ImGui::EndTable();
     }
-    ImGui::EndTable();
-  }
-  ImGui::EndGroup();
+    ImGui::EndGroup();
 
-  // Side nav strip — vertically centered buttons to the right of the table.
-  ImGui::SameLine(0.0F, nav_gap);
+    // Vertically centred ^ / v scroll buttons to the right of the table.
+    ImGui::SameLine(0.0F, nav_gap);
+    {
+      const float strip_h = ImGui::GetItemRectSize().y;
+      const float btn_h = ImGui::GetFrameHeight();
+      const float total_btn_h = btn_h * 2.0F + ImGui::GetStyle().ItemSpacing.y;
+      ImGui::BeginChild("##game_nav_strip",
+                        ImVec2(k_NavStripW, strip_h),
+                        false,
+                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+      const float v_pad = (strip_h - total_btn_h) * 0.5F;
+      if (v_pad > 0.0F) {
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + v_pad);
+      }
+      if (ImGui::Button("^")) {
+        scroll_game_top_ = true;
+      }
+      if (ImGui::Button("v")) {
+        scroll_game_bottom_ = true;
+      }
+      ImGui::EndChild();
+    }
+  }
+
+  ImGui::EndChild(); // ##games_panel
+
+  ImGui::SameLine(0.0F, k_PanelGap);
+
+  // ── Right panel: ROM detail ───────────────────────────────────
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0F, 6.0F));
+  ImGui::BeginChild("##roms_panel", ImVec2(right_w, 0.0F), true);
+  ImGui::PopStyleVar();
+
   {
-    const float strip_h = ImGui::GetItemRectSize().y;
-    const float btn_h = ImGui::GetFrameHeight();
-    const float total_btn_h = btn_h * 2.0F + ImGui::GetStyle().ItemSpacing.y;
-    ImGui::BeginChild("##nav_strip",
-                      ImVec2(k_NavStripW, strip_h),
-                      false,
-                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    const float v_pad = (strip_h - total_btn_h) * 0.5F;
-    if (v_pad > 0.0F) {
-      ImGui::SetCursorPosY(ImGui::GetCursorPosY() + v_pad);
+    if (selected_game_id_ < 0) {
+      // Nothing selected yet — show a gentle prompt.
+      const float panel_h = ImGui::GetContentRegionAvail().y;
+      ImGui::SetCursorPosY(ImGui::GetCursorPosY() + panel_h * 0.42F);
+      const char* hint = "Select a game on the left to view its ROMs.";
+      const float hint_w = ImGui::CalcTextSize(hint).x;
+      ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
+                           (ImGui::GetContentRegionAvail().x - hint_w) * 0.5F);
+      ImGui::TextDisabled("%s", hint);
+    } else {
+      // Find the selected game entry for the header.
+      const GameChecklistEntry* sel_game = nullptr;
+      for (const auto& g : game_checklist_) {
+        if (g.game_id == selected_game_id_) {
+          sel_game = &g;
+          break;
+        }
+      }
+
+      // ── Game header banner ──────────────────────────────────
+      if (sel_game != nullptr) {
+        const ImVec4 badge_col = status_color(sel_game->status);
+        ImGui::TextColored(badge_col, "%s", status_icon(sel_game->status));
+        ImGui::SameLine(0.0F, 8.0F);
+        ImGui::TextColored(ImVec4(0.88F, 0.93F, 1.0F, 1.0F), "%s", sel_game->name.c_str());
+        ImGui::SameLine(0.0F, 10.0F);
+        ImGui::TextDisabled("(%d ROM%s)",
+                            sel_game->rom_count,
+                            sel_game->rom_count != 1 ? "s" : "");
+        ImGui::Separator();
+      }
+
+      // ── ROM detail table ─────────────────────────────────────
+      constexpr int k_RomColumnCount = 6;
+      if (ImGui::BeginTable("rom_detail_table",
+                            k_RomColumnCount,
+                            ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+                                ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Sortable,
+                            ImVec2(0.0F, 0.0F))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_None, 1.5F);
+        ImGui::TableSetupColumn("ROM Name", ImGuiTableColumnFlags_DefaultSort, 5.0F);
+        ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_None, 1.2F);
+        ImGui::TableSetupColumn("SHA1", ImGuiTableColumnFlags_None, 3.0F);
+        ImGui::TableSetupColumn("MD5", ImGuiTableColumnFlags_None, 2.5F);
+        ImGui::TableSetupColumn("CRC32", ImGuiTableColumnFlags_None, 1.5F);
+        ImGui::TableHeadersRow();
+
+        if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
+          if (sort_specs->SpecsDirty) {
+            if (sort_specs->SpecsCount > 0) {
+              checklist_sort_col_ = sort_specs->Specs[0].ColumnIndex;
+              checklist_sort_ascending_ =
+                  (sort_specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
+            } else {
+              checklist_sort_col_ = -1;
+            }
+            apply_checklist_sort();
+            sort_specs->SpecsDirty = false;
+          }
+        }
+
+        // One-shot scroll requests (top-scroll is also triggered on game selection change).
+        if (scroll_checklist_top_) {
+          ImGui::SetScrollY(0.0F);
+          scroll_checklist_top_ = false;
+        } else if (scroll_checklist_bottom_) {
+          ImGui::SetScrollY(ImGui::GetScrollMaxY());
+          scroll_checklist_bottom_ = false;
+        }
+
+        for (std::size_t i = 0; i < rom_checklist_.size(); ++i) {
+          const auto& entry = rom_checklist_[i];
+          if (entry.game_id != selected_game_id_) {
+            continue;
+          }
+
+          const ImVec4 color = status_color(entry.status);
+          ImGui::TableNextRow();
+          ImGui::PushID(static_cast<int>(i));
+
+          ImGui::TableSetColumnIndex(k_ColStatus);
+          ImGui::TextColored(color, "%s", status_label(entry.status));
+
+          ImGui::TableSetColumnIndex(k_ColRomName);
+          ImGui::TextColored(color, "%s", entry.name.c_str());
+          if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Right-click to copy");
+          }
+          if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+            ImGui::SetClipboardText(entry.name.c_str());
+            show_toast("Name copied to clipboard");
+          }
+
+          ImGui::TableSetColumnIndex(k_ColSize);
+          ImGui::TextUnformatted(format_size(entry.size).c_str());
+          if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Right-click to copy (bytes)");
+          }
+          if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+            ImGui::SetClipboardText(std::to_string(entry.size).c_str());
+            show_toast("Size copied to clipboard");
+          }
+
+          ImGui::TableSetColumnIndex(k_ColSha1);
+          ImGui::TextUnformatted(entry.sha1.c_str());
+          if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Right-click to copy SHA1");
+          }
+          if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+            ImGui::SetClipboardText(entry.sha1.c_str());
+            show_toast("SHA1 copied to clipboard");
+          }
+
+          ImGui::TableSetColumnIndex(k_ColMd5);
+          ImGui::TextUnformatted(entry.md5.c_str());
+          if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Right-click to copy MD5");
+          }
+          if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+            ImGui::SetClipboardText(entry.md5.c_str());
+            show_toast("MD5 copied to clipboard");
+          }
+
+          ImGui::TableSetColumnIndex(k_ColCrc32);
+          ImGui::TextUnformatted(entry.crc32.c_str());
+          if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Right-click to copy CRC32");
+          }
+          if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+            ImGui::SetClipboardText(entry.crc32.c_str());
+            show_toast("CRC32 copied to clipboard");
+          }
+
+          ImGui::PopID();
+        }
+        ImGui::EndTable();
+      }
     }
-    if (ImGui::Button("^")) {
-      scroll_checklist_top_ = true;
-    }
-    if (ImGui::Button("v")) {
-      scroll_checklist_bottom_ = true;
-    }
-    ImGui::EndChild();
   }
+
+  ImGui::EndChild(); // ##roms_panel
 }
 
 void GuiApp::render_folders_tab() {
@@ -1127,8 +1322,8 @@ void GuiApp::apply_checklist_sort() {
                    [col, asc](const RomChecklistEntry& a, const RomChecklistEntry& b) {
                      switch (col) {
                        case k_ColStatus: {
-                         int sa = status_sort_order(a.status);
-                         int sb = status_sort_order(b.status);
+                         const int sa = status_sort_order(a.status);
+                         const int sb = status_sort_order(b.status);
                          return asc ? sa < sb : sb < sa;
                        }
                        case k_ColRomName:
@@ -1137,6 +1332,36 @@ void GuiApp::apply_checklist_sort() {
                          return asc ? a.size < b.size : b.size < a.size;
                        case k_ColSha1:
                          return asc ? a.sha1 < b.sha1 : b.sha1 < a.sha1;
+                       case k_ColMd5:
+                         return asc ? a.md5 < b.md5 : b.md5 < a.md5;
+                       case k_ColCrc32:
+                         return asc ? a.crc32 < b.crc32 : b.crc32 < a.crc32;
+                       default:
+                         return false;
+                     }
+                   });
+}
+
+void GuiApp::apply_game_sort() {
+  if (game_sort_col_ < 0 || game_checklist_.empty()) {
+    return;
+  }
+  const int col = game_sort_col_;
+  const bool asc = game_sort_ascending_;
+
+  std::stable_sort(game_checklist_.begin(),
+                   game_checklist_.end(),
+                   [col, asc](const GameChecklistEntry& a, const GameChecklistEntry& b) {
+                     switch (col) {
+                       case k_GameColStatus: {
+                         const int sa = status_sort_order(a.status);
+                         const int sb = status_sort_order(b.status);
+                         return asc ? sa < sb : sb < sa;
+                       }
+                       case k_GameColName:
+                         return asc ? a.name < b.name : b.name < a.name;
+                       case k_GameColRomCount:
+                         return asc ? a.rom_count < b.rom_count : b.rom_count < a.rom_count;
                        default:
                          return false;
                      }
@@ -1365,7 +1590,7 @@ void GuiApp::check_pending_task() {
 
   // Handle check_dat result: populates checklist from service on main thread
   if (should_refresh_checklist && task_result.starts_with("OK:")) {
-    // Re-fetch on main thread to populate the checklist
+    // Re-fetch on main thread to populate both the flat ROM list and the per-game list.
     if (selected_dat_index_ >= 0) {
       const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
       auto roms = svc_.get_roms_with_status(dv.id);
@@ -1373,16 +1598,27 @@ void GuiApp::check_pending_task() {
         rom_checklist_.clear();
         rom_checklist_.reserve(roms->size());
         checklist_stats_ = {};
+
+        // Accumulate per-game data in insertion order using a map keyed by game_id.
+        std::unordered_map<std::int64_t, GameChecklistEntry> game_map;
+        game_map.reserve(roms->size()); // upper bound; actual games <= ROMs
+
         for (const auto& [rom, st] : *roms) {
+          // Build ROM checklist entry
           std::string name_lower = rom.name;
           std::ranges::transform(name_lower, name_lower.begin(), ascii_lower);
           rom_checklist_.push_back({
+              .game_id = rom.game_id,
               .name = rom.name,
               .name_lower = std::move(name_lower),
               .size = rom.size,
               .sha1 = rom.sha1,
+              .md5 = rom.md5,
+              .crc32 = rom.crc32,
               .status = st,
           });
+
+          // Update ROM-level stats
           switch (st) {
             case core::RomStatusType::Verified:
               ++checklist_stats_.verified;
@@ -1397,9 +1633,56 @@ void GuiApp::check_pending_task() {
               ++checklist_stats_.mismatch;
               break;
           }
+
+          // Accumulate per-game entry
+          auto& game = game_map[rom.game_id];
+          if (game.name.empty()) {
+            // First ROM seen for this game — initialise the entry.
+            game.game_id = rom.game_id;
+            game.name = rom.game_name;
+            game.name_lower = rom.game_name;
+            std::ranges::transform(game.name_lower, game.name_lower.begin(), ascii_lower);
+            game.rom_count = 1;
+            game.status = st;
+          } else {
+            ++game.rom_count;
+            // Aggregate status priority: Mismatch > Unverified > Missing > Verified.
+            // A single Mismatch contaminates the whole game (bad hash found).
+            // Any mix of statuses (e.g. some Verified + some Missing) means the game
+            // is only partially complete, which we report as Unverified.
+            if (st == core::RomStatusType::Mismatch ||
+                game.status == core::RomStatusType::Mismatch) {
+              game.status = core::RomStatusType::Mismatch;
+            } else if (st != game.status) {
+              // Mixed statuses (e.g. Verified + Missing) => partial, treated as Unverified.
+              game.status = core::RomStatusType::Unverified;
+            }
+          }
         }
+
         checklist_stats_.total = static_cast<std::int64_t>(rom_checklist_.size());
+
+        // Convert game map to vector and sort.
+        game_checklist_.clear();
+        game_checklist_.reserve(game_map.size());
+        for (auto& [id, entry] : game_map) {
+          game_checklist_.push_back(std::move(entry));
+        }
+        checklist_stats_.games_total = static_cast<std::int64_t>(game_checklist_.size());
+
+        // Reset selected game if it is no longer present in the new checklist.
+        if (selected_game_id_ >= 0) {
+          const bool still_present = std::ranges::any_of(
+              game_checklist_,
+              [this](const GameChecklistEntry& g) { return g.game_id == selected_game_id_; });
+          if (!still_present) {
+            selected_game_id_ = -1;
+          }
+        }
+
         apply_checklist_sort();
+        apply_game_sort();
+
         status_message_ = "Check complete: " + std::to_string(checklist_stats_.verified) + " / " +
                           std::to_string(checklist_stats_.total) + " ROMs available.";
       } else {
