@@ -175,7 +175,6 @@ enum class MatchType {
   Sha1Only,   ///< Only SHA1 matches
   Md5Only,    ///< Only MD5 matches
   Crc32Only,  ///< Only CRC32 matches
-  SizeOnly,   ///< Only file size matches
   NoMatch,    ///< No match found
 };
 

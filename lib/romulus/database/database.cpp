@@ -346,12 +346,10 @@ auto match_type_to_int(core::MatchType type) -> int {
       return 3;
     case core::MatchType::Crc32Only:
       return 4;
-    case core::MatchType::SizeOnly:
-      return 5;
     case core::MatchType::NoMatch:
-      return 6;
+      return 5;
   }
-  return 6;
+  return 5;
 }
 
 auto int_to_match_type(int value) -> core::MatchType {
@@ -366,8 +364,6 @@ auto int_to_match_type(int value) -> core::MatchType {
       return core::MatchType::Md5Only;
     case 4:
       return core::MatchType::Crc32Only;
-    case 5:
-      return core::MatchType::SizeOnly;
     default:
       return core::MatchType::NoMatch;
   }

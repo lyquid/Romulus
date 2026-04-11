@@ -222,8 +222,7 @@ dat_versions ──< games ──< roms
 | `Sha1Only` | 2 | Only SHA-1 matches |
 | `Md5Only` | 3 | Only MD5 matches |
 | `Crc32Only` | 4 | Only CRC32 matches |
-| `SizeOnly` | 5 | Only file size matches — weakest signal |
-| `NoMatch` | 6 | No match found |
+| `NoMatch` | 5 | No match found |
 
 ### Workflow — step by step
 
@@ -249,7 +248,7 @@ dat_versions ──< games ──< roms
 │                                                                       │
 │  3. MATCH  (romulus verify, step 1)                                   │
 │     Compares every rom against every global_rom in priority order:   │
-│       SHA-1 → SHA-256 → MD5 → CRC32 → size                          │
+│       SHA-1 → SHA-256 → MD5 → CRC32                                 │
 │     → inserts rom_matches rows with the match_type verdict           │
 │                                                                       │
 │  4. CLASSIFY  (romulus verify, step 2)                                │
