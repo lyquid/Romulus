@@ -73,14 +73,20 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
   }
   dat_version.id = *dat_id;
 
-  // Store ROMs in a transaction (games are denormalized into roms.game_name)
+  // Store each game and its ROMs in a transaction.
+  // Games are now normalized: one games row per (dat_version_id, name).
   auto txn = db_->begin_transaction();
 
   for (const auto& game : dat_file->games) {
+    auto game_id = db_->find_or_insert_game(*dat_id, game.name);
+    if (!game_id) {
+      ROMULUS_WARN("Failed to insert game '{}': {}", game.name, game_id.error().message);
+      continue;
+    }
+
     for (const auto& rom : game.roms) {
       core::RomInfo rom_entry{
-          .dat_version_id = *dat_id,
-          .game_name = game.name,
+          .game_id = *game_id,
           .name = rom.name,
           .size = rom.size,
           .crc32 = rom.crc32,

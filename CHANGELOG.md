@@ -7,6 +7,17 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🗄️ Database — Normalize `game_name` into a proper `games` table
+
+- **Schema** (version → 3): Re-introduced a first-class `games` table (`id`, `dat_version_id` FK, `name`, `UNIQUE(dat_version_id, name)`). `roms.game_name TEXT` (denormalized copy) has been replaced by `roms.game_id INTEGER NOT NULL REFERENCES games(id)`. Each unique game name is now stored exactly once per DAT version, eliminating duplication and enabling future metadata (year, publisher, etc.) to be attached to game entries.
+- **Schema**: Added index `idx_games_dat_version ON games(dat_version_id)` and `idx_roms_game ON roms(game_id)` for fast per-DAT lookups.
+- **Schema versioning**: `k_SchemaVersion` bumped to 3 — existing databases are automatically rebuilt on open.
+- **Database API**: Added `Database::find_or_insert_game(dat_version_id, name) → Result<int64_t>` — idempotent upsert that returns the game id for the given `(dat_version_id, name)` pair.
+- **Database API**: Added `Database::get_games_for_dat_version(dat_version_id) → Result<vector<GameEntry>>` — returns all game entries for a DAT version, sorted by name.
+- **All ROM read queries** (`get_roms_for_dat_version`, `get_all_roms`, `find_rom_by_sha1`, `find_rom_by_sha256`, `find_rom_by_md5`, `find_rom_by_crc32`, `get_missing_roms`, `get_duplicate_files`, `get_collection_summary`) updated to JOIN `games` so `game_name` and `dat_version_id` are still available on `RomInfo` as convenience fields.
+- **types.hpp**: Added `core::GameEntry` struct (`id`, `dat_version_id`, `name`). `RomInfo::game_name` and `RomInfo::dat_version_id` are now **display-only / JOIN-populated fields** (moved to end of struct to avoid designated-initialiser warnings); `RomInfo::game_id` is the new storage FK.
+- **Service**: `RomulusService::import_dat()` now calls `find_or_insert_game` per game entry before inserting its ROMs with the returned `game_id`.
+
 ### 🗄️ Database — Schema & API Fixes (PR review)
 
 - **Schema**: `files.path` now declared `TEXT NOT NULL COLLATE NOCASE` at column level; `UNIQUE(path)` inherits the collation — fixes a SQLite conflict-target mismatch that could prevent `ON CONFLICT(path) DO UPDATE` from triggering on case-differing paths.

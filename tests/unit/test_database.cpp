@@ -29,6 +29,100 @@ TEST_F(DatabaseTest, OpensAndCreatesSchema) {
   SUCCEED();
 }
 
+TEST_F(DatabaseTest, FindOrInsertGameIsIdempotent) {
+  romulus::core::DatVersion dat{
+      .name = "Nintendo - SNES",
+      .version = "2024-01-01",
+      .source_url = {},
+      .checksum = "gametest1",
+      .imported_at = {},
+  };
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  // First insert
+  auto id1 = db_->find_or_insert_game(*dat_id, "Super Mario World");
+  ASSERT_TRUE(id1.has_value());
+  EXPECT_GT(*id1, 0);
+
+  // Second call with same (dat_version_id, name) must return the same id
+  auto id2 = db_->find_or_insert_game(*dat_id, "Super Mario World");
+  ASSERT_TRUE(id2.has_value());
+  EXPECT_EQ(*id1, *id2);
+
+  // Different name → different id
+  auto id3 = db_->find_or_insert_game(*dat_id, "Donkey Kong Country");
+  ASSERT_TRUE(id3.has_value());
+  EXPECT_NE(*id1, *id3);
+}
+
+TEST_F(DatabaseTest, GetGamesForDatVersionReturnsAll) {
+  romulus::core::DatVersion dat{
+      .name = "Sega - Genesis",
+      .version = "2024-01-01",
+      .source_url = {},
+      .checksum = "gametest2",
+      .imported_at = {},
+  };
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  ASSERT_TRUE(db_->find_or_insert_game(*dat_id, "Sonic the Hedgehog").has_value());
+  ASSERT_TRUE(db_->find_or_insert_game(*dat_id, "Streets of Rage").has_value());
+  ASSERT_TRUE(db_->find_or_insert_game(*dat_id, "Golden Axe").has_value());
+
+  auto games = db_->get_games_for_dat_version(*dat_id);
+  ASSERT_TRUE(games.has_value());
+  ASSERT_EQ(games->size(), 3u);
+
+  // Results are alphabetically sorted
+  EXPECT_EQ(games->at(0).name, "Golden Axe");
+  EXPECT_EQ(games->at(1).name, "Sonic the Hedgehog");
+  EXPECT_EQ(games->at(2).name, "Streets of Rage");
+
+  // Each entry has the correct dat_version_id
+  for (const auto& g : *games) {
+    EXPECT_EQ(g.dat_version_id, *dat_id);
+  }
+}
+
+TEST_F(DatabaseTest, RomGameNamePopulatedViaJoin) {
+  romulus::core::DatVersion dat{
+      .name = "Nintendo - NES",
+      .version = "2024-01-01",
+      .source_url = {},
+      .checksum = "gametest3",
+      .imported_at = {},
+  };
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = db_->find_or_insert_game(*dat_id, "Mega Man 2");
+  ASSERT_TRUE(game_id.has_value());
+
+  romulus::core::RomInfo rom{
+      .game_id = *game_id,
+      .name = "mega_man_2.nes",
+      .size = 131072,
+      .crc32 = "12345678",
+      .md5 = "12345678123456781234567812345678",
+      .sha1 = "1234567812345678123456781234567812345678",
+      .sha256 = {},
+      .region = "USA",
+  };
+  ASSERT_TRUE(db_->insert_rom(rom).has_value());
+
+  auto found = db_->find_rom_by_sha1("1234567812345678123456781234567812345678");
+  ASSERT_TRUE(found.has_value());
+  ASSERT_TRUE(found->has_value());
+
+  // game_name and dat_version_id are populated via JOIN
+  EXPECT_EQ(found->value().game_name, "Mega Man 2");
+  EXPECT_EQ(found->value().dat_version_id, *dat_id);
+  EXPECT_EQ(found->value().game_id, *game_id);
+  EXPECT_EQ(found->value().name, "mega_man_2.nes");
+}
+
 TEST_F(DatabaseTest, InsertAndFindDatVersion) {
   romulus::core::DatVersion dat{
       .name = "Nintendo - Game Boy",
@@ -90,10 +184,12 @@ TEST_F(DatabaseTest, InsertAndRetrieveRom) {
   auto dat_id = db_->insert_dat_version(dat);
   ASSERT_TRUE(dat_id.has_value());
 
+  auto game_id = db_->find_or_insert_game(*dat_id, "Test Game");
+  ASSERT_TRUE(game_id.has_value());
+
   romulus::core::RomInfo rom{
       .id = 0,
-      .dat_version_id = *dat_id,
-      .game_name = "Test Game",
+      .game_id = *game_id,
       .name = "test.bin",
       .size = 1024,
       .crc32 = "deadbeef",
@@ -201,9 +297,11 @@ TEST_F(DatabaseTest, FindsDuplicateFiles) {
   auto dat_id = db_->insert_dat_version(dat);
   ASSERT_TRUE(dat_id.has_value());
 
+  auto game_id = db_->find_or_insert_game(*dat_id, "Dup Game");
+  ASSERT_TRUE(game_id.has_value());
+
   romulus::core::RomInfo rom{.id = 0,
-                             .dat_version_id = *dat_id,
-                             .game_name = "Dup Game",
+                             .game_id = *game_id,
                              .name = "dup.bin",
                              .size = 100,
                              .crc32 = "aaaaaaaa",
@@ -281,10 +379,12 @@ TEST_F(DatabaseTest, GetAllRomsReturnsAll) {
   ASSERT_TRUE(dat_id.has_value());
 
   for (int i = 0; i < 3; ++i) {
+    auto game_id = db_->find_or_insert_game(*dat_id, "Game " + std::to_string(i));
+    ASSERT_TRUE(game_id.has_value());
+
     romulus::core::RomInfo rom{
         .id = 0,
-        .dat_version_id = *dat_id,
-        .game_name = "Game " + std::to_string(i),
+        .game_id = *game_id,
         .name = "rom" + std::to_string(i) + ".bin",
         .size = 100,
         .crc32 = {},
@@ -313,9 +413,11 @@ TEST_F(DatabaseTest, ComputedRomStatusMissingWhenNoMatch) {
   auto dat_id = db_->insert_dat_version(dat);
   ASSERT_TRUE(dat_id.has_value());
 
+  auto game_id = db_->find_or_insert_game(*dat_id, "G");
+  ASSERT_TRUE(game_id.has_value());
+
   romulus::core::RomInfo rom{.id = 0,
-                             .dat_version_id = *dat_id,
-                             .game_name = "G",
+                             .game_id = *game_id,
                              .name = "r.bin",
                              .size = 0,
                              .crc32 = {},
@@ -342,10 +444,12 @@ TEST_F(DatabaseTest, ComputedRomStatusVerifiedWhenExactMatchAndFileExists) {
   auto dat_id = db_->insert_dat_version(dat);
   ASSERT_TRUE(dat_id.has_value());
 
+  auto game_id = db_->find_or_insert_game(*dat_id, "G");
+  ASSERT_TRUE(game_id.has_value());
+
   const std::string sha1 = "cccccccccccccccccccccccccccccccccccccccc";
   romulus::core::RomInfo rom{.id = 0,
-                             .dat_version_id = *dat_id,
-                             .game_name = "G",
+                             .game_id = *game_id,
                              .name = "r.bin",
                              .size = 0,
                              .crc32 = {},

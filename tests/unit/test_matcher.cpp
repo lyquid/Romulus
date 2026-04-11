@@ -31,9 +31,11 @@ protected:
     auto dat_id = db_->insert_dat_version(dat);
     ASSERT_TRUE(dat_id.has_value());
 
+    auto game_id1 = db_->find_or_insert_game(*dat_id, "Test Game");
+    ASSERT_TRUE(game_id1.has_value());
+
     // ROM 1: SHA1/MD5/CRC32 known but no SHA256 in DAT — all valid hex
-    romulus::core::RomInfo rom{.dat_version_id = *dat_id,
-                               .game_name = "Test Game",
+    romulus::core::RomInfo rom{.game_id = *game_id1,
                                .name = "test.bin",
                                .size = 100,
                                .crc32 = "aabb0011",
@@ -43,10 +45,12 @@ protected:
                                .region = {}};
     ASSERT_TRUE(db_->insert_rom(rom).has_value());
 
+    auto game_id2 = db_->find_or_insert_game(*dat_id, "Enriched Game");
+    ASSERT_TRUE(game_id2.has_value());
+
     // ROM 2: has a SHA256 in the DAT (e.g., enriched entry)
     romulus::core::RomInfo rom_enriched{
-        .dat_version_id = *dat_id,
-        .game_name = "Enriched Game",
+        .game_id = *game_id2,
         .name = "with_sha256.bin",
         .size = 200,
         .crc32 = "ccdd0022",
@@ -58,9 +62,11 @@ protected:
     ASSERT_TRUE(rom_enriched_id.has_value());
     rom_enriched_id_ = *rom_enriched_id;
 
+    auto game_id3 = db_->find_or_insert_game(*dat_id, "Missing Game");
+    ASSERT_TRUE(game_id3.has_value());
+
     // ROM 3: missing completely — no matching file will exist
-    romulus::core::RomInfo rom_missing{.dat_version_id = *dat_id,
-                                       .game_name = "Missing Game",
+    romulus::core::RomInfo rom_missing{.game_id = *game_id3,
                                        .name = "missing.bin",
                                        .size = 300,
                                        .crc32 = "dead0033",
