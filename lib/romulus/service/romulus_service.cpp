@@ -296,11 +296,19 @@ auto RomulusService::get_all_files() -> Result<std::vector<core::FileInfo>> {
 // ═══════════════════════════════════════════════════════════════
 
 auto RomulusService::purge_database() -> Result<void> {
+  // Deletion order must respect FK constraints (children before parents):
+  //   rom_matches  →  roms, global_roms
+  //   files        →  global_roms
+  //   global_roms  (no remaining children)
+  //   roms         →  games
+  //   games        →  dat_versions
+  //   dat_versions (no remaining children)
   static constexpr std::array k_Tables = {
       "rom_matches",
       "files",
       "global_roms",
       "roms",
+      "games",
       "dat_versions",
   };
 
