@@ -79,7 +79,7 @@ struct DatVersion {
 // ── Game ─────────────────────────────────────────────────────
 
 /// A game entry in the database — one game contains one or more ROMs.
-/// Normalises the game name so it is stored exactly once per DAT version.
+/// Normalizes the game name so it is stored exactly once per DAT version.
 /// During parsing, GameInfo is the transient in-memory form; GameEntry is the persisted form.
 struct GameEntry {
   std::int64_t id = 0;
