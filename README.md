@@ -186,6 +186,44 @@ romulus status
 
 ---
 
+## 🗄️ How the App & Database Work
+
+The core purpose of Romulus is simple: **compare ROM files on your hard drive against what a DAT file says should exist**.  
+The schema is built around that single question.
+
+### The three key tables
+
+| Table | What it stores | Why it exists |
+|-------|---------------|---------------|
+| `roms` | The **expected** ROM entries declared by a DAT file (`expected_sha1`, `crc32`, `md5`, size, game name). | *Opinion* — what the DAT author says a correct ROM looks like. |
+| `files` | Every ROM **file found on disk** (path, size, hashes). Points into `global_roms` via its SHA-1. | *Reality* — what is actually sitting in your scan folders. |
+| `global_roms` | **Content-addressable file identity** keyed by SHA-1. Multiple paths can map to the same content blob. | Deduplication — the same binary dumped to two folders is one `global_rom`, two `files`. |
+
+### How they connect
+
+```text
+dat_versions ──< roms          (expected: what the DAT declared)
+                   │
+                   └── rom_matches ──> global_roms <── files
+                        (match_type)   (SHA-1 PK)    (path on disk)
+```
+
+`rom_matches` is the **bridge**: for every `rom` (expected), it records which `global_rom` (actual) satisfies it, and *how* it was matched (`0=Exact`, `1=SHA-256 only`, `2=SHA-1 only`, … `6=NoMatch`).
+
+### Verification flow
+
+```text
+1. Import DAT   → fills dat_versions + roms        (expectation)
+2. Scan folders → fills global_roms + files        (reality)
+3. Match        → fills rom_matches                (verdict per ROM)
+4. Classify     → queries rom_matches dynamically  (Verified/Missing/Unverified/Mismatch)
+5. Report       → reads classified results         (Text / CSV / JSON)
+```
+
+ROM **status is never stored** — it is computed live from `rom_matches`, so it can never go stale.
+
+---
+
 ## ⚙️ Pipeline (The Journey)
 
 Each stage processes ROMs sequentially — the output of one feeds the next, with verification results classified into one of the status categories shown.
@@ -194,10 +232,10 @@ Each stage processes ROMs sequentially — the output of one feeds the next, wit
 DAT Import → Scan → Hash → Match → Classify → Report
     │          │       │       │        │          │
     ▼          ▼       ▼       ▼        ▼          ▼
- Systems    Files   CRC32    SHA1    Verified    Text
- Games      Scan    MD5      MD5     Missing     CSV
- ROMs       Skip    SHA1     CRC32   Unverified  JSON
-            Arch.
+dat_versions Files   CRC32    SHA1    Verified    Text
+ roms        Scan    MD5      MD5     Missing     CSV
+             Skip    SHA1     CRC32   Unverified  JSON
+             Arch.
 
 👾 "It's dangerous to go alone! Take this pipeline." 👾
 ```
