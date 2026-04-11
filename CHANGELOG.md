@@ -7,6 +7,14 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🗄️ Database — Schema & API Fixes (PR review)
+
+- **Schema**: `files.path` now declared `TEXT NOT NULL COLLATE NOCASE` at column level; `UNIQUE(path)` inherits the collation — fixes a SQLite conflict-target mismatch that could prevent `ON CONFLICT(path) DO UPDATE` from triggering on case-differing paths.
+- **Schema**: Added `files.is_archive_entry INTEGER NOT NULL DEFAULT 0` — persists whether a file record originates from inside an archive; `FileInfo::is_archive_entry` now correctly round-trips through the database.
+- **Schema versioning**: `run_migrations()` now checks `PRAGMA user_version` against `k_SchemaVersion=2`. If an existing DB has a different (non-zero) version all application tables are dropped and recreated, preventing stale column layouts from causing runtime errors after schema changes.
+- **Database API**: `find_dat_version(name, version)` now appends `ORDER BY imported_at DESC, id DESC LIMIT 1` — result is deterministic even if `(name, version)` is not unique (only `checksum` is unique).
+- **Reports**: Fixed user-visible labels — `"System"` / `"system"` renamed to `"DAT"` / `"dat"` in text, CSV, and JSON summary and missing-ROM reports to match the new DAT-centric model.
+
 ### 🗄️ Database — Massive Schema Refactor
 
 - **Schema**: Dropped `systems` and `games` tables entirely — game info is now denormalized into `roms.game_name` (TEXT). System concepts were premature for the current core workflow (file ↔ DAT verification).
@@ -16,7 +24,6 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 - **Schema**: `dat_versions` now uses `UNIQUE(checksum)` instead of `UNIQUE(name, version)` — prevents importing the same file twice even when re-packaged, and avoids cross-source name clashes.
 - **Schema**: `dat_versions` no longer has a `system_id` column — DATs are self-contained, not bound to a system record.
 - **Schema**: `files.sha1 BLOB NOT NULL` (was nullable TEXT); `files.sha256` is nullable BLOB (was NOT NULL TEXT).
-- **Schema**: `files` UNIQUE constraint changed to `UNIQUE(path COLLATE NOCASE)` to handle case-insensitive filesystems.
 - **Schema**: `rom_matches.match_type` changed from `TEXT` to `INTEGER` enum (`0=Exact`, `1=Sha256Only`, `2=Sha1Only`, `3=Md5Only`, `4=Crc32Only`, `5=SizeOnly`, `6=NoMatch`).
 - **Schema**: Added missing hot-path index `CREATE INDEX idx_rom_matches_sha1 ON rom_matches(global_rom_sha1)`.
 - **Database API**: Removed `insert_system`, `find_system_by_name`, `get_all_systems`, `get_or_create_system`, `insert_game`, `get_games_by_dat_version`, `upsert_rom_status`, `get_rom_status`, `get_all_roms_for_system`, `get_latest_dat_version`.

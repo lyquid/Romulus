@@ -277,16 +277,17 @@ CREATE TABLE IF NOT EXISTS global_roms (
 );
 
 CREATE TABLE IF NOT EXISTS files (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    filename      TEXT NOT NULL,
-    path          TEXT NOT NULL,
-    size          INTEGER NOT NULL,
-    crc32         BLOB,
-    md5           BLOB,
-    sha1          BLOB NOT NULL REFERENCES global_roms(sha1),
-    sha256        BLOB,
-    last_scanned  TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(path COLLATE NOCASE)
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    filename          TEXT NOT NULL,
+    path              TEXT NOT NULL COLLATE NOCASE,
+    size              INTEGER NOT NULL,
+    crc32             BLOB,
+    md5               BLOB,
+    sha1              BLOB NOT NULL REFERENCES global_roms(sha1),
+    sha256            BLOB,
+    is_archive_entry  INTEGER NOT NULL DEFAULT 0,
+    last_scanned      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(path)
 );
 
 CREATE TABLE IF NOT EXISTS rom_matches (
@@ -316,6 +317,11 @@ CREATE INDEX IF NOT EXISTS idx_global_roms_md5 ON global_roms(md5) WHERE md5 IS 
 -- Hot path: look up matches by file sha1 (global_rom_sha1)
 CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 )SQL";
+
+/// Schema version — increment whenever the schema changes in a backward-incompatible way.
+/// Stored in PRAGMA user_version. If the on-disk DB has a different version the database
+/// is wiped and rebuilt so queries never encounter stale column layouts.
+constexpr int k_SchemaVersion = 2;
 
 auto match_type_to_int(core::MatchType type) -> int {
   switch (type) {
@@ -404,6 +410,41 @@ void Database::configure_connection() {
 }
 
 void Database::run_migrations() {
+  // Read the on-disk schema version.
+  int on_disk_version = 0;
+  sqlite3_exec(
+      db_, "PRAGMA user_version",
+      [](void* out, int, char** cols, char**) -> int {
+        *static_cast<int*>(out) = cols[0] != nullptr ? std::stoi(cols[0]) : 0;
+        return 0;
+      },
+      &on_disk_version, nullptr);
+
+  if (on_disk_version != 0 && on_disk_version != k_SchemaVersion) {
+    // Schema has changed — wipe all application tables so stale column layouts
+    // never cause runtime errors.  User data is intentionally discarded here;
+    // a fresh import / rescan is required after upgrading.
+    ROMULUS_WARN(
+        "Database schema version mismatch (on-disk={}, expected={}) — recreating schema.",
+        on_disk_version, k_SchemaVersion);
+    constexpr std::string_view k_DropAll = R"SQL(
+DROP TABLE IF EXISTS rom_matches;
+DROP TABLE IF EXISTS files;
+DROP TABLE IF EXISTS global_roms;
+DROP TABLE IF EXISTS roms;
+DROP TABLE IF EXISTS dat_versions;
+DROP TABLE IF EXISTS scanned_directories;
+DROP TABLE IF EXISTS systems;
+DROP TABLE IF EXISTS games;
+DROP TABLE IF EXISTS rom_status;
+)SQL";
+    char* drop_err = nullptr;
+    sqlite3_exec(db_, std::string(k_DropAll).c_str(), nullptr, nullptr, &drop_err);
+    if (drop_err != nullptr) {
+      sqlite3_free(drop_err);
+    }
+  }
+
   // Apply the main schema (CREATE TABLE/INDEX IF NOT EXISTS — safe to run on any DB state).
   char* err_msg = nullptr;
   int rc = sqlite3_exec(db_, std::string(k_Schema).c_str(), nullptr, nullptr, &err_msg);
@@ -413,7 +454,14 @@ void Database::run_migrations() {
     throw std::runtime_error("Migration failed: " + err);
   }
 
-  ROMULUS_DEBUG("Database migrations applied successfully");
+  // Stamp the version so future opens can detect incompatible schema changes.
+  if (on_disk_version != k_SchemaVersion) {
+    std::string set_version =
+        "PRAGMA user_version = " + std::to_string(k_SchemaVersion) + ";";
+    sqlite3_exec(db_, set_version.c_str(), nullptr, nullptr, nullptr);
+  }
+
+  ROMULUS_DEBUG("Database migrations applied successfully (schema_version={})", k_SchemaVersion);
 }
 
 auto Database::begin_transaction() -> TransactionGuard {
@@ -469,7 +517,8 @@ auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::in
 auto Database::find_dat_version(std::string_view name, std::string_view version)
     -> Result<std::optional<core::DatVersion>> {
   auto stmt = prepare("SELECT id, name, version, source_url, checksum, imported_at "
-                      "FROM dat_versions WHERE name = ?1 AND version = ?2");
+                      "FROM dat_versions WHERE name = ?1 AND version = ?2 "
+                      "ORDER BY imported_at DESC, id DESC LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -779,11 +828,13 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
 
   // 2. Upsert the physical file record, linking to the global identity
   auto stmt =
-      prepare("INSERT INTO files (filename, path, size, crc32, md5, sha1, sha256, last_scanned) "
-              "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now')) "
+      prepare("INSERT INTO files "
+              "(filename, path, size, crc32, md5, sha1, sha256, is_archive_entry, last_scanned) "
+              "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now')) "
               "ON CONFLICT(path) DO UPDATE SET "
               "filename = excluded.filename, size = excluded.size, crc32 = excluded.crc32, "
               "md5 = excluded.md5, sha1 = excluded.sha1, sha256 = excluded.sha256, "
+              "is_archive_entry = excluded.is_archive_entry, "
               "last_scanned = datetime('now')");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -800,6 +851,7 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
   } else {
     stmt->bind_blob(7, hex_to_bytes(file.sha256));
   }
+  stmt->bind_int64(8, file.is_archive_entry ? 1 : 0);
   stmt->execute();
 
   // Get the id (either inserted or updated)
@@ -815,8 +867,9 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
 }
 
 auto Database::find_file_by_path(std::string_view path) -> Result<std::optional<core::FileInfo>> {
-  auto stmt = prepare("SELECT id, filename, path, size, crc32, md5, sha1, sha256, last_scanned "
-                      "FROM files WHERE path = ?1");
+  auto stmt =
+      prepare("SELECT id, filename, path, size, crc32, md5, sha1, sha256, "
+              "is_archive_entry, last_scanned FROM files WHERE path = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -835,13 +888,14 @@ auto Database::find_file_by_path(std::string_view path) -> Result<std::optional<
       .md5 = bytes_to_hex(stmt->column_blob(5)),
       .sha1 = bytes_to_hex(stmt->column_blob(6)),
       .sha256 = bytes_to_hex(stmt->column_blob(7)),
-      .last_scanned = stmt->column_text(8),
+      .last_scanned = stmt->column_text(9),
+      .is_archive_entry = stmt->column_int64(8) != 0,
   };
 }
 
 auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
-  auto stmt =
-      prepare("SELECT id, filename, path, size, crc32, md5, sha1, sha256, last_scanned FROM files");
+  auto stmt = prepare("SELECT id, filename, path, size, crc32, md5, sha1, sha256, "
+                      "is_archive_entry, last_scanned FROM files");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -857,7 +911,8 @@ auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
         .md5 = bytes_to_hex(stmt->column_blob(5)),
         .sha1 = bytes_to_hex(stmt->column_blob(6)),
         .sha256 = bytes_to_hex(stmt->column_blob(7)),
-        .last_scanned = stmt->column_text(8),
+        .last_scanned = stmt->column_text(9),
+        .is_archive_entry = stmt->column_int64(8) != 0,
     });
   }
   return files;
@@ -1241,7 +1296,8 @@ auto Database::get_duplicate_files(std::optional<std::int64_t> dat_version_id)
 auto Database::get_unverified_files() -> Result<std::vector<core::FileInfo>> {
   // Use LEFT JOIN to find files with no matches in a single query.
   const std::string_view sql =
-      "SELECT f.id, f.filename, f.path, f.size, f.crc32, f.md5, f.sha1, f.sha256, f.last_scanned "
+      "SELECT f.id, f.filename, f.path, f.size, f.crc32, f.md5, f.sha1, f.sha256, "
+      "f.is_archive_entry, f.last_scanned "
       "FROM files f "
       "LEFT JOIN rom_matches rm ON f.sha1 = rm.global_rom_sha1 "
       "WHERE rm.global_rom_sha1 IS NULL "
@@ -1263,7 +1319,8 @@ auto Database::get_unverified_files() -> Result<std::vector<core::FileInfo>> {
         .md5 = bytes_to_hex(stmt->column_blob(5)),
         .sha1 = bytes_to_hex(stmt->column_blob(6)),
         .sha256 = bytes_to_hex(stmt->column_blob(7)),
-        .last_scanned = stmt->column_text(8),
+        .last_scanned = stmt->column_text(9),
+        .is_archive_entry = stmt->column_int64(8) != 0,
     });
   }
   return unverified;
