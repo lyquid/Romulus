@@ -69,14 +69,15 @@ TEST_F(ClassifierTest, ClassifiesVerifiedAndMissing) {
 
   // File that matches rom1
   romulus::core::FileInfo file{
-      .filename = "matched.bin",
       .path = "/roms/matched.bin",
+      .archive_path = "/roms/matched.bin",
+      .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "11111111",
       .md5 = "11111111111111111111111111111111",
       .sha1 = "1111111111111111111111111111111111111111",
       .sha256 = "1111111111111111111111111111111111111111111111111111111111111111",
-      .last_scanned = {}};
+  };
   ASSERT_TRUE(db_->upsert_file(file).has_value());
 
   auto match_result = romulus::engine::Matcher::match_all(*db_);
@@ -111,14 +112,15 @@ TEST_F(ClassifierTest, ClassifiesUnverifiedWithPartialMatch) {
 
   // File with SAME CRC32 but DIFFERENT SHA1/MD5 — will be a CRC32-only match
   romulus::core::FileInfo file{
-      .filename = "partial.bin",
       .path = "/roms/partial.bin",
+      .archive_path = "/roms/partial.bin",
+      .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "aabb0011",
       .md5 = "cc000000cc000000cc000000cc000000",
       .sha1 = "cc000000cc000000cc000000cc000000cc000000",
       .sha256 = "cc000000cc000000cc000000cc000000cc000000cc000000cc000000cc000000",
-      .last_scanned = {}};
+  };
   ASSERT_TRUE(db_->upsert_file(file).has_value());
 
   auto match_result = romulus::engine::Matcher::match_all(*db_);

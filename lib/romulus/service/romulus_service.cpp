@@ -62,6 +62,7 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
   core::DatVersion dat_version{
       .name = dat_file->header.name,
       .version = dat_file->header.version,
+      .system = dat_file->header.description,
       .source_url = validated->string(),
       .checksum = *checksum,
       .imported_at = {},
@@ -157,15 +158,14 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
 
   for (const auto& rom : result->files) {
     const core::FileInfo file{
-        .filename = rom.filename(),
         .path = rom.virtual_path(),
+        .archive_path = rom.archive_path.string(),
+        .entry_name = rom.entry_name,
         .size = rom.size,
         .crc32 = rom.hash_digest.to_hex_crc32(),
         .md5 = rom.hash_digest.to_hex_md5(),
         .sha1 = rom.hash_digest.to_hex_sha1(),
         .sha256 = rom.hash_digest.to_hex_sha256(),
-        .last_scanned = {},
-        .is_archive_entry = rom.is_archive_entry(),
     };
     auto upsert = db_->upsert_file(file);
     if (!upsert) {

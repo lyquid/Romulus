@@ -71,6 +71,7 @@ struct DatVersion {
   std::int64_t id = 0;
   std::string name;
   std::string version;
+  std::string system = {};     ///< Human-readable system description from the DAT <description> tag
   std::string source_url;
   std::string checksum;
   std::string imported_at;
@@ -151,15 +152,18 @@ struct GlobalRom {
 /// A file discovered during filesystem scanning.
 struct FileInfo {
   std::int64_t id = 0;
-  std::string filename; ///< Filename component (e.g. "game.rom")
-  std::string path;     ///< Full filesystem path (or archive_path::entry_name)
+  std::string path;                       ///< Virtual path — unique storage key ("archive.zip::entry.rom" or "/bare/path.rom")
+  std::string archive_path;               ///< Physical path to the file on disk, or the archive containing this entry
+  std::optional<std::string> entry_name;  ///< Set when this file lives inside an archive; absent for bare files
   std::int64_t size = 0;
   std::string crc32;
   std::string md5;
   std::string sha1; ///< Primary anchor linking to global_roms.sha1
   std::string sha256;
-  std::string last_scanned;
-  bool is_archive_entry = false; ///< True if this file is inside an archive
+  std::int64_t last_scanned = 0; ///< Unix epoch seconds (strftime('%s','now'))
+
+  /// Returns true when this file was extracted from an archive entry.
+  [[nodiscard]] auto is_archive_entry() const noexcept -> bool { return entry_name.has_value(); }
 };
 
 // ── Matching ─────────────────────────────────────────────────

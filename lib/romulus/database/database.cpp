@@ -246,6 +246,7 @@ CREATE TABLE IF NOT EXISTS dat_versions (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     name          TEXT NOT NULL,
     version       TEXT NOT NULL,
+    system        TEXT,
     source_url    TEXT,
     checksum      TEXT NOT NULL,
     imported_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
@@ -285,16 +286,16 @@ CREATE TABLE IF NOT EXISTS global_roms (
 );
 
 CREATE TABLE IF NOT EXISTS files (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    filename          TEXT NOT NULL,
-    path              TEXT NOT NULL COLLATE NOCASE,
-    size              INTEGER NOT NULL,
-    crc32             BLOB,
-    md5               BLOB,
-    sha1              BLOB NOT NULL REFERENCES global_roms(sha1),
-    sha256            BLOB,
-    is_archive_entry  INTEGER NOT NULL DEFAULT 0,
-    last_scanned      TEXT NOT NULL DEFAULT (datetime('now')),
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    path          TEXT NOT NULL COLLATE NOCASE,
+    archive_path  TEXT NOT NULL,
+    entry_name    TEXT,
+    size          INTEGER NOT NULL,
+    crc32         BLOB,
+    md5           BLOB,
+    sha1          BLOB NOT NULL REFERENCES global_roms(sha1),
+    sha256        BLOB,
+    last_scanned  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     UNIQUE(path)
 );
 
@@ -331,7 +332,7 @@ CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 /// Schema version — increment whenever the schema changes in a backward-incompatible way.
 /// Stored in PRAGMA user_version. If the on-disk DB has a different version the database
 /// is wiped and rebuilt so queries never encounter stale column layouts.
-constexpr int k_SchemaVersion = 3;
+constexpr int k_SchemaVersion = 4;
 
 auto match_type_to_int(core::MatchType type) -> int {
   switch (type) {
@@ -509,16 +510,21 @@ auto Database::last_insert_id() const -> std::int64_t {
 
 auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::int64_t> {
   auto stmt = prepare(
-      "INSERT INTO dat_versions (name, version, source_url, checksum, imported_at) "
-      "VALUES (?1, ?2, ?3, ?4, datetime('now', 'localtime'))");
+      "INSERT INTO dat_versions (name, version, system, source_url, checksum, imported_at) "
+      "VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', 'localtime'))");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
   stmt->bind_text(1, dat.name);
   stmt->bind_text(2, dat.version);
-  stmt->bind_text(3, dat.source_url);
-  stmt->bind_text(4, dat.checksum);
+  if (dat.system.empty()) {
+    stmt->bind_null(3);
+  } else {
+    stmt->bind_text(3, dat.system);
+  }
+  stmt->bind_text(4, dat.source_url);
+  stmt->bind_text(5, dat.checksum);
   stmt->execute();
 
   return last_insert_id();
@@ -526,7 +532,7 @@ auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::in
 
 auto Database::find_dat_version(std::string_view name, std::string_view version)
     -> Result<std::optional<core::DatVersion>> {
-  auto stmt = prepare("SELECT id, name, version, source_url, checksum, imported_at "
+  auto stmt = prepare("SELECT id, name, version, system, source_url, checksum, imported_at "
                       "FROM dat_versions WHERE name = ?1 AND version = ?2 "
                       "ORDER BY imported_at DESC, id DESC LIMIT 1");
   if (!stmt) {
@@ -543,15 +549,16 @@ auto Database::find_dat_version(std::string_view name, std::string_view version)
       .id = stmt->column_int64(0),
       .name = stmt->column_text(1),
       .version = stmt->column_text(2),
-      .source_url = stmt->column_text(3),
-      .checksum = stmt->column_text(4),
-      .imported_at = stmt->column_text(5),
+      .system = stmt->column_text(3),
+      .source_url = stmt->column_text(4),
+      .checksum = stmt->column_text(5),
+      .imported_at = stmt->column_text(6),
   };
 }
 
 auto Database::find_dat_version_by_checksum(std::string_view checksum)
     -> Result<std::optional<core::DatVersion>> {
-  auto stmt = prepare("SELECT id, name, version, source_url, checksum, imported_at "
+  auto stmt = prepare("SELECT id, name, version, system, source_url, checksum, imported_at "
                       "FROM dat_versions WHERE checksum = ?1 LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -566,16 +573,17 @@ auto Database::find_dat_version_by_checksum(std::string_view checksum)
       .id = stmt->column_int64(0),
       .name = stmt->column_text(1),
       .version = stmt->column_text(2),
-      .source_url = stmt->column_text(3),
-      .checksum = stmt->column_text(4),
-      .imported_at = stmt->column_text(5),
+      .system = stmt->column_text(3),
+      .source_url = stmt->column_text(4),
+      .checksum = stmt->column_text(5),
+      .imported_at = stmt->column_text(6),
   };
 }
 
 auto Database::find_dat_version_by_name(std::string_view name)
     -> Result<std::optional<core::DatVersion>> {
   // Returns the most recently imported DAT with the given name (most recent first).
-  auto stmt = prepare("SELECT id, name, version, source_url, checksum, imported_at "
+  auto stmt = prepare("SELECT id, name, version, system, source_url, checksum, imported_at "
                       "FROM dat_versions WHERE name = ?1 ORDER BY imported_at DESC LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -590,15 +598,16 @@ auto Database::find_dat_version_by_name(std::string_view name)
       .id = stmt->column_int64(0),
       .name = stmt->column_text(1),
       .version = stmt->column_text(2),
-      .source_url = stmt->column_text(3),
-      .checksum = stmt->column_text(4),
-      .imported_at = stmt->column_text(5),
+      .system = stmt->column_text(3),
+      .source_url = stmt->column_text(4),
+      .checksum = stmt->column_text(5),
+      .imported_at = stmt->column_text(6),
   };
 }
 
 
 auto Database::get_all_dat_versions() -> Result<std::vector<core::DatVersion>> {
-  auto stmt = prepare("SELECT id, name, version, source_url, checksum, imported_at "
+  auto stmt = prepare("SELECT id, name, version, system, source_url, checksum, imported_at "
                       "FROM dat_versions ORDER BY imported_at DESC");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -610,9 +619,10 @@ auto Database::get_all_dat_versions() -> Result<std::vector<core::DatVersion>> {
         .id = stmt->column_int64(0),
         .name = stmt->column_text(1),
         .version = stmt->column_text(2),
-        .source_url = stmt->column_text(3),
-        .checksum = stmt->column_text(4),
-        .imported_at = stmt->column_text(5),
+        .system = stmt->column_text(3),
+        .source_url = stmt->column_text(4),
+        .checksum = stmt->column_text(5),
+        .imported_at = stmt->column_text(6),
     });
   }
   return versions;
@@ -905,29 +915,33 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
   // 2. Upsert the physical file record, linking to the global identity
   auto stmt =
       prepare("INSERT INTO files "
-              "(filename, path, size, crc32, md5, sha1, sha256, is_archive_entry, last_scanned) "
-              "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now')) "
+              "(path, archive_path, entry_name, size, crc32, md5, sha1, sha256, last_scanned) "
+              "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, strftime('%s','now')) "
               "ON CONFLICT(path) DO UPDATE SET "
-              "filename = excluded.filename, size = excluded.size, crc32 = excluded.crc32, "
+              "archive_path = excluded.archive_path, entry_name = excluded.entry_name, "
+              "size = excluded.size, crc32 = excluded.crc32, "
               "md5 = excluded.md5, sha1 = excluded.sha1, sha256 = excluded.sha256, "
-              "is_archive_entry = excluded.is_archive_entry, "
-              "last_scanned = datetime('now')");
+              "last_scanned = strftime('%s','now')");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_text(1, file.filename);
-  stmt->bind_text(2, file.path);
-  stmt->bind_int64(3, file.size);
-  stmt->bind_blob(4, hex_to_bytes(file.crc32));
-  stmt->bind_blob(5, hex_to_bytes(file.md5));
-  stmt->bind_blob(6, hex_to_bytes(file.sha1));
-  if (file.sha256.empty()) {
-    stmt->bind_null(7);
+  stmt->bind_text(1, file.path);
+  stmt->bind_text(2, file.archive_path);
+  if (file.entry_name.has_value()) {
+    stmt->bind_text(3, *file.entry_name);
   } else {
-    stmt->bind_blob(7, hex_to_bytes(file.sha256));
+    stmt->bind_null(3);
   }
-  stmt->bind_int64(8, file.is_archive_entry ? 1 : 0);
+  stmt->bind_int64(4, file.size);
+  stmt->bind_blob(5, hex_to_bytes(file.crc32));
+  stmt->bind_blob(6, hex_to_bytes(file.md5));
+  stmt->bind_blob(7, hex_to_bytes(file.sha1));
+  if (file.sha256.empty()) {
+    stmt->bind_null(8);
+  } else {
+    stmt->bind_blob(8, hex_to_bytes(file.sha256));
+  }
   stmt->execute();
 
   // Get the id (either inserted or updated)
@@ -944,8 +958,8 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
 
 auto Database::find_file_by_path(std::string_view path) -> Result<std::optional<core::FileInfo>> {
   auto stmt =
-      prepare("SELECT id, filename, path, size, crc32, md5, sha1, sha256, "
-              "is_archive_entry, last_scanned FROM files WHERE path = ?1");
+      prepare("SELECT id, path, archive_path, entry_name, size, crc32, md5, sha1, sha256, "
+              "last_scanned FROM files WHERE path = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -957,21 +971,21 @@ auto Database::find_file_by_path(std::string_view path) -> Result<std::optional<
 
   return core::FileInfo{
       .id = stmt->column_int64(0),
-      .filename = stmt->column_text(1),
-      .path = stmt->column_text(2),
-      .size = stmt->column_int64(3),
-      .crc32 = bytes_to_hex(stmt->column_blob(4)),
-      .md5 = bytes_to_hex(stmt->column_blob(5)),
-      .sha1 = bytes_to_hex(stmt->column_blob(6)),
-      .sha256 = bytes_to_hex(stmt->column_blob(7)),
-      .last_scanned = stmt->column_text(9),
-      .is_archive_entry = stmt->column_int64(8) != 0,
+      .path = stmt->column_text(1),
+      .archive_path = stmt->column_text(2),
+      .entry_name = stmt->column_optional_text(3),
+      .size = stmt->column_int64(4),
+      .crc32 = bytes_to_hex(stmt->column_blob(5)),
+      .md5 = bytes_to_hex(stmt->column_blob(6)),
+      .sha1 = bytes_to_hex(stmt->column_blob(7)),
+      .sha256 = bytes_to_hex(stmt->column_blob(8)),
+      .last_scanned = stmt->column_int64(9),
   };
 }
 
 auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
-  auto stmt = prepare("SELECT id, filename, path, size, crc32, md5, sha1, sha256, "
-                      "is_archive_entry, last_scanned FROM files");
+  auto stmt = prepare("SELECT id, path, archive_path, entry_name, size, crc32, md5, sha1, sha256, "
+                      "last_scanned FROM files");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -980,15 +994,15 @@ auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
   while (stmt->step()) {
     files.push_back({
         .id = stmt->column_int64(0),
-        .filename = stmt->column_text(1),
-        .path = stmt->column_text(2),
-        .size = stmt->column_int64(3),
-        .crc32 = bytes_to_hex(stmt->column_blob(4)),
-        .md5 = bytes_to_hex(stmt->column_blob(5)),
-        .sha1 = bytes_to_hex(stmt->column_blob(6)),
-        .sha256 = bytes_to_hex(stmt->column_blob(7)),
-        .last_scanned = stmt->column_text(9),
-        .is_archive_entry = stmt->column_int64(8) != 0,
+        .path = stmt->column_text(1),
+        .archive_path = stmt->column_text(2),
+        .entry_name = stmt->column_optional_text(3),
+        .size = stmt->column_int64(4),
+        .crc32 = bytes_to_hex(stmt->column_blob(5)),
+        .md5 = bytes_to_hex(stmt->column_blob(6)),
+        .sha1 = bytes_to_hex(stmt->column_blob(7)),
+        .sha256 = bytes_to_hex(stmt->column_blob(8)),
+        .last_scanned = stmt->column_int64(9),
     });
   }
   return files;
@@ -1375,8 +1389,8 @@ auto Database::get_duplicate_files(std::optional<std::int64_t> dat_version_id)
 auto Database::get_unverified_files() -> Result<std::vector<core::FileInfo>> {
   // Use LEFT JOIN to find files with no matches in a single query.
   const std::string_view sql =
-      "SELECT f.id, f.filename, f.path, f.size, f.crc32, f.md5, f.sha1, f.sha256, "
-      "f.is_archive_entry, f.last_scanned "
+      "SELECT f.id, f.path, f.archive_path, f.entry_name, f.size, f.crc32, f.md5, f.sha1, "
+      "f.sha256, f.last_scanned "
       "FROM files f "
       "LEFT JOIN rom_matches rm ON f.sha1 = rm.global_rom_sha1 "
       "WHERE rm.global_rom_sha1 IS NULL "
@@ -1391,15 +1405,15 @@ auto Database::get_unverified_files() -> Result<std::vector<core::FileInfo>> {
   while (stmt->step()) {
     unverified.push_back({
         .id = stmt->column_int64(0),
-        .filename = stmt->column_text(1),
-        .path = stmt->column_text(2),
-        .size = stmt->column_int64(3),
-        .crc32 = bytes_to_hex(stmt->column_blob(4)),
-        .md5 = bytes_to_hex(stmt->column_blob(5)),
-        .sha1 = bytes_to_hex(stmt->column_blob(6)),
-        .sha256 = bytes_to_hex(stmt->column_blob(7)),
-        .last_scanned = stmt->column_text(9),
-        .is_archive_entry = stmt->column_int64(8) != 0,
+        .path = stmt->column_text(1),
+        .archive_path = stmt->column_text(2),
+        .entry_name = stmt->column_optional_text(3),
+        .size = stmt->column_int64(4),
+        .crc32 = bytes_to_hex(stmt->column_blob(5)),
+        .md5 = bytes_to_hex(stmt->column_blob(6)),
+        .sha1 = bytes_to_hex(stmt->column_blob(7)),
+        .sha256 = bytes_to_hex(stmt->column_blob(8)),
+        .last_scanned = stmt->column_int64(9),
     });
   }
   return unverified;

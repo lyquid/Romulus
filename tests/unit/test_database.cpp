@@ -221,15 +221,14 @@ TEST_F(DatabaseTest, InsertAndRetrieveRom) {
 TEST_F(DatabaseTest, UpsertFileUpdatesExisting) {
   romulus::core::FileInfo file{
       .id = 0,
-      .filename = "test.bin",
       .path = "/roms/test.bin",
+      .archive_path = "/roms/test.bin",
+      .entry_name = std::nullopt,
       .size = 1024,
       .crc32 = "aabbccdd",
       .md5 = "12345678901234567890123456789012",
       .sha1 = "1234567890123456789012345678901234567890",
       .sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      .last_scanned = {},
-      .is_archive_entry = false,
   };
 
   auto id1 = db_->upsert_file(file);
@@ -314,26 +313,26 @@ TEST_F(DatabaseTest, FindsDuplicateFiles) {
 
   romulus::core::FileInfo file1{
       .id = 0,
-      .filename = "copy1.bin",
       .path = "/roms/copy1.bin",
+      .archive_path = "/roms/copy1.bin",
+      .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "aaaaaaaa",
       .md5 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       .sha1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       .sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      .last_scanned = {},
-      .is_archive_entry = false};
+  };
   romulus::core::FileInfo file2{
       .id = 0,
-      .filename = "copy2.bin",
       .path = "/roms/copy2.bin",
+      .archive_path = "/roms/copy2.bin",
+      .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "aaaaaaaa",
       .md5 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       .sha1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       .sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      .last_scanned = {},
-      .is_archive_entry = false};
+  };
   ASSERT_TRUE(db_->upsert_file(file1).has_value());
   ASSERT_TRUE(db_->upsert_file(file2).has_value());
 
@@ -350,15 +349,15 @@ TEST_F(DatabaseTest, FindsDuplicateFiles) {
 TEST_F(DatabaseTest, FindsUnverifiedFiles) {
   romulus::core::FileInfo orphan{
       .id = 0,
-      .filename = "orphan.bin",
       .path = "/roms/orphan.bin",
+      .archive_path = "/roms/orphan.bin",
+      .entry_name = std::nullopt,
       .size = 50,
       .crc32 = "bbbbbbbb",
       .md5 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       .sha1 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       .sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      .last_scanned = {},
-      .is_archive_entry = false};
+  };
   ASSERT_TRUE(db_->upsert_file(orphan).has_value());
 
   auto unverified = db_->get_unverified_files();
@@ -461,15 +460,14 @@ TEST_F(DatabaseTest, ComputedRomStatusVerifiedWhenExactMatchAndFileExists) {
   ASSERT_TRUE(rom_id.has_value());
 
   romulus::core::FileInfo file{.id = 0,
-                               .filename = "r.bin",
                                .path = "/roms/r.bin",
+                               .archive_path = "/roms/r.bin",
+                               .entry_name = std::nullopt,
                                .size = 100,
                                .crc32 = {},
                                .md5 = {},
                                .sha1 = sha1,
-                               .sha256 = {},
-                               .last_scanned = {},
-                               .is_archive_entry = false};
+                               .sha256 = {}};
   ASSERT_TRUE(db_->upsert_file(file).has_value());
 
   romulus::core::MatchResult match{
