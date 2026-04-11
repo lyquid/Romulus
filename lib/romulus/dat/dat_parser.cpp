@@ -180,7 +180,7 @@ auto DatParser::parse_game(const void* node_ptr) -> Result<core::GameInfo> {
 
   core::GameInfo game;
   game.name = node.attribute("name").as_string();
-  game.description = node.child_value("description");
+  // Note: description field removed from GameInfo — not stored in DB
 
   if (game.name.empty()) {
     return std::unexpected(

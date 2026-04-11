@@ -25,24 +25,15 @@ protected:
   }
 
   void seed_data() {
-    auto sys_id = db_->get_or_create_system("Test System");
-    romulus::core::DatVersion dat{.system_id = *sys_id,
-                                  .name = "Test",
+    romulus::core::DatVersion dat{.name = "Test",
                                   .version = "1.0",
-                                  .source_url = {},
-                                  .checksum = "abc",
-                                  .imported_at = {}};
+                                  .source_url = {}, .checksum = "abc", .imported_at = {}};
     auto dat_id = db_->insert_dat_version(dat);
-
-    romulus::core::GameInfo game{.name = "Test Game",
-                                 .description = {},
-                                 .system_id = *sys_id,
-                                 .dat_version_id = *dat_id,
-                                 .roms = {}};
-    auto game_id = db_->insert_game(game);
+    ASSERT_TRUE(dat_id.has_value());
 
     // ROM 1: SHA1/MD5/CRC32 known but no SHA256 in DAT — all valid hex
-    romulus::core::RomInfo rom{.game_id = *game_id,
+    romulus::core::RomInfo rom{.dat_version_id = *dat_id,
+                               .game_name = "Test Game",
                                .name = "test.bin",
                                .size = 100,
                                .crc32 = "aabb0011",
@@ -54,7 +45,8 @@ protected:
 
     // ROM 2: has a SHA256 in the DAT (e.g., enriched entry)
     romulus::core::RomInfo rom_enriched{
-        .game_id = *game_id,
+        .dat_version_id = *dat_id,
+        .game_name = "Enriched Game",
         .name = "with_sha256.bin",
         .size = 200,
         .crc32 = "ccdd0022",
@@ -67,7 +59,8 @@ protected:
     rom_enriched_id_ = *rom_enriched_id;
 
     // ROM 3: missing completely — no matching file will exist
-    romulus::core::RomInfo rom_missing{.game_id = *game_id,
+    romulus::core::RomInfo rom_missing{.dat_version_id = *dat_id,
+                                       .game_name = "Missing Game",
                                        .name = "missing.bin",
                                        .size = 300,
                                        .crc32 = "dead0033",

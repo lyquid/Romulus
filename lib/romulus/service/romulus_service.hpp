@@ -51,7 +51,7 @@ public:
       -> Result<core::ScanReport>;
 
   /// Runs matching + classification on all files.
-  [[nodiscard]] auto verify(std::optional<std::string> system = {}) -> Result<void>;
+  [[nodiscard]] auto verify(std::optional<std::string> dat_name = {}) -> Result<void>;
 
   /// Full pipeline: import DAT → scan → match → classify.
   [[nodiscard]] auto full_sync(const std::filesystem::path& dat_path,
@@ -59,13 +59,12 @@ public:
 
   // ── Queries ──────────────────────────────────────────────
 
-  [[nodiscard]] auto get_summary(std::optional<std::string> system = {})
+  [[nodiscard]] auto get_summary(std::optional<std::string> dat_name = {})
       -> Result<core::CollectionSummary>;
-  [[nodiscard]] auto list_systems() -> Result<std::vector<core::SystemInfo>>;
   [[nodiscard]] auto list_dat_versions() -> Result<std::vector<core::DatVersion>>;
   [[nodiscard]] auto get_roms_with_status(std::int64_t dat_version_id)
       -> Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>>;
-  [[nodiscard]] auto get_missing_roms(std::optional<std::string> system = {})
+  [[nodiscard]] auto get_missing_roms(std::optional<std::string> dat_name = {})
       -> Result<std::vector<core::MissingRom>>;
   [[nodiscard]] auto get_all_files() -> Result<std::vector<core::FileInfo>>;
 
@@ -90,7 +89,8 @@ public:
 
   [[nodiscard]] auto generate_report(core::ReportType type,
                                      core::ReportFormat format,
-                                     std::optional<std::string> system = {}) -> Result<std::string>;
+                                     std::optional<std::string> dat_name = {})
+      -> Result<std::string>;
 
   // ── DB Explorer ──────────────────────────────────────────
 
@@ -103,9 +103,8 @@ public:
       -> Result<core::TableQueryResult>;
 
 private:
-  /// Resolves a system name to its ID. Returns nullopt if no filter.
-  [[nodiscard]] auto resolve_system_id(const std::optional<std::string>& system)
-      -> Result<std::optional<std::int64_t>>;
+  /// Resolves a DAT version name to its most-recently-imported ID.
+  [[nodiscard]] auto resolve_dat_version_id(const std::string& dat_name) -> Result<std::int64_t>;
 
   std::filesystem::path db_path_;
   std::unique_ptr<database::Database> db_;

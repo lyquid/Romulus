@@ -19,11 +19,12 @@ using romulus::core::Result;
 /// Classifies every ROM in the database based on rom matches.
 class Classifier final {
 public:
-  /// Classifies all ROMs and updates the rom_status table.
+  /// Classifies all ROMs and logs the status counts.
+  /// Status is computed dynamically from rom_matches + files (no separate status table).
   /// @param db Database with ROMs and rom_matches populated.
-  /// @param system_id Optional system filter.
+  /// @param dat_version_id Optional DAT version filter.
   [[nodiscard]] static auto classify_all(
-      database::Database& db, std::optional<std::int64_t> system_id = {}) -> Result<void>;
+      database::Database& db, std::optional<std::int64_t> dat_version_id = {}) -> Result<void>;
 };
 
 } // namespace romulus::engine

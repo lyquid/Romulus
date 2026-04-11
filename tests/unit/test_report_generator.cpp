@@ -50,7 +50,7 @@ TEST_F(ReportTest, SummaryCsvHasHeaderRow) {
       *db_, romulus::core::ReportType::Summary, romulus::core::ReportFormat::Csv);
 
   ASSERT_TRUE(result.has_value()) << result.error().message;
-  EXPECT_NE(result->find("system,total_roms"), std::string::npos);
+  EXPECT_NE(result->find("dat,total_roms"), std::string::npos);
 }
 
 } // namespace

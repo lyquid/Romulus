@@ -64,22 +64,11 @@ struct HashDigest {
   }
 };
 
-// ── System ───────────────────────────────────────────────────
-
-/// Represents a gaming system/platform (e.g. "Nintendo - Game Boy").
-struct SystemInfo {
-  std::int64_t id = 0;
-  std::string name;       ///< Full No-Intro name, e.g. "Nintendo - Game Boy"
-  std::string short_name; ///< Short alias, e.g. "GB"
-  std::string extensions; ///< Default scan extensions, e.g. ".gb,.gbc"
-};
-
 // ── DAT Version ──────────────────────────────────────────────
 
 /// Metadata about an imported DAT file version.
 struct DatVersion {
   std::int64_t id = 0;
-  std::int64_t system_id = 0;
   std::string name;
   std::string version;
   std::string source_url;
@@ -90,25 +79,25 @@ struct DatVersion {
 // ── ROM & Game ───────────────────────────────────────────────
 
 /// A single ROM entry from a DAT file.
+/// expected_sha1 (stored as `expected_sha1` in the DB) is the authoritative identity
+/// hash declared by the DAT, distinct from global_roms.sha1 which is the actual file hash.
 struct RomInfo {
   std::int64_t id = 0;
-  std::int64_t game_id = 0;
+  std::int64_t dat_version_id = 0; ///< Foreign key to dat_versions.id
+  std::string game_name;           ///< Game name from the DAT (denormalized for display)
   std::string name;
   std::int64_t size = 0;
   std::string crc32;
   std::string md5;
-  std::string sha1;
+  std::string sha1;   ///< Expected SHA-1 from the DAT (stored as expected_sha1 in DB)
   std::string sha256;
   std::string region;
 };
 
-/// A game entry from a DAT file, containing one or more ROMs.
+/// A game entry parsed from a DAT file, containing one or more ROMs.
+/// Used only during DAT parsing; not stored as a separate table.
 struct GameInfo {
-  std::int64_t id = 0;
   std::string name;
-  std::string description;
-  std::int64_t system_id = 0;
-  std::int64_t dat_version_id = 0;
   std::vector<RomInfo> roms;
 };
 
@@ -187,13 +176,6 @@ enum class RomStatusType {
   Mismatch,   ///< File exists but hashes don't fully match
 };
 
-/// ROM status record.
-struct RomStatusEntry {
-  std::int64_t rom_id = 0;
-  RomStatusType status = RomStatusType::Missing;
-  std::string last_updated;
-};
-
 // ── Archive ──────────────────────────────────────────────────
 
 /// An entry inside an archive file (zip/7z).
@@ -251,7 +233,7 @@ struct ScannedROM {
 
 /// Collection summary statistics.
 struct CollectionSummary {
-  std::string system_name;
+  std::string dat_name; ///< DAT version name (empty if aggregating all DATs)
   std::int64_t total_roms = 0;
   std::int64_t verified = 0;
   std::int64_t missing = 0;
@@ -270,7 +252,7 @@ struct CollectionSummary {
 struct MissingRom {
   std::string game_name;
   std::string rom_name;
-  std::string system_name;
+  std::string dat_name; ///< DAT version name (replaces system_name)
   std::string sha1;
 };
 

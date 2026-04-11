@@ -165,8 +165,8 @@ int main(int argc, char** argv) {
 
   // ── verify ─────────────────────────────────────────────────
   auto* cmd_verify = app.add_subcommand("verify", "Match files and classify ROMs");
-  std::string verify_system;
-  cmd_verify->add_option("--system,-s", verify_system, "Filter by system name");
+  std::string verify_dat;
+  cmd_verify->add_option("--dat,-d", verify_dat, "Filter by DAT name");
 
   // ── sync ───────────────────────────────────────────────────
   auto* cmd_sync = app.add_subcommand("sync", "Full pipeline: import → scan → verify");
@@ -179,20 +179,20 @@ int main(int argc, char** argv) {
   auto* cmd_report = app.add_subcommand("report", "Generate a collection report");
   std::string report_type = "summary";
   std::string report_format = "text";
-  std::string report_system;
+  std::string report_dat;
   cmd_report->add_option("type", report_type, "Report type (summary/missing/duplicates/unverified)")
       ->default_str("summary");
   cmd_report->add_option("--format,-f", report_format, "Output format (text/csv/json)")
       ->default_str("text");
-  cmd_report->add_option("--system,-s", report_system, "Filter by system name");
+  cmd_report->add_option("--dat,-d", report_dat, "Filter by DAT name");
 
-  // ── systems ────────────────────────────────────────────────
-  auto* cmd_systems = app.add_subcommand("systems", "List all known systems");
+  // ── dats ───────────────────────────────────────────────────
+  auto* cmd_dats = app.add_subcommand("dats", "List all imported DAT versions");
 
   // ── status ─────────────────────────────────────────────────
   auto* cmd_status = app.add_subcommand("status", "Show database state summary");
-  std::string status_system;
-  cmd_status->add_option("--system,-s", status_system, "Filter by system name");
+  std::string status_dat;
+  cmd_status->add_option("--dat,-d", status_dat, "Filter by DAT name");
 
   app.require_subcommand(1);
 
@@ -243,8 +243,8 @@ int main(int argc, char** argv) {
 
     // ── verify ───────────────────────────────────────────────
     else if (cmd_verify->parsed()) {
-      auto sys = verify_system.empty() ? std::nullopt : std::optional{verify_system};
-      auto result = svc.verify(sys);
+      auto dat = verify_dat.empty() ? std::nullopt : std::optional{verify_dat};
+      auto result = svc.verify(dat);
       if (!result) {
         std::print(stderr, "Error: {}\n", result.error().message);
         return 1;
@@ -287,8 +287,8 @@ int main(int argc, char** argv) {
         fmt = romulus::core::ReportFormat::Json;
       }
 
-      auto sys = report_system.empty() ? std::nullopt : std::optional{report_system};
-      auto result = svc.generate_report(type, fmt, sys);
+      auto dat = report_dat.empty() ? std::nullopt : std::optional{report_dat};
+      auto result = svc.generate_report(type, fmt, dat);
       if (!result) {
         std::print(stderr, "Error: {}\n", result.error().message);
         return 1;
@@ -296,29 +296,28 @@ int main(int argc, char** argv) {
       std::print("{}", *result);
     }
 
-    // ── systems ──────────────────────────────────────────────
-    else if (cmd_systems->parsed()) {
-      auto result = svc.list_systems();
+    // ── dats ─────────────────────────────────────────────────
+    else if (cmd_dats->parsed()) {
+      auto result = svc.list_dat_versions();
       if (!result) {
         std::print(stderr, "Error: {}\n", result.error().message);
         return 1;
       }
       if (result->empty()) {
-        std::print("No systems registered. Import a DAT file first.\n");
+        std::print("No DAT versions imported. Use 'import-dat' first.\n");
       } else {
-        std::print("Known systems:\n");
-        for (const auto& sys : *result) {
-          std::print(
-              "  {}{}\n", sys.name, sys.short_name.empty() ? "" : " (" + sys.short_name + ")");
+        std::print("Imported DATs:\n");
+        for (const auto& dv : *result) {
+          std::print("  {} v{} (imported: {})\n", dv.name, dv.version, dv.imported_at);
         }
       }
     }
 
     // ── status ───────────────────────────────────────────────
     else if (cmd_status->parsed()) {
-      auto sys = status_system.empty() ? std::nullopt : std::optional{status_system};
+      auto dat = status_dat.empty() ? std::nullopt : std::optional{status_dat};
       auto result = svc.generate_report(
-          romulus::core::ReportType::Summary, romulus::core::ReportFormat::Text, sys);
+          romulus::core::ReportType::Summary, romulus::core::ReportFormat::Text, dat);
       if (!result) {
         std::print(stderr, "Error: {}\n", result.error().message);
         return 1;

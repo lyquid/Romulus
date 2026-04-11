@@ -1271,14 +1271,14 @@ void GuiApp::action_check_dat() {
 
   const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
   auto dat_id = dv.id;
-  auto system_name = dv.name;
+  auto dat_name = dv.name;
 
   status_message_ = "Verifying and checking DAT... Please wait.";
   pending_task_ = PendingTask{
       .result = std::async(std::launch::async,
-                           [this, dat_id, system_name]() -> std::string {
+                           [this, dat_id, dat_name]() -> std::string {
                              // Run verify first to update statuses
-                             auto verify_result = svc_.verify(system_name);
+                             auto verify_result = svc_.verify(dat_name);
                              if (!verify_result) {
                                ROMULUS_WARN("Verification step failed: {}",
                                             verify_result.error().message);

@@ -6,90 +6,52 @@
 namespace romulus::engine {
 
 auto Classifier::classify_all(database::Database& db,
-                              std::optional<std::int64_t> system_id) -> Result<void> {
-  // Get all systems to process
-  std::vector<core::SystemInfo> systems_to_process;
+                              std::optional<std::int64_t> dat_version_id) -> Result<void> {
+  std::vector<core::RomInfo> roms_to_process;
 
-  if (system_id.has_value()) {
-    auto all_systems = db.get_all_systems();
-    if (!all_systems) {
-      return std::unexpected(all_systems.error());
+  if (dat_version_id.has_value()) {
+    auto roms = db.get_roms_for_dat_version(*dat_version_id);
+    if (!roms) {
+      return std::unexpected(roms.error());
     }
-    for (const auto& sys : *all_systems) {
-      if (sys.id == *system_id) {
-        systems_to_process.push_back(sys);
-        break;
-      }
-    }
+    roms_to_process = std::move(*roms);
   } else {
-    auto all_systems = db.get_all_systems();
-    if (!all_systems) {
-      return std::unexpected(all_systems.error());
+    auto roms = db.get_all_roms();
+    if (!roms) {
+      return std::unexpected(roms.error());
     }
-    systems_to_process = std::move(*all_systems);
+    roms_to_process = std::move(*roms);
   }
 
-  ROMULUS_INFO("Classifying ROMs for {} system(s)...", systems_to_process.size());
+  ROMULUS_INFO("Classifying {} ROM(s)...", roms_to_process.size());
 
-  auto txn = db.begin_transaction();
   std::int64_t verified = 0;
   std::int64_t missing = 0;
   std::int64_t unverified = 0;
   std::int64_t mismatch = 0;
 
-  for (const auto& sys : systems_to_process) {
-    auto roms = db.get_all_roms_for_system(sys.id);
-    if (!roms) {
-      ROMULUS_WARN("Failed to get ROMs for system '{}': {}", sys.name, roms.error().message);
+  for (const auto& rom : roms_to_process) {
+    auto status = db.get_computed_rom_status(rom.id);
+    if (!status) {
+      ROMULUS_WARN("Failed to compute status for ROM '{}': {}", rom.name, status.error().message);
       continue;
     }
 
-    for (const auto& rom : *roms) {
-      auto matches = db.get_matches_for_rom(rom.id);
-      if (!matches) {
-        continue;
-      }
-
-      core::RomStatusType status;
-
-      if (matches->empty()) {
-        status = core::RomStatusType::Missing;
+    switch (*status) {
+      case core::RomStatusType::Verified:
+        ++verified;
+        break;
+      case core::RomStatusType::Missing:
         ++missing;
-      } else {
-        // Check best match type based on whether we ACTUALLY have the file
-        bool has_exact = false;
-        bool has_partial = false;
-        for (const auto& m : *matches) {
-          auto has_files = db.has_files_for_global_rom(m.global_rom_sha1);
-          if (has_files && has_files.value()) {
-            if (m.match_type == core::MatchType::Exact) {
-              has_exact = true;
-            } else if (m.match_type != core::MatchType::NoMatch) {
-              has_partial = true;
-            }
-          }
-        }
-
-        if (has_exact) {
-          status = core::RomStatusType::Verified;
-          ++verified;
-        } else if (has_partial) {
-          status = core::RomStatusType::Unverified;
-          ++unverified;
-        } else {
-          status = core::RomStatusType::Mismatch;
-          ++mismatch;
-        }
-      }
-
-      auto result = db.upsert_rom_status(rom.id, status);
-      if (!result) {
-        ROMULUS_WARN("Failed to update status for ROM '{}': {}", rom.name, result.error().message);
-      }
+        break;
+      case core::RomStatusType::Unverified:
+        ++unverified;
+        break;
+      case core::RomStatusType::Mismatch:
+        ++mismatch;
+        break;
     }
   }
-
-  txn.commit();
 
   ROMULUS_INFO("Classification complete: {} verified, {} missing, {} unverified, {} mismatch",
                verified,

@@ -41,6 +41,16 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
     return std::unexpected(checksum.error());
   }
 
+  // Check if already imported by checksum (fast path — avoids full parse on re-import).
+  // Two DAT files with the same checksum are treated as identical regardless of name/version;
+  // this prevents re-importing a file that was merely renamed or repackaged.
+  auto existing_by_checksum = db_->find_dat_version_by_checksum(*checksum);
+  if (existing_by_checksum && existing_by_checksum->has_value()) {
+    ROMULUS_INFO("DAT already imported (checksum match): '{}'",
+                 existing_by_checksum->value().name);
+    return existing_by_checksum->value();
+  }
+
   // Parse DAT
   dat::DatParser parser;
   auto dat_file = parser.parse(*validated);
@@ -48,22 +58,8 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
     return std::unexpected(dat_file.error());
   }
 
-  // Check if already imported
-  auto existing = db_->find_dat_version(dat_file->header.name, dat_file->header.version);
-  if (existing && existing->has_value()) {
-    ROMULUS_INFO("DAT already imported: '{}' v{}", dat_file->header.name, dat_file->header.version);
-    return existing->value();
-  }
-
-  // Get or create system
-  auto system_id = db_->get_or_create_system(dat_file->header.name);
-  if (!system_id) {
-    return std::unexpected(system_id.error());
-  }
-
   // Store DAT version
   core::DatVersion dat_version{
-      .system_id = *system_id,
       .name = dat_file->header.name,
       .version = dat_file->header.version,
       .source_url = validated->string(),
@@ -77,27 +73,14 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
   }
   dat_version.id = *dat_id;
 
-  // Store games and ROMs in a transaction
+  // Store ROMs in a transaction (games are denormalized into roms.game_name)
   auto txn = db_->begin_transaction();
 
   for (const auto& game : dat_file->games) {
-    core::GameInfo game_entry{
-        .name = game.name,
-        .description = {},
-        .system_id = *system_id,
-        .dat_version_id = *dat_id,
-        .roms = {},
-    };
-
-    auto game_id = db_->insert_game(game_entry);
-    if (!game_id) {
-      ROMULUS_WARN("Failed to insert game '{}': {}", game.name, game_id.error().message);
-      continue;
-    }
-
     for (const auto& rom : game.roms) {
       core::RomInfo rom_entry{
-          .game_id = *game_id,
+          .dat_version_id = *dat_id,
+          .game_name = game.name,
           .name = rom.name,
           .size = rom.size,
           .crc32 = rom.crc32,
@@ -196,20 +179,24 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
   return result->report;
 }
 
-auto RomulusService::verify(std::optional<std::string> system) -> Result<void> {
-  auto sys_id = resolve_system_id(system);
-  if (!sys_id) {
-    return std::unexpected(sys_id.error());
-  }
-
+auto RomulusService::verify(std::optional<std::string> dat_name) -> Result<void> {
   // Step 1: Match files to ROMs
   auto matches = engine::Matcher::match_all(*db_);
   if (!matches) {
     return std::unexpected(matches.error());
   }
 
-  // Step 2: Classify ROM statuses
-  return engine::Classifier::classify_all(*db_, *sys_id);
+  // Step 2: Classify and log ROM statuses
+  std::optional<std::int64_t> dat_id;
+  if (dat_name.has_value()) {
+    auto dat_id_result = resolve_dat_version_id(*dat_name);
+    if (!dat_id_result) {
+      return std::unexpected(dat_id_result.error());
+    }
+    dat_id = *dat_id_result;
+  }
+
+  return engine::Classifier::classify_all(*db_, dat_id);
 }
 
 auto RomulusService::full_sync(const std::filesystem::path& dat_path,
@@ -242,17 +229,17 @@ auto RomulusService::full_sync(const std::filesystem::path& dat_path,
 // Queries
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::get_summary(std::optional<std::string> system)
+auto RomulusService::get_summary(std::optional<std::string> dat_name)
     -> Result<core::CollectionSummary> {
-  auto sys_id = resolve_system_id(system);
-  if (!sys_id) {
-    return std::unexpected(sys_id.error());
+  std::optional<std::int64_t> dat_id;
+  if (dat_name.has_value()) {
+    auto id_result = resolve_dat_version_id(*dat_name);
+    if (!id_result) {
+      return std::unexpected(id_result.error());
+    }
+    dat_id = *id_result;
   }
-  return db_->get_collection_summary(*sys_id);
-}
-
-auto RomulusService::list_systems() -> Result<std::vector<core::SystemInfo>> {
-  return db_->get_all_systems();
+  return db_->get_collection_summary(dat_id);
 }
 
 auto RomulusService::list_dat_versions() -> Result<std::vector<core::DatVersion>> {
@@ -270,10 +257,10 @@ auto RomulusService::get_roms_with_status(std::int64_t dat_version_id)
   result.reserve(roms->size());
 
   for (auto& rom : *roms) {
-    auto status = db_->get_rom_status(rom.id);
+    auto status = db_->get_computed_rom_status(rom.id);
     core::RomStatusType st = core::RomStatusType::Missing;
-    if (status && status->has_value()) {
-      st = status->value().status;
+    if (status) {
+      st = *status;
     }
     result.emplace_back(std::move(rom), st);
   }
@@ -281,13 +268,17 @@ auto RomulusService::get_roms_with_status(std::int64_t dat_version_id)
   return result;
 }
 
-auto RomulusService::get_missing_roms(std::optional<std::string> system)
+auto RomulusService::get_missing_roms(std::optional<std::string> dat_name)
     -> Result<std::vector<core::MissingRom>> {
-  auto sys_id = resolve_system_id(system);
-  if (!sys_id) {
-    return std::unexpected(sys_id.error());
+  std::optional<std::int64_t> dat_id;
+  if (dat_name.has_value()) {
+    auto id_result = resolve_dat_version_id(*dat_name);
+    if (!id_result) {
+      return std::unexpected(id_result.error());
+    }
+    dat_id = *id_result;
   }
-  return db_->get_missing_roms(*sys_id);
+  return db_->get_missing_roms(dat_id);
 }
 
 auto RomulusService::get_all_files() -> Result<std::vector<core::FileInfo>> {
@@ -300,14 +291,11 @@ auto RomulusService::get_all_files() -> Result<std::vector<core::FileInfo>> {
 
 auto RomulusService::purge_database() -> Result<void> {
   static constexpr std::array k_Tables = {
-      "rom_status",
       "rom_matches",
       "files",
       "global_roms",
       "roms",
-      "games",
       "dat_versions",
-      "systems",
   };
 
   auto txn = db_->begin_transaction();
@@ -353,12 +341,16 @@ auto RomulusService::remove_scan_directory(std::int64_t id) -> Result<void> {
 
 auto RomulusService::generate_report(core::ReportType type,
                                      core::ReportFormat format,
-                                     std::optional<std::string> system) -> Result<std::string> {
-  auto sys_id = resolve_system_id(system);
-  if (!sys_id) {
-    return std::unexpected(sys_id.error());
+                                     std::optional<std::string> dat_name) -> Result<std::string> {
+  std::optional<std::int64_t> dat_id;
+  if (dat_name.has_value()) {
+    auto id_result = resolve_dat_version_id(*dat_name);
+    if (!id_result) {
+      return std::unexpected(id_result.error());
+    }
+    dat_id = *id_result;
   }
-  return report::ReportGenerator::generate(*db_, type, format, *sys_id);
+  return report::ReportGenerator::generate(*db_, type, format, dat_id);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -381,22 +373,17 @@ auto RomulusService::query_db_table(std::string_view table_name) -> Result<core:
 // Helpers
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::resolve_system_id(const std::optional<std::string>& system)
-    -> Result<std::optional<std::int64_t>> {
-  if (!system.has_value()) {
-    return std::nullopt;
+auto RomulusService::resolve_dat_version_id(const std::string& dat_name)
+    -> Result<std::int64_t> {
+  auto found = db_->find_dat_version_by_name(dat_name);
+  if (!found) {
+    return std::unexpected(found.error());
   }
-
-  auto sys = db_->find_system_by_name(*system);
-  if (!sys) {
-    return std::unexpected(sys.error());
-  }
-  if (!sys->has_value()) {
+  if (!found->has_value()) {
     return std::unexpected(
-        core::Error{core::ErrorCode::NotFound, "System not found: '" + *system + "'"});
+        core::Error{core::ErrorCode::NotFound, "DAT not found: '" + dat_name + "'"});
   }
-
-  return sys->value().id;
+  return found->value().id;
 }
 
 } // namespace romulus::service
