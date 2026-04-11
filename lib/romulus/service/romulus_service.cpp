@@ -159,7 +159,9 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
   for (const auto& rom : result->files) {
     const core::FileInfo file{
         .path = rom.virtual_path(),
-        .archive_path = rom.archive_path.string(),
+        .archive_path = rom.is_archive_entry()
+                            ? std::optional<std::string>{rom.archive_path.string()}
+                            : std::nullopt,
         .entry_name = rom.entry_name,
         .size = rom.size,
         .crc32 = rom.hash_digest.to_hex_crc32(),

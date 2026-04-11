@@ -222,7 +222,6 @@ TEST_F(DatabaseTest, UpsertFileUpdatesExisting) {
   romulus::core::FileInfo file{
       .id = 0,
       .path = "/roms/test.bin",
-      .archive_path = "/roms/test.bin",
       .entry_name = std::nullopt,
       .size = 1024,
       .crc32 = "aabbccdd",
@@ -314,7 +313,6 @@ TEST_F(DatabaseTest, FindsDuplicateFiles) {
   romulus::core::FileInfo file1{
       .id = 0,
       .path = "/roms/copy1.bin",
-      .archive_path = "/roms/copy1.bin",
       .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "aaaaaaaa",
@@ -325,7 +323,6 @@ TEST_F(DatabaseTest, FindsDuplicateFiles) {
   romulus::core::FileInfo file2{
       .id = 0,
       .path = "/roms/copy2.bin",
-      .archive_path = "/roms/copy2.bin",
       .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "aaaaaaaa",
@@ -350,7 +347,6 @@ TEST_F(DatabaseTest, FindsUnverifiedFiles) {
   romulus::core::FileInfo orphan{
       .id = 0,
       .path = "/roms/orphan.bin",
-      .archive_path = "/roms/orphan.bin",
       .entry_name = std::nullopt,
       .size = 50,
       .crc32 = "bbbbbbbb",
@@ -461,7 +457,6 @@ TEST_F(DatabaseTest, ComputedRomStatusVerifiedWhenExactMatchAndFileExists) {
 
   romulus::core::FileInfo file{.id = 0,
                                .path = "/roms/r.bin",
-                               .archive_path = "/roms/r.bin",
                                .entry_name = std::nullopt,
                                .size = 100,
                                .crc32 = {},

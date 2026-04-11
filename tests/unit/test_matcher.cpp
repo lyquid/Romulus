@@ -79,7 +79,6 @@ protected:
     // File 1: exact match against ROM 1 via SHA1+MD5+CRC32
     romulus::core::FileInfo file{
         .path = "/roms/test.bin",
-        .archive_path = "/roms/test.bin",
         .entry_name = std::nullopt,
         .size = 100,
         .crc32 = "aabb0011",
@@ -92,7 +91,6 @@ protected:
     // File 2: matches ROM 2 only via SHA256 — lower hashes differ
     romulus::core::FileInfo file_sha256_only{
         .path = "/roms/sha256_only.bin",
-        .archive_path = "/roms/sha256_only.bin",
         .entry_name = std::nullopt,
         .size = 200,
         .crc32 = "ff110044",
@@ -107,7 +105,6 @@ protected:
     // File 3: no match at all
     romulus::core::FileInfo other{
         .path = "/roms/unknown.bin",
-        .archive_path = "/roms/unknown.bin",
         .entry_name = std::nullopt,
         .size = 200,
         .crc32 = "00000000",

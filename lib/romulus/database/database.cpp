@@ -288,7 +288,7 @@ CREATE TABLE IF NOT EXISTS global_roms (
 CREATE TABLE IF NOT EXISTS files (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     path          TEXT NOT NULL COLLATE NOCASE,
-    archive_path  TEXT NOT NULL,
+    archive_path  TEXT,
     entry_name    TEXT,
     size          INTEGER NOT NULL,
     crc32         BLOB,
@@ -923,7 +923,11 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
   }
 
   stmt->bind_text(1, file.path);
-  stmt->bind_text(2, file.archive_path);
+  if (file.archive_path.has_value()) {
+    stmt->bind_text(2, *file.archive_path);
+  } else {
+    stmt->bind_null(2);
+  }
   if (file.entry_name.has_value()) {
     stmt->bind_text(3, *file.entry_name);
   } else {
@@ -968,7 +972,7 @@ auto Database::find_file_by_path(std::string_view path) -> Result<std::optional<
   return core::FileInfo{
       .id = stmt->column_int64(0),
       .path = stmt->column_text(1),
-      .archive_path = stmt->column_text(2),
+      .archive_path = stmt->column_optional_text(2),
       .entry_name = stmt->column_optional_text(3),
       .size = stmt->column_int64(4),
       .crc32 = bytes_to_hex(stmt->column_blob(5)),
@@ -991,7 +995,7 @@ auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
     files.push_back({
         .id = stmt->column_int64(0),
         .path = stmt->column_text(1),
-        .archive_path = stmt->column_text(2),
+        .archive_path = stmt->column_optional_text(2),
         .entry_name = stmt->column_optional_text(3),
         .size = stmt->column_int64(4),
         .crc32 = bytes_to_hex(stmt->column_blob(5)),
@@ -1402,7 +1406,7 @@ auto Database::get_unverified_files() -> Result<std::vector<core::FileInfo>> {
     unverified.push_back({
         .id = stmt->column_int64(0),
         .path = stmt->column_text(1),
-        .archive_path = stmt->column_text(2),
+        .archive_path = stmt->column_optional_text(2),
         .entry_name = stmt->column_optional_text(3),
         .size = stmt->column_int64(4),
         .crc32 = bytes_to_hex(stmt->column_blob(5)),

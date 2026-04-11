@@ -152,9 +152,9 @@ struct GlobalRom {
 /// A file discovered during filesystem scanning.
 struct FileInfo {
   std::int64_t id = 0;
-  std::string path;                       ///< Virtual path — unique storage key ("archive.zip::entry.rom" or "/bare/path.rom")
-  std::string archive_path;               ///< Physical path to the file on disk, or the archive containing this entry
-  std::optional<std::string> entry_name;  ///< Set when this file lives inside an archive; absent for bare files
+  std::string path;                                ///< Virtual path — unique storage key ("archive.zip::entry.rom" or "/bare/path.rom")
+  std::optional<std::string> archive_path;         ///< Physical archive path; absent (NULL) for bare files — derive path from \c path field
+  std::optional<std::string> entry_name;           ///< Set when this file lives inside an archive; absent for bare files
   std::int64_t size = 0;
   std::string crc32;
   std::string md5;
