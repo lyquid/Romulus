@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 namespace romulus::database {
@@ -1597,7 +1598,25 @@ auto Database::query_table_data(std::string_view table_name) -> Result<core::Tab
 
   // ── Step 4: All rows — no artificial row limit ───────────────────
   // BLOBs are converted to lowercase hex by column_display_text().
-  auto select_stmt = prepare("SELECT * FROM " + quote_identifier(tname));
+  // INTEGER columns that store Unix epoch seconds are wrapped in
+  // datetime(..., 'unixepoch', 'localtime') so they render as
+  // "YYYY-MM-DD HH:MM:SS" in the DB browser, matching the TEXT
+  // timestamp columns (imported_at, added_at).
+  static const std::unordered_set<std::string> k_EpochColumns{"last_scanned"};
+  std::string col_list;
+  for (std::size_t i = 0; i < result.columns.size(); ++i) {
+    if (i > 0) {
+      col_list += ", ";
+    }
+    const auto& cname = result.columns[i].name;
+    if (k_EpochColumns.contains(cname)) {
+      col_list += "datetime(" + quote_identifier(cname) +
+                  ", 'unixepoch', 'localtime') AS " + quote_identifier(cname);
+    } else {
+      col_list += quote_identifier(cname);
+    }
+  }
+  auto select_stmt = prepare("SELECT " + col_list + " FROM " + quote_identifier(tname));
   if (!select_stmt) {
     return std::unexpected(select_stmt.error());
   }
