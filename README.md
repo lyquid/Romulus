@@ -53,10 +53,11 @@ romulus report summary
 | Power-Up | Effect |
 | ---------- | -------- |
 | 🗂️ **DAT Import** | Parses No-Intro LogiqX XML format — the sacred scrolls of preservation |
+| 🎮 **Normalized Games** | Each game name stored once per DAT version in its own `games` table — no duplicates, ready for metadata |
 | 🗜️ **Archive Support** | Reads zip/7z files without extracting to disk — no mess, no fuss |
 | ⚡ **Parallel Hashing** | CRC32 + MD5 + SHA1 in a single pass using all CPU cores — *TURBO MODE* |
 | 🧠 **Smart Scanning** | Skips unchanged files, tracks modifications — smarter than a save-state |
-| 🎯 **Multi-Hash Matching** | SHA1 > MD5 > CRC32 priority — triple-verified, like a 100% save file |
+| 🎯 **Multi-Hash Matching** | SHA1 > SHA256 > MD5 > CRC32 priority — triple-verified, like a 100% save file |
 | 📊 **Reports** | Summary, missing ROMs, duplicates in text/CSV/JSON — the high score board |
 | 🗂️ **Multi-DAT** | Import and track multiple DAT files in one database — all your cartridges, one shelf |
 
@@ -191,51 +192,104 @@ romulus status
 The core purpose of Romulus is simple: **compare ROM files on your hard drive against what a DAT file says should exist**.  
 The schema is built around that single question.
 
-### The three key tables
+### The tables and their roles
 
 | Table | What it stores | Why it exists |
 |-------|---------------|---------------|
-| `roms` | The **expected** ROM entries declared by a DAT file (`expected_sha1`, `crc32`, `md5`, size, game name). | *Opinion* — what the DAT author says a correct ROM looks like. |
-| `files` | Every ROM **file found on disk** (path, size, hashes). Points into `global_roms` via its SHA-1. | *Reality* — what is actually sitting in your scan folders. |
-| `global_roms` | **Content-addressable file identity** keyed by SHA-1. Multiple paths can map to the same content blob. | Deduplication — the same binary dumped to two folders is one `global_rom`, two `files`. |
+| `dat_versions` | Each imported DAT file (name, version, system description, SHA-256 checksum). Unique by checksum so the same file can't be imported twice. | The rulebook — what a given publisher decided correct ROMs look like. |
+| `games` | Normalized game entries — one row per unique game name per DAT version. | Eliminates duplication: 10 ROMs for the same game share one `games` row rather than duplicating the name 10 times. |
+| `roms` | The **expected** ROM entries declared by a DAT (`expected_sha1`, `crc32`, `md5`, size). Each ROM is a child of a `games` row via `game_id` FK. | *Opinion* — what the DAT author says a correct ROM looks like. |
+| `files` | Every ROM **file found on disk** (virtual path, optional archive_path, optional entry_name, size, hashes, Unix scan timestamp). Points into `global_roms` via `sha1`. | *Reality* — what is actually sitting in your scan folders. Archive entries are first-class: `archive_path` (NULL for bare files) + `entry_name` are stored separately. |
+| `global_roms` | **Content-addressable file identity** keyed by SHA-1. Multiple paths can map to the same content blob. | Deduplication — the same binary in two folders is one `global_rom`, two `files`. |
+| `rom_matches` | Which `global_rom` satisfies each `rom`, and *how* (`match_type` integer enum). | The verdict per ROM — populated by the matcher, queried by the classifier. |
+| `scanned_directories` | User-registered scan folders, persisted across sessions. | Remember where to look without re-adding every launch. |
 
 ### How they connect
 
 ```text
-dat_versions ──< roms          (expected: what the DAT declared)
-                   │
-                   └── rom_matches ──> global_roms <── files
-                        (match_type)   (SHA-1 PK)    (path on disk)
+dat_versions ──< games ──< roms
+                              │
+                              └── rom_matches ──> global_roms <── files
+                                   (match_type)   (SHA-1 PK)    (path on disk)
 ```
 
-`rom_matches` is the **bridge**: for every `rom` (expected), it records which `global_rom` (actual) satisfies it, and *how* it was matched (`0=Exact`, `1=SHA-256 only`, `2=SHA-1 only`, … `6=NoMatch`).
+`rom_matches` is the **bridge**: for every `rom` (expected), it records which `global_rom` (actual) satisfies it, and *how* it was matched:
 
-### Verification flow
+| `match_type` | Value | Meaning |
+|---|---|---|
+| `Exact` | 0 | CRC32 + MD5 + SHA1 all agree — gold standard |
+| `Sha256Only` | 1 | Only SHA-256 matches (enriched DAT entry) |
+| `Sha1Only` | 2 | Only SHA-1 matches |
+| `Md5Only` | 3 | Only MD5 matches |
+| `Crc32Only` | 4 | Only CRC32 matches |
+| `NoMatch` | 5 | No match found |
+
+### Workflow — step by step
 
 ```text
-1. Import DAT   → fills dat_versions + roms        (expectation)
-2. Scan folders → fills global_roms + files        (reality)
-3. Match        → fills rom_matches                (verdict per ROM)
-4. Classify     → queries rom_matches dynamically  (Verified/Missing/Unverified/Mismatch)
-5. Report       → reads classified results         (Text / CSV / JSON)
+┌──────────────────────────────────────────────────────────────────────┐
+│  1. IMPORT DAT                                                        │
+│     romulus import-dat "Nintendo - Game Boy (20240101).dat"           │
+│                                                                       │
+│     Parses the LogiqX XML → inserts:                                  │
+│       dat_versions (one row)                                          │
+│       games        (one row per unique game name)                     │
+│       roms         (one row per ROM entry, linked to its game)        │
+│                                                                       │
+│  2. SCAN FOLDERS                                                      │
+│     romulus scan /path/to/roms/GameBoy                                │
+│                                                                       │
+│     Walks the directory, hashes each file (CRC32+MD5+SHA1 in one     │
+│     pass) → inserts/updates:                                          │
+│       global_roms  (content identity, keyed by SHA-1)                │
+│       files        (path → global_rom link)                          │
+│     Already-known files with unchanged size/mtime are skipped.       │
+│     Archive files (zip/7z) are opened and each entry hashed.         │
+│                                                                       │
+│  3. MATCH  (romulus verify, step 1)                                   │
+│     Compares every rom against every global_rom in priority order:   │
+│       SHA-1 → SHA-256 → MD5 → CRC32                                 │
+│     → inserts rom_matches rows with the match_type verdict           │
+│                                                                       │
+│  4. CLASSIFY  (romulus verify, step 2)                                │
+│     Reads rom_matches + files via CTE — no separate status table:    │
+│       Verified   — exact match and file exists on disk               │
+│       Missing    — no match entry at all                             │
+│       Unverified — partial match (SHA-1/MD5/CRC32 only) + file live  │
+│       Mismatch   — match recorded but file since deleted             │
+│                                                                       │
+│  5. REPORT                                                            │
+│     romulus report summary [--format text|csv|json]                  │
+│     romulus report missing  [--format text|csv|json]                 │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-ROM **status is never stored** — it is computed live from `rom_matches`, so it can never go stale.
+ROM **status is never stored** — it is computed live from `rom_matches` + `files` so it can never go stale.
+
+### Verification flow (condensed)
+
+```text
+1. Import DAT   → dat_versions + games + roms      (expectation)
+2. Scan folders → global_roms + files              (reality)
+3. Match        → rom_matches                      (verdict per ROM)
+4. Classify     → CTE over rom_matches + files     (Verified/Missing/Unverified/Mismatch)
+5. Report       → reads classified results         (Text / CSV / JSON)
+```
 
 ---
 
 ## ⚙️ Pipeline (The Journey)
 
-Each stage processes ROMs sequentially — the output of one feeds the next, with verification results classified into one of the status categories shown.
+Each stage processes ROMs sequentially — the output of one feeds the next, with verification results classified into one of the four status categories.
 
 ```text
-DAT Import → Scan → Hash → Match → Classify → Report
-    │          │       │       │        │          │
-    ▼          ▼       ▼       ▼        ▼          ▼
-dat_versions Files   CRC32    SHA1    Verified    Text
- roms        Scan    MD5      MD5     Missing     CSV
-             Skip    SHA1     CRC32   Unverified  JSON
-             Arch.
+DAT Import → Scan  → Hash  → Match  → Classify   → Report
+    │          │       │        │          │           │
+    ▼          ▼       ▼        ▼          ▼           ▼
+dat_versions  Files  CRC32    SHA-1     Verified     Text
+games         Scan   MD5      SHA-256   Missing      CSV
+roms          Skip   SHA-1    MD5       Unverified   JSON
+              Arch.           CRC32     Mismatch
 
 👾 "It's dangerous to go alone! Take this pipeline." 👾
 ```

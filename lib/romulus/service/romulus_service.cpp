@@ -62,6 +62,7 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
   core::DatVersion dat_version{
       .name = dat_file->header.name,
       .version = dat_file->header.version,
+      .system = dat_file->header.description,
       .source_url = validated->string(),
       .checksum = *checksum,
       .imported_at = {},
@@ -73,14 +74,20 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
   }
   dat_version.id = *dat_id;
 
-  // Store ROMs in a transaction (games are denormalized into roms.game_name)
+  // Store each game and its ROMs in a transaction.
+  // Games are now normalized: one games row per (dat_version_id, name).
   auto txn = db_->begin_transaction();
 
   for (const auto& game : dat_file->games) {
+    auto game_id = db_->find_or_insert_game(*dat_id, game.name);
+    if (!game_id) {
+      ROMULUS_WARN("Failed to insert game '{}': {}", game.name, game_id.error().message);
+      continue;
+    }
+
     for (const auto& rom : game.roms) {
       core::RomInfo rom_entry{
-          .dat_version_id = *dat_id,
-          .game_name = game.name,
+          .game_id = *game_id,
           .name = rom.name,
           .size = rom.size,
           .crc32 = rom.crc32,
@@ -151,15 +158,16 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
 
   for (const auto& rom : result->files) {
     const core::FileInfo file{
-        .filename = rom.filename(),
         .path = rom.virtual_path(),
+        .archive_path = rom.is_archive_entry()
+                            ? std::optional<std::string>{rom.archive_path.string()}
+                            : std::nullopt,
+        .entry_name = rom.entry_name,
         .size = rom.size,
         .crc32 = rom.hash_digest.to_hex_crc32(),
         .md5 = rom.hash_digest.to_hex_md5(),
         .sha1 = rom.hash_digest.to_hex_sha1(),
         .sha256 = rom.hash_digest.to_hex_sha256(),
-        .last_scanned = {},
-        .is_archive_entry = rom.is_archive_entry(),
     };
     auto upsert = db_->upsert_file(file);
     if (!upsert) {
@@ -290,11 +298,19 @@ auto RomulusService::get_all_files() -> Result<std::vector<core::FileInfo>> {
 // ═══════════════════════════════════════════════════════════════
 
 auto RomulusService::purge_database() -> Result<void> {
+  // Deletion order must respect FK constraints (children before parents):
+  //   rom_matches  →  roms, global_roms
+  //   files        →  global_roms
+  //   global_roms  (no remaining children)
+  //   roms         →  games
+  //   games        →  dat_versions
+  //   dat_versions (no remaining children)
   static constexpr std::array k_Tables = {
       "rom_matches",
       "files",
       "global_roms",
       "roms",
+      "games",
       "dat_versions",
   };
 

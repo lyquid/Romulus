@@ -71,20 +71,34 @@ struct DatVersion {
   std::int64_t id = 0;
   std::string name;
   std::string version;
+  std::string system = {};     ///< Human-readable system description from the DAT <description> tag
   std::string source_url;
   std::string checksum;
   std::string imported_at;
 };
 
-// ── ROM & Game ───────────────────────────────────────────────
+// ── Game ─────────────────────────────────────────────────────
+
+/// A game entry in the database — one game contains one or more ROMs.
+/// Normalizes the game name so it is stored exactly once per DAT version.
+/// During parsing, GameInfo is the transient in-memory form; GameEntry is the persisted form.
+struct GameEntry {
+  std::int64_t id = 0;
+  std::int64_t dat_version_id = 0; ///< FK to dat_versions.id
+  std::string name;
+};
+
+// ── ROM ──────────────────────────────────────────────────────
 
 /// A single ROM entry from a DAT file.
 /// expected_sha1 (stored as `expected_sha1` in the DB) is the authoritative identity
 /// hash declared by the DAT, distinct from global_roms.sha1 which is the actual file hash.
+///
+/// Storage fields (written on INSERT): game_id, name, size, crc32, md5, sha1, sha256, region.
+/// Display fields (populated via JOIN on SELECT, not stored in roms): dat_version_id, game_name.
 struct RomInfo {
   std::int64_t id = 0;
-  std::int64_t dat_version_id = 0; ///< Foreign key to dat_versions.id
-  std::string game_name;           ///< Game name from the DAT (denormalized for display)
+  std::int64_t game_id = 0;        ///< FK to games.id
   std::string name;
   std::int64_t size = 0;
   std::string crc32;
@@ -92,6 +106,9 @@ struct RomInfo {
   std::string sha1;   ///< Expected SHA-1 from the DAT (stored as expected_sha1 in DB)
   std::string sha256;
   std::string region;
+  // Display-only fields — populated via JOIN on SELECT, never stored directly in roms:
+  std::int64_t dat_version_id = 0; ///< From games.dat_version_id
+  std::string game_name = {};      ///< From games.name
 };
 
 /// A game entry parsed from a DAT file, containing one or more ROMs.
@@ -135,15 +152,18 @@ struct GlobalRom {
 /// A file discovered during filesystem scanning.
 struct FileInfo {
   std::int64_t id = 0;
-  std::string filename; ///< Filename component (e.g. "game.rom")
-  std::string path;     ///< Full filesystem path (or archive_path::entry_name)
+  std::string path;                                ///< Virtual path — unique storage key ("archive.zip::entry.rom" or "/bare/path.rom")
+  std::optional<std::string> archive_path;         ///< Physical archive path; absent (NULL) for bare files — derive path from \c path field
+  std::optional<std::string> entry_name;           ///< Set when this file lives inside an archive; absent for bare files
   std::int64_t size = 0;
   std::string crc32;
   std::string md5;
   std::string sha1; ///< Primary anchor linking to global_roms.sha1
   std::string sha256;
-  std::string last_scanned;
-  bool is_archive_entry = false; ///< True if this file is inside an archive
+  std::int64_t last_scanned = 0; ///< Unix epoch seconds (strftime('%s','now'))
+
+  /// Returns true when this file was extracted from an archive entry.
+  [[nodiscard]] auto is_archive_entry() const noexcept -> bool { return entry_name.has_value(); }
 };
 
 // ── Matching ─────────────────────────────────────────────────
@@ -155,7 +175,6 @@ enum class MatchType {
   Sha1Only,   ///< Only SHA1 matches
   Md5Only,    ///< Only MD5 matches
   Crc32Only,  ///< Only CRC32 matches
-  SizeOnly,   ///< Only file size matches
   NoMatch,    ///< No match found
 };
 

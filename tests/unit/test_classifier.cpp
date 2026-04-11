@@ -40,9 +40,13 @@ protected:
 TEST_F(ClassifierTest, ClassifiesVerifiedAndMissing) {
   auto dat_id = create_dat();
 
+  auto game_id_a = db_->find_or_insert_game(dat_id, "Game A");
+  ASSERT_TRUE(game_id_a.has_value());
+  auto game_id_b = db_->find_or_insert_game(dat_id, "Game B");
+  ASSERT_TRUE(game_id_b.has_value());
+
   // ROM with a matching file — all valid hex
-  romulus::core::RomInfo rom1{.dat_version_id = dat_id,
-                              .game_name = "Game A",
+  romulus::core::RomInfo rom1{.game_id = *game_id_a,
                               .name = "matched.bin",
                               .size = 100,
                               .crc32 = "11111111",
@@ -53,8 +57,7 @@ TEST_F(ClassifierTest, ClassifiesVerifiedAndMissing) {
   ASSERT_TRUE(db_->insert_rom(rom1).has_value());
 
   // ROM without a matching file
-  romulus::core::RomInfo rom2{.dat_version_id = dat_id,
-                              .game_name = "Game B",
+  romulus::core::RomInfo rom2{.game_id = *game_id_b,
                               .name = "missing.bin",
                               .size = 200,
                               .crc32 = "22222222",
@@ -66,14 +69,14 @@ TEST_F(ClassifierTest, ClassifiesVerifiedAndMissing) {
 
   // File that matches rom1
   romulus::core::FileInfo file{
-      .filename = "matched.bin",
       .path = "/roms/matched.bin",
+      .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "11111111",
       .md5 = "11111111111111111111111111111111",
       .sha1 = "1111111111111111111111111111111111111111",
       .sha256 = "1111111111111111111111111111111111111111111111111111111111111111",
-      .last_scanned = {}};
+  };
   ASSERT_TRUE(db_->upsert_file(file).has_value());
 
   auto match_result = romulus::engine::Matcher::match_all(*db_);
@@ -92,9 +95,11 @@ TEST_F(ClassifierTest, ClassifiesVerifiedAndMissing) {
 TEST_F(ClassifierTest, ClassifiesUnverifiedWithPartialMatch) {
   auto dat_id = create_dat();
 
+  auto game_id = db_->find_or_insert_game(dat_id, "Game");
+  ASSERT_TRUE(game_id.has_value());
+
   // ROM defined in DAT with specific hashes
-  romulus::core::RomInfo rom{.dat_version_id = dat_id,
-                             .game_name = "Game",
+  romulus::core::RomInfo rom{.game_id = *game_id,
                              .name = "partial.bin",
                              .size = 100,
                              .crc32 = "aabb0011",
@@ -106,14 +111,14 @@ TEST_F(ClassifierTest, ClassifiesUnverifiedWithPartialMatch) {
 
   // File with SAME CRC32 but DIFFERENT SHA1/MD5 — will be a CRC32-only match
   romulus::core::FileInfo file{
-      .filename = "partial.bin",
       .path = "/roms/partial.bin",
+      .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "aabb0011",
       .md5 = "cc000000cc000000cc000000cc000000",
       .sha1 = "cc000000cc000000cc000000cc000000cc000000",
       .sha256 = "cc000000cc000000cc000000cc000000cc000000cc000000cc000000cc000000",
-      .last_scanned = {}};
+  };
   ASSERT_TRUE(db_->upsert_file(file).has_value());
 
   auto match_result = romulus::engine::Matcher::match_all(*db_);
@@ -134,9 +139,11 @@ TEST_F(ClassifierTest, ClassifiesUnverifiedWithPartialMatch) {
 TEST_F(ClassifierTest, ClassifiesMismatchWhenFileDeleted) {
   auto dat_id = create_dat();
 
+  auto game_id = db_->find_or_insert_game(dat_id, "Game");
+  ASSERT_TRUE(game_id.has_value());
+
   // ROM in DAT
-  romulus::core::RomInfo rom{.dat_version_id = dat_id,
-                             .game_name = "Game",
+  romulus::core::RomInfo rom{.game_id = *game_id,
                              .name = "gone.bin",
                              .size = 100,
                              .crc32 = "dd000000",

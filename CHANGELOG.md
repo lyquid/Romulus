@@ -7,6 +7,29 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🗄️ Database — Schema v4: archive modeling, system context, Unix timestamps, drop redundant columns
+
+- **Schema** (version → 4): `k_SchemaVersion` bumped to 4 — existing databases are auto-rebuilt on open.
+- **`files` table — archive modeling (#4)**: replaced the single `is_archive_entry INTEGER` flag with two explicit columns: `archive_path TEXT` (nullable — `NULL` for bare files, physical archive path for archive entries) and `entry_name TEXT` (in-archive entry name, `NULL` for bare files). For bare files the physical path is already stored in `path`, so `archive_path` is omitted entirely. `FileInfo::archive_path` changed from `std::string` to `std::optional<std::string>`.
+- **`files` table — drop `filename` (#3)**: removed the redundant `filename TEXT NOT NULL` column. The display filename is always derivable: `std::filesystem::path(entry_name).filename()` for archive entries, or `std::filesystem::path(path).filename()` for bare files — stored nowhere, derived on demand.
+- **GUI DB tab — human-readable timestamps**: `query_table_data()` now wraps known Unix epoch INTEGER columns (`last_scanned`) in `datetime(..., 'unixepoch', 'localtime')` in the SELECT statement, so the DB browser renders them as `"YYYY-MM-DD HH:MM:SS"` local time — matching the TEXT timestamp columns (`imported_at`, `added_at`). Storage stays as compact epoch integers.
+- **`dat_versions` table — system context (#5)**: added `system TEXT` column populated from the DAT `<description>` header field. Gives a human-readable system description separate from the short `name` identifier, and provides a hook for future system-level metadata.
+- **`core::FileInfo`**: removed `filename` and `bool is_archive_entry` fields; added `std::optional<std::string> archive_path` (NULL for bare files), `std::optional<std::string> entry_name`, and `[[nodiscard]] is_archive_entry() const` method (derived from `entry_name.has_value()`). `last_scanned` changed to `std::int64_t`.
+- **`core::DatVersion`**: added `std::string system` field populated via `DatHeader::description` on import.
+- **Service**: `import_dat()` sets `dat_version.system = header.description`; scan loop builds `FileInfo` with `archive_path` + `entry_name` from `ScannedROM`.
+- **All CRUD queries** (`upsert_file`, `find_file_by_path`, `get_all_files`, `get_unverified_files`, `insert_dat_version`, `find_dat_version*`, `get_all_dat_versions`) updated to the new column layouts.
+
+### 🗄️ Database — Normalize `game_name` into a proper `games` table
+
+- **Schema** (version → 4): Re-introduced a first-class `games` table (`id`, `dat_version_id` FK, `name`, `UNIQUE(dat_version_id, name)`). `roms.game_name TEXT` (denormalized copy) has been replaced by `roms.game_id INTEGER NOT NULL REFERENCES games(id)`. Each unique game name is now stored exactly once per DAT version, eliminating duplication and enabling future metadata (year, publisher, etc.) to be attached to game entries.
+- **Schema**: Added index `idx_games_dat_version ON games(dat_version_id)` and `idx_roms_game ON roms(game_id)` for fast per-DAT lookups.
+- **Schema versioning**: `k_SchemaVersion` bumped to 4 — existing databases are automatically rebuilt on open.
+- **Database API**: Added `Database::find_or_insert_game(dat_version_id, name) → Result<int64_t>` — idempotent upsert that returns the game id for the given `(dat_version_id, name)` pair.
+- **Database API**: Added `Database::get_games_for_dat_version(dat_version_id) → Result<vector<GameEntry>>` — returns all game entries for a DAT version, sorted by name.
+- **All ROM read queries** (`get_roms_for_dat_version`, `get_all_roms`, `find_rom_by_sha1`, `find_rom_by_sha256`, `find_rom_by_md5`, `find_rom_by_crc32`, `get_missing_roms`, `get_duplicate_files`, `get_collection_summary`) updated to JOIN `games` so `game_name` and `dat_version_id` are still available on `RomInfo` as convenience fields.
+- **types.hpp**: Added `core::GameEntry` struct (`id`, `dat_version_id`, `name`). `RomInfo::game_name` and `RomInfo::dat_version_id` are now **display-only / JOIN-populated fields** (moved to end of struct to avoid designated-initialiser warnings); `RomInfo::game_id` is the new storage FK.
+- **Service**: `RomulusService::import_dat()` now calls `find_or_insert_game` per game entry before inserting its ROMs with the returned `game_id`.
+
 ### 🗄️ Database — Schema & API Fixes (PR review)
 
 - **Schema**: `files.path` now declared `TEXT NOT NULL COLLATE NOCASE` at column level; `UNIQUE(path)` inherits the collation — fixes a SQLite conflict-target mismatch that could prevent `ON CONFLICT(path) DO UPDATE` from triggering on case-differing paths.
