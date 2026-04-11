@@ -7,6 +7,10 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 📖 Docs
+
+- **README rewrite**: Replaced ASCII art box borders in the workflow section with clean numbered steps and markdown formatting. Adopted a retro 1982-game-manual style with quirky section headers, tilde dividers, and a Gandalf-ism. All technical content preserved.
+
 ### 🗄️ Database — Schema v4: archive modeling, system context, Unix timestamps, drop redundant columns
 
 - **Schema** (version → 4): `k_SchemaVersion` bumped to 4 — existing databases are auto-rebuilt on open.
