@@ -48,4 +48,4 @@ desktop.ini
 compile_commands.json
 
 # ── Roms ─────────────────────────────────────────────────
-build-ci/
+roms/

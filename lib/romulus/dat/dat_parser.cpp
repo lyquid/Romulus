@@ -80,10 +80,9 @@ auto load_document_from_archive(const std::filesystem::path& dat_path,
     return std::unexpected(stream.error());
   }
 
-  // PugiXML does not implement DTD processing or external entity resolution, so XXE
-  // is not applicable here. Retain pugi::parse_default so that standard XML escape
-  // sequences (e.g. &amp;, &quot;, numeric references) in DAT text and attributes
-  // are decoded correctly.
+  // PugiXML does not resolve external entities/DTDs, so XXE is not applicable here.
+  // Keep default escape parsing enabled to preserve standard XML entity/character
+  // reference decoding in DAT text and attributes.
   const auto result = doc.load_buffer(xml_content.data(), xml_content.size(), pugi::parse_default);
   if (!result) {
     return std::unexpected(core::Error{core::ErrorCode::DatParseError,
@@ -102,9 +101,9 @@ auto load_document(const std::filesystem::path& dat_path,
     return load_document_from_archive(dat_path, doc);
   }
 
-  // PugiXML does not implement DTD processing or external entity resolution, so XXE
-  // is not applicable here. Keep default XML parsing behavior so standard escape
-  // sequences in DAT files are decoded correctly.
+  // Keep default XML parsing behavior so standard escape sequences in DAT files
+  // are decoded correctly. Any XXE-related static analysis concern should be
+  // handled via documentation or suppression rather than changing parse flags.
   const auto result = doc.load_file(dat_path.c_str(), pugi::parse_default);
   if (!result) {
     return std::unexpected(
