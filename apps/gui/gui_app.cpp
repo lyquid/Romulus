@@ -771,7 +771,7 @@ void GuiApp::render_dats_tab() {
 
   // ── Right panel: ROM detail ───────────────────────────────────
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0F, 6.0F));
-  ImGui::BeginChild("##roms_panel", ImVec2(right_w, 0.0F), true);
+  ImGui::BeginChild("##roms_panel", ImVec2(right_w, panel_h), true);
   ImGui::PopStyleVar();
 
   {
@@ -860,11 +860,21 @@ void GuiApp::render_dats_tab() {
           scroll_checklist_bottom_ = false;
         }
 
-        for (std::size_t i = 0; i < rom_checklist_.size(); ++i) {
-          const auto& entry = rom_checklist_[i];
-          if (entry.game_id != selected_game_id_) {
-            continue;
+        // Rebuild per-game ROM index cache when the selection or checklist changes.
+        if (cached_rom_game_id_ != selected_game_id_ ||
+            cached_rom_generation_ != rom_checklist_generation_) {
+          cached_rom_game_id_ = selected_game_id_;
+          cached_rom_generation_ = rom_checklist_generation_;
+          selected_rom_indices_.clear();
+          for (std::size_t i = 0; i < rom_checklist_.size(); ++i) {
+            if (rom_checklist_[i].game_id == selected_game_id_) {
+              selected_rom_indices_.push_back(i);
+            }
           }
+        }
+
+        for (const std::size_t i : selected_rom_indices_) {
+          const auto& entry = rom_checklist_[i];
 
           const ImVec4 color = status_color(entry.status);
           ImGui::TableNextRow();
@@ -1324,6 +1334,7 @@ void GuiApp::apply_checklist_sort() {
   if (checklist_sort_col_ < 0 || rom_checklist_.empty()) {
     return;
   }
+  ++rom_checklist_generation_; // Invalidate the per-game ROM index cache.
   const int col = checklist_sort_col_;
   const bool asc = checklist_sort_ascending_;
 
@@ -1606,10 +1617,10 @@ void GuiApp::check_pending_task() {
         rom_checklist_.clear();
         rom_checklist_.reserve(roms->size());
         checklist_stats_ = {};
+        ++rom_checklist_generation_; // Invalidate the per-game ROM index cache.
 
-        // Accumulate per-game data in insertion order using a map keyed by game_id.
+        // Accumulate per-game data keyed by game_id; iteration order is not significant.
         std::unordered_map<std::int64_t, GameChecklistEntry> game_map;
-        game_map.reserve(roms->size()); // upper bound; actual games <= ROMs
 
         for (const auto& [rom, st] : *roms) {
           // Build ROM checklist entry
