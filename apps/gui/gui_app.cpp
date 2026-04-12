@@ -805,25 +805,33 @@ void GuiApp::render_dats_tab() {
       }
 
       // ── ROM detail table ─────────────────────────────────────
-      // inner_width drives the horizontal scroll content width so all hash columns
-      // remain reachable even when the panel is narrow.
-      constexpr float k_RomTableInnerW = 900.0F;
+      // Use SizingFixedFit with explicit pixel widths + an inner_width slightly
+      // larger than their sum so the last column's right border is never clipped.
+      constexpr float k_ColWStatus = 80.0F;
+      constexpr float k_ColWRomName = 280.0F;
+      constexpr float k_ColWSize = 70.0F;
+      constexpr float k_ColWSha1 = 200.0F;
+      constexpr float k_ColWMd5 = 180.0F;
+      constexpr float k_ColWCrc32 = 90.0F;
+      constexpr float k_RomTableInnerW =
+          k_ColWStatus + k_ColWRomName + k_ColWSize + k_ColWSha1 + k_ColWMd5 + k_ColWCrc32 +
+          20.0F; // +20 px padding so the last column border is never clipped
       constexpr int k_RomColumnCount = 6;
       if (ImGui::BeginTable("rom_detail_table",
                             k_RomColumnCount,
                             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                                 ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX |
-                                ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp |
+                                ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingFixedFit |
                                 ImGuiTableFlags_Sortable,
                             ImVec2(0.0F, 0.0F),
                             k_RomTableInnerW)) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_None, 1.5F);
-        ImGui::TableSetupColumn("ROM Name", ImGuiTableColumnFlags_DefaultSort, 5.0F);
-        ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_None, 1.2F);
-        ImGui::TableSetupColumn("SHA1", ImGuiTableColumnFlags_None, 3.0F);
-        ImGui::TableSetupColumn("MD5", ImGuiTableColumnFlags_None, 2.5F);
-        ImGui::TableSetupColumn("CRC32", ImGuiTableColumnFlags_None, 1.5F);
+        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_None, k_ColWStatus);
+        ImGui::TableSetupColumn("ROM Name", ImGuiTableColumnFlags_DefaultSort, k_ColWRomName);
+        ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_None, k_ColWSize);
+        ImGui::TableSetupColumn("SHA1", ImGuiTableColumnFlags_None, k_ColWSha1);
+        ImGui::TableSetupColumn("MD5", ImGuiTableColumnFlags_None, k_ColWMd5);
+        ImGui::TableSetupColumn("CRC32", ImGuiTableColumnFlags_None, k_ColWCrc32);
         ImGui::TableHeadersRow();
 
         if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
