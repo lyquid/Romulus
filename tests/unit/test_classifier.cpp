@@ -70,7 +70,8 @@ TEST_F(ClassifierTest, ClassifiesVerifiedAndMissing) {
   // File that matches rom1
   romulus::core::FileInfo file{
       .path = "/roms/matched.bin",
-      .entry_name = std::nullopt,
+      .archive_path = std::nullopt,
+        .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "11111111",
       .md5 = "11111111111111111111111111111111",
@@ -112,7 +113,8 @@ TEST_F(ClassifierTest, ClassifiesUnverifiedWithPartialMatch) {
   // File with SAME CRC32 but DIFFERENT SHA1/MD5 — will be a CRC32-only match
   romulus::core::FileInfo file{
       .path = "/roms/partial.bin",
-      .entry_name = std::nullopt,
+      .archive_path = std::nullopt,
+        .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "aabb0011",
       .md5 = "cc000000cc000000cc000000cc000000",
