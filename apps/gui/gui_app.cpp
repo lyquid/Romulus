@@ -380,7 +380,8 @@ void GuiApp::run() {
     ImGui::Begin("ROMULUS",
                  nullptr,
                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_MenuBar);
+                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_MenuBar |
+                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
     render_main_menu_bar();
 
@@ -611,15 +612,17 @@ void GuiApp::render_dats_tab() {
   // ── Master-detail split layout ────────────────────────────────
   // Left panel (38 %): sortable, filterable game list.
   // Right panel (62 %): ROM detail for the selected game.
+  // Reserve enough vertical space for the status bar rendered after EndTabBar().
   constexpr float k_LeftFraction = 0.38F;
   constexpr float k_PanelGap = 6.0F; // px between the two panels
   const float avail_w = ImGui::GetContentRegionAvail().x;
   const float left_w = std::floor(avail_w * k_LeftFraction);
   const float right_w = avail_w - left_w - k_PanelGap;
+  const float panel_h = -ImGui::GetFrameHeightWithSpacing(); // leave room for status bar
 
   // ── Left panel: Games ─────────────────────────────────────────
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0F, 6.0F));
-  ImGui::BeginChild("##games_panel", ImVec2(left_w, 0.0F), true);
+  ImGui::BeginChild("##games_panel", ImVec2(left_w, panel_h), true);
   ImGui::PopStyleVar();
 
   {
