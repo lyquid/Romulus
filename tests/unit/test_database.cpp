@@ -166,7 +166,8 @@ TEST_F(DatabaseTest, DatVersionUniqueByChecksum) {
           auto r = db_->insert_dat_version(dat);
           (void)r;
         } catch (const std::runtime_error& ex) {
-          EXPECT_NE(std::string_view{ex.what()}.find("UNIQUE constraint failed"), std::string_view::npos);
+          EXPECT_NE(std::string_view{ex.what()}.find("UNIQUE constraint failed"),
+                    std::string_view::npos);
           throw;
         }
       },
@@ -223,7 +224,7 @@ TEST_F(DatabaseTest, UpsertFileUpdatesExisting) {
       .id = 0,
       .path = "/roms/test.bin",
       .archive_path = std::nullopt,
-        .entry_name = std::nullopt,
+      .entry_name = std::nullopt,
       .size = 1024,
       .crc32 = "aabbccdd",
       .md5 = "12345678901234567890123456789012",
@@ -315,7 +316,7 @@ TEST_F(DatabaseTest, FindsDuplicateFiles) {
       .id = 0,
       .path = "/roms/copy1.bin",
       .archive_path = std::nullopt,
-        .entry_name = std::nullopt,
+      .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "aaaaaaaa",
       .md5 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -326,7 +327,7 @@ TEST_F(DatabaseTest, FindsDuplicateFiles) {
       .id = 0,
       .path = "/roms/copy2.bin",
       .archive_path = std::nullopt,
-        .entry_name = std::nullopt,
+      .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "aaaaaaaa",
       .md5 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -351,7 +352,7 @@ TEST_F(DatabaseTest, FindsUnverifiedFiles) {
       .id = 0,
       .path = "/roms/orphan.bin",
       .archive_path = std::nullopt,
-        .entry_name = std::nullopt,
+      .entry_name = std::nullopt,
       .size = 50,
       .crc32 = "bbbbbbbb",
       .md5 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -462,7 +463,7 @@ TEST_F(DatabaseTest, ComputedRomStatusVerifiedWhenExactMatchAndFileExists) {
   romulus::core::FileInfo file{.id = 0,
                                .path = "/roms/r.bin",
                                .archive_path = std::nullopt,
-        .entry_name = std::nullopt,
+                               .entry_name = std::nullopt,
                                .size = 100,
                                .crc32 = {},
                                .md5 = {},
