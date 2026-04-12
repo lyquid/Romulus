@@ -129,10 +129,12 @@ private:
 
   // Per-game ROM index cache — indices into rom_checklist_ for the selected game.
   // Rebuilt whenever selected_game_id_ changes or rom_checklist_ is re-sorted/reloaded.
+  static constexpr std::int64_t k_NoCachedGameId = -2;        ///< Sentinel: cache is stale
+  static constexpr std::uint64_t k_InvalidGeneration = ~0ULL; ///< Sentinel: no generation cached
   std::vector<std::size_t> selected_rom_indices_;
-  std::int64_t cached_rom_game_id_ = -2;       ///< Tracks which game_id is currently cached
-  std::uint64_t rom_checklist_generation_ = 0; ///< Bumped on every sort or checklist reload
-  std::uint64_t cached_rom_generation_ = UINT64_MAX; ///< Generation matched by the cache
+  std::int64_t cached_rom_game_id_ = k_NoCachedGameId;     ///< Tracks which game_id is currently cached
+  std::uint64_t rom_checklist_generation_ = 0;             ///< Bumped on every sort or checklist reload
+  std::uint64_t cached_rom_generation_ = k_InvalidGeneration; ///< Generation matched by the cache
 
   // Precomputed status counters — recomputed once when the checklist is loaded,
   // not every frame, to avoid O(n) work in the render loop.
