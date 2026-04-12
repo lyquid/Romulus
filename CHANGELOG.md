@@ -7,6 +7,15 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ✨ GUI — DATs Tab: master-detail split view
+
+- **Split layout**: The DATs tab is now divided into two side-by-side panels:
+  - **Left panel (38 %)** — sortable, filterable **Games list** for the active DAT. Columns: Status badge, Game Name (selectable). Filter by name and status (All / Verified / Missing / Unverified / Mismatch). ^ / v scroll buttons. Right-click a game name to copy it to the clipboard.
+  - **Right panel (62 %)** — **ROM detail** for the selected game. Columns: Status, ROM Name, Size, SHA1, MD5, CRC32. Status text is colour-coded. All columns are sortable. Right-click any hash or name to copy to clipboard.
+- **Aggregate game status**: each game row in the left panel shows a rollup status badge — Verified (all ROMs OK), Missing (all ROMs absent), Mismatch (any ROM mismatched), or Unverified (partial or mixed).
+- **Summary bar**: updated to show both game count and per-ROM verified/total counters in a single line.
+- **Preserved features**: import, Check DAT, ordering/filtering, ^ / v nav, clipboard copy, status badges, toast notifications — all retained.
+
 ### 📖 Docs
 
 - **README rewrite**: Replaced ASCII art box borders in the workflow section with clean numbered steps and markdown formatting. Adopted a retro 1982-game-manual style with quirky section headers, tilde dividers, and a Gandalf-ism. All technical content preserved.
