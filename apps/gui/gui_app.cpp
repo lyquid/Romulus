@@ -777,8 +777,8 @@ void GuiApp::render_dats_tab() {
   {
     if (selected_game_id_ < 0) {
       // Nothing selected yet — show a gentle prompt.
-      const float panel_h = ImGui::GetContentRegionAvail().y;
-      ImGui::SetCursorPosY(ImGui::GetCursorPosY() + panel_h * 0.42F);
+      const float content_h = ImGui::GetContentRegionAvail().y;
+      ImGui::SetCursorPosY(ImGui::GetCursorPosY() + content_h * 0.42F);
       const char* hint = "Select a game on the left to view its ROMs.";
       const float hint_w = ImGui::CalcTextSize(hint).x;
       ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
