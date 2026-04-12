@@ -62,7 +62,6 @@ constexpr int k_ColCrc32 = 5;
 // Game panel column indices
 constexpr int k_GameColStatus = 0;
 constexpr int k_GameColName = 1;
-constexpr int k_GameColRomCount = 2;
 
 // Status colours
 constexpr ImVec4 k_ColorVerified{0.2F, 0.9F, 0.3F, 1.0F};   // green
@@ -647,7 +646,7 @@ void GuiApp::render_dats_tab() {
     // Games table + right-side nav strip
     constexpr float k_NavStripW = 24.0F;
     const float nav_gap = ImGui::GetStyle().ItemSpacing.x;
-    constexpr int k_GameColumnCount = 3;
+    constexpr int k_GameColumnCount = 2;
 
     ImGui::BeginGroup();
     if (ImGui::BeginTable("game_checklist_table",
@@ -659,7 +658,6 @@ void GuiApp::render_dats_tab() {
       ImGui::TableSetupScrollFreeze(0, 1);
       ImGui::TableSetupColumn("St", ImGuiTableColumnFlags_None, 0.9F);
       ImGui::TableSetupColumn("Game Name", ImGuiTableColumnFlags_DefaultSort, 6.0F);
-      ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_None, 0.5F);
       ImGui::TableHeadersRow();
 
       if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
@@ -734,10 +732,6 @@ void GuiApp::render_dats_tab() {
           show_toast("Game name copied to clipboard");
         }
 
-        // Col 2: ROM count
-        ImGui::TableSetColumnIndex(k_GameColRomCount);
-        ImGui::Text("%d", entry.rom_count);
-
         ImGui::PopID();
       }
       ImGui::EndTable();
@@ -811,13 +805,18 @@ void GuiApp::render_dats_tab() {
       }
 
       // ── ROM detail table ─────────────────────────────────────
+      // inner_width drives the horizontal scroll content width so all hash columns
+      // remain reachable even when the panel is narrow.
+      constexpr float k_RomTableInnerW = 900.0F;
       constexpr int k_RomColumnCount = 6;
       if (ImGui::BeginTable("rom_detail_table",
                             k_RomColumnCount,
                             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                                ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
-                                ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Sortable,
-                            ImVec2(0.0F, 0.0F))) {
+                                ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX |
+                                ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp |
+                                ImGuiTableFlags_Sortable,
+                            ImVec2(0.0F, 0.0F),
+                            k_RomTableInnerW)) {
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_None, 1.5F);
         ImGui::TableSetupColumn("ROM Name", ImGuiTableColumnFlags_DefaultSort, 5.0F);
@@ -1360,8 +1359,6 @@ void GuiApp::apply_game_sort() {
                        }
                        case k_GameColName:
                          return asc ? a.name < b.name : b.name < a.name;
-                       case k_GameColRomCount:
-                         return asc ? a.rom_count < b.rom_count : b.rom_count < a.rom_count;
                        default:
                          return false;
                      }
