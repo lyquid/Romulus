@@ -80,7 +80,11 @@ auto load_document_from_archive(const std::filesystem::path& dat_path,
     return std::unexpected(stream.error());
   }
 
-  const auto result = doc.load_buffer(xml_content.data(), xml_content.size(), pugi::parse_default & ~pugi::parse_escapes);
+  // PugiXML does not implement DTD processing or external entity resolution, so XXE
+  // is not applicable here. Retain pugi::parse_default so that standard XML escape
+  // sequences (e.g. &amp;, &quot;, numeric references) in DAT text and attributes
+  // are decoded correctly.
+  const auto result = doc.load_buffer(xml_content.data(), xml_content.size(), pugi::parse_default);
   if (!result) {
     return std::unexpected(core::Error{core::ErrorCode::DatParseError,
                                        "Failed to parse XML '" + dat_path.string() +
@@ -98,7 +102,10 @@ auto load_document(const std::filesystem::path& dat_path,
     return load_document_from_archive(dat_path, doc);
   }
 
-  const auto result = doc.load_file(dat_path.c_str(), pugi::parse_default & ~pugi::parse_escapes);
+  // PugiXML does not implement DTD processing or external entity resolution, so XXE
+  // is not applicable here. Keep default XML parsing behavior so standard escape
+  // sequences in DAT files are decoded correctly.
+  const auto result = doc.load_file(dat_path.c_str(), pugi::parse_default);
   if (!result) {
     return std::unexpected(
         core::Error{core::ErrorCode::DatParseError,

@@ -10,6 +10,7 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 ### 📖 Docs
 
 - **README rewrite**: Replaced ASCII art box borders in the workflow section with clean numbered steps and markdown formatting. Adopted a retro 1982-game-manual style with quirky section headers, tilde dividers, and a Gandalf-ism. All technical content preserved.
+- **Security (XXE false positive)**: Added inline comments to `dat_parser.cpp` (`load_buffer` and `load_file` call sites) documenting that PugiXML does not implement DTD processing or external entity resolution, making XXE scanner warnings a false positive. `pugi::parse_default` is retained to preserve standard XML escape-sequence decoding (e.g. `&amp;`, `&quot;`, numeric references).
 
 ### 🗄️ Database — Schema v4: archive modeling, system context, Unix timestamps, drop redundant columns
 
