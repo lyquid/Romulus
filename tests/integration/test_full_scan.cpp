@@ -141,15 +141,21 @@ TEST_F(FullScanTest, RescanRehashesModifiedFile) {
   ASSERT_TRUE(scan1.has_value()) << scan1.error().message;
   EXPECT_GT(scan1->files_hashed, 0);
 
-  // Overwrite the ROM file with different content and bump its mtime
+  // Overwrite the ROM file with different same-size content and bump its mtime.
+  // Same size isolates the mtime-fingerprint path: the re-hash is triggered solely because
+  // last_write_time changed, not because the file grew or shrank.
   const auto rom_file = rom_dir_ / "test.bin";
+  const auto original_size = std::filesystem::file_size(rom_file);
+  const auto original_mtime = std::filesystem::last_write_time(rom_file);
   {
     std::ofstream f(rom_file, std::ios::binary | std::ios::trunc);
-    f << "MODIFIED ROM content here — different bits";
+    f << "ROM content herd"; // same 16 bytes, different bits
   }
-  // Ensure mtime changes by setting it explicitly one second into the future
-  const auto new_mtime = std::filesystem::last_write_time(rom_file) + std::chrono::seconds(2);
+  ASSERT_EQ(std::filesystem::file_size(rom_file), original_size);
+  // Bump mtime explicitly so the fingerprint check sees a changed timestamp.
+  const auto new_mtime = original_mtime + std::chrono::seconds(2);
   std::filesystem::last_write_time(rom_file, new_mtime);
+  EXPECT_NE(std::filesystem::last_write_time(rom_file), original_mtime);
 
   // Second scan — the modified file must be re-hashed, not skipped
   auto scan2 = svc.scan_directory(rom_dir_);

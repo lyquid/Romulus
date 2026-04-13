@@ -129,12 +129,14 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
   }
 
   // Skip only when the virtual path is known AND both size and mtime match the stored values.
-  // The predicate is called concurrently — the fingerprints map is read-only after construction.
+  // The predicate is called concurrently — bind the map as const so all threads use the
+  // const overload of find() (guaranteed safe for concurrent reads under the standard).
   // FingerprintMap uses a transparent hash so we can find() with string_view directly.
-  auto skip_fn = [&fingerprints](std::string_view path, std::int64_t size,
-                                 std::int64_t last_write_time) -> bool {
-    const auto it = fingerprints->find(path);
-    if (it == fingerprints->end()) {
+  const core::FingerprintMap& fp = fingerprints.value();
+  auto skip_fn = [&fp](std::string_view path, std::int64_t size,
+                       std::int64_t last_write_time) -> bool {
+    const auto it = fp.find(path);
+    if (it == fp.end()) {
       return false; // new file — must hash
     }
     return it->second.size == size && it->second.last_write_time == last_write_time;
