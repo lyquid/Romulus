@@ -26,9 +26,8 @@ protected:
 
   /// Creates a DAT version and returns the dat_version_id.
   auto create_dat() -> std::int64_t {
-    romulus::core::DatVersion dat{.name = "Test",
-                                  .version = "1.0",
-                                  .source_url = {}, .checksum = "abc", .imported_at = {}};
+    romulus::core::DatVersion dat{
+        .name = "Test", .version = "1.0", .source_url = {}, .checksum = "abc", .imported_at = {}};
     auto dat_id = db_->insert_dat_version(dat);
     return *dat_id;
   }
@@ -70,6 +69,7 @@ TEST_F(ClassifierTest, ClassifiesVerifiedAndMissing) {
   // File that matches rom1
   romulus::core::FileInfo file{
       .path = "/roms/matched.bin",
+      .archive_path = std::nullopt,
       .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "11111111",
@@ -112,6 +112,7 @@ TEST_F(ClassifierTest, ClassifiesUnverifiedWithPartialMatch) {
   // File with SAME CRC32 but DIFFERENT SHA1/MD5 — will be a CRC32-only match
   romulus::core::FileInfo file{
       .path = "/roms/partial.bin",
+      .archive_path = std::nullopt,
       .entry_name = std::nullopt,
       .size = 100,
       .crc32 = "aabb0011",

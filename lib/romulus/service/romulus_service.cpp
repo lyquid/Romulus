@@ -305,18 +305,18 @@ auto RomulusService::purge_database() -> Result<void> {
   //   roms         →  games
   //   games        →  dat_versions
   //   dat_versions (no remaining children)
-  static constexpr std::array k_Tables = {
-      "rom_matches",
-      "files",
-      "global_roms",
-      "roms",
-      "games",
-      "dat_versions",
+  static constexpr std::array k_DeleteQueries = {
+      "DELETE FROM rom_matches",
+      "DELETE FROM files",
+      "DELETE FROM global_roms",
+      "DELETE FROM roms",
+      "DELETE FROM games",
+      "DELETE FROM dat_versions",
   };
 
   auto txn = db_->begin_transaction();
-  for (const auto* table : k_Tables) {
-    auto result = db_->execute(std::string("DELETE FROM ") + table);
+  for (const auto* query : k_DeleteQueries) {
+    auto result = db_->execute(query);
     if (!result) {
       return std::unexpected(result.error());
     }
