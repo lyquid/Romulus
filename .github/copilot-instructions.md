@@ -14,6 +14,15 @@ ROMULUS is a production-grade C++23 backend system for verifying and cataloging 
 
 **Architecture**: `lib/romulus/` (core library) → `apps/cli/` (CLI) / `apps/api/` (REST API, future) / `web/` (React frontend, future).
 
+## Build Environment (Read Before Any Build or Dependency Task)
+
+> **The agent environment has NO internet access.** Do not attempt to run `vcpkg install`, `vcpkg integrate`, `cmake --preset`, or any command that fetches packages or toolchains from the network. It will always fail.
+
+- All C++ dependencies are declared in `vcpkg.json`: `sqlite3`, `spdlog`, `pugixml`, `cli11`, `libarchive`, `openssl`, `nlohmann-json`, `gtest`, `imgui` (glfw+opengl3), `glfw3`.
+- Do **not** search for vcpkg, try to locate `vcpkg.exe`, or attempt to bootstrap it — assume it is unavailable.
+- If asked to add a dependency, edit `vcpkg.json` only. Do not run any install commands.
+- CMake presets are in `CMakePresets.json`. Do not try to configure or build — just discuss or edit source files.
+
 ---
 
 ## C++ Standard & Language
