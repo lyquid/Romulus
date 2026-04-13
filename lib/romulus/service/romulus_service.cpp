@@ -130,11 +130,10 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
 
   // Skip only when the virtual path is known AND both size and mtime match the stored values.
   // The predicate is called concurrently — the fingerprints map is read-only after construction.
-  // std::string construction is intentional: unordered_map requires a transparent hash for
-  // string_view lookup; keeping the map type simple is preferable to a custom hasher here.
+  // FingerprintMap uses a transparent hash so we can find() with string_view directly.
   auto skip_fn = [&fingerprints](std::string_view path, std::int64_t size,
                                  std::int64_t last_write_time) -> bool {
-    auto it = fingerprints->find(std::string(path));
+    const auto it = fingerprints->find(path);
     if (it == fingerprints->end()) {
       return false; // new file — must hash
     }

@@ -13,7 +13,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 struct sqlite3;
@@ -151,8 +150,7 @@ public:
   /// Returns a map of virtual path → FileFingerprint (size + last_write_time).
   /// Used by the service layer to build the skip-check predicate: a file is skipped
   /// only when its current size and last_write_time both match the stored values.
-  [[nodiscard]] auto get_file_fingerprints()
-      -> Result<std::unordered_map<std::string, core::FileFingerprint>>;
+  [[nodiscard]] auto get_file_fingerprints() -> Result<core::FingerprintMap>;
   [[nodiscard]] auto remove_missing_files(const std::vector<std::string>& existing_paths)
       -> Result<std::int64_t>;
 

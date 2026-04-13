@@ -7,9 +7,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace romulus::core {
@@ -176,6 +178,21 @@ struct FileFingerprint {
   std::int64_t size = 0;            ///< Stored file / uncompressed-entry size
   std::int64_t last_write_time = 0; ///< Stored mtime of the physical file (Unix epoch seconds)
 };
+
+/// Transparent string hasher — enables heterogeneous lookup on std::unordered_map<string, ...>
+/// using std::string_view keys without constructing a temporary std::string.
+struct StringViewHash {
+  using is_transparent = void;
+  [[nodiscard]] auto operator()(std::string_view sv) const noexcept -> std::size_t {
+    return std::hash<std::string_view>{}(sv);
+  }
+};
+
+/// Map from virtual file path to its stored fingerprint.
+/// Uses a transparent hash + equal so callers can look up by std::string_view without
+/// constructing a temporary std::string.
+using FingerprintMap =
+    std::unordered_map<std::string, FileFingerprint, StringViewHash, std::equal_to<>>;
 
 // ── Matching ─────────────────────────────────────────────────
 

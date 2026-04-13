@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <stdexcept>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -1015,13 +1014,12 @@ auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
   return files;
 }
 
-auto Database::get_file_fingerprints()
-    -> Result<std::unordered_map<std::string, core::FileFingerprint>> {
+auto Database::get_file_fingerprints() -> Result<core::FingerprintMap> {
   auto stmt = prepare("SELECT path, size, last_write_time FROM files");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
-  std::unordered_map<std::string, core::FileFingerprint> fingerprints;
+  core::FingerprintMap fingerprints;
   while (stmt->step()) {
     fingerprints.emplace(stmt->column_text(0),
                          core::FileFingerprint{
