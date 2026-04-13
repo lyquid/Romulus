@@ -22,6 +22,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <future>
 #include <GLFW/glfw3.h>
 #include <ranges>
@@ -970,15 +971,16 @@ void GuiApp::render_folders_tab() {
   }
 
   // Folder list table
-  constexpr int k_FolderCols = 2;
+  constexpr int k_FolderCols = 3;
   if (ImGui::BeginTable("folders_table",
                         k_FolderCols,
                         ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                             ImGuiTableFlags_SizingStretchProp,
                         ImVec2(0, -30))) {
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_None, 6.0F);
-    ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_None, 1.0F);
+    ImGui::TableSetupColumn("Path",    ImGuiTableColumnFlags_None, 6.0F);
+    ImGui::TableSetupColumn("Files",   ImGuiTableColumnFlags_None, 1.0F);
+    ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_None, 0.6F);
     ImGui::TableHeadersRow();
 
     std::int64_t to_remove = -1;
@@ -998,6 +1000,9 @@ void GuiApp::render_folders_tab() {
       }
 
       ImGui::TableSetColumnIndex(1);
+      ImGui::TextDisabled("%lld", static_cast<long long>(dir.file_count));
+
+      ImGui::TableSetColumnIndex(2);
       ImGui::BeginDisabled(busy);
       if (ImGui::SmallButton("[X]")) {
         to_remove = dir.id;
@@ -1054,6 +1059,11 @@ void GuiApp::render_db_tab() {
       selected_db_table_index_ = -1;
       db_table_data_ = {};
       db_tab_loaded_ = true;
+      db_filter_buf_.fill('\0');
+      db_filter_lower_.clear();
+      db_sort_col_ = -1;
+      db_sort_ascending_ = true;
+      db_view_dirty_ = true;
     } else {
       ROMULUS_WARN("DB Explorer: failed to read table names: {}", result.error().message);
       show_toast("Failed to read DB: " + result.error().message);
@@ -1104,6 +1114,12 @@ void GuiApp::render_db_tab() {
             show_toast("Failed to read table: " + data.error().message);
             db_table_data_ = {};
           }
+          // Reset filter, sort, and nav state for the new table.
+          db_filter_buf_.fill('\0');
+          db_filter_lower_.clear();
+          db_sort_col_ = -1;
+          db_sort_ascending_ = true;
+          db_view_dirty_ = true;
         }
         if (is_selected) {
           ImGui::SetItemDefaultFocus();
@@ -1123,7 +1139,11 @@ void GuiApp::render_db_tab() {
   }
 
   ImGui::SameLine();
-  ImGui::TextDisabled("(%zu rows)", db_table_data_.rows.size());
+  if (db_filter_lower_.empty()) {
+    ImGui::TextDisabled("(%zu rows)", db_table_data_.rows.size());
+  } else {
+    ImGui::TextDisabled("(%zu / %zu rows)", db_display_rows_.size(), db_table_data_.rows.size());
+  }
 
   ImGui::Spacing();
 
@@ -1192,14 +1212,45 @@ void GuiApp::render_db_tab() {
     ImGui::Spacing();
   }
 
-  // ── Data table (read-only) ────────────────────────────────────
+  // ── Data table (read-only, sortable, filterable) ─────────────
   const int col_count = static_cast<int>(db_table_data_.columns.size());
+
+  // Filter bar
+  {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Filter:");
+    ImGui::SameLine(0.0F, 4.0F);
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+    if (ImGui::InputText("##db_filter", db_filter_buf_.data(), k_DbMaxFilterLen)) {
+      db_filter_lower_.assign(db_filter_buf_.data());
+      std::ranges::transform(db_filter_lower_, db_filter_lower_.begin(), ascii_lower);
+      db_view_dirty_ = true;
+    }
+  }
+
+  ImGui::Spacing();
+
+  // Recompute the filtered + sorted display index list when dirty.
+  if (db_view_dirty_) {
+    apply_db_filter_sort();
+    db_view_dirty_ = false;
+  }
+
+  // Table + nav-strip layout (mirrors DATs tab pattern)
+  constexpr float k_NavStripW = 24.0F;
+  const float nav_gap = ImGui::GetStyle().ItemSpacing.x;
+
   constexpr ImGuiTableFlags k_TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                                            ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY |
                                            ImGuiTableFlags_SizingFixedFit |
-                                           ImGuiTableFlags_Resizable;
+                                           ImGuiTableFlags_Resizable |
+                                           ImGuiTableFlags_Sortable;
 
-  if (ImGui::BeginTable("##db_table_view", col_count, k_TableFlags, ImVec2(0, -30))) {
+  ImGui::BeginGroup();
+  if (ImGui::BeginTable("##db_table_view",
+                        col_count,
+                        k_TableFlags,
+                        ImVec2(-k_NavStripW - nav_gap, -30))) {
     ImGui::TableSetupScrollFreeze(0, 1);
     for (int c = 0; c < col_count; ++c) {
       ImGui::TableSetupColumn(db_table_data_.columns[static_cast<std::size_t>(c)].name.c_str(),
@@ -1207,7 +1258,34 @@ void GuiApp::render_db_tab() {
     }
     ImGui::TableHeadersRow();
 
-    for (std::size_t r = 0; r < db_table_data_.rows.size(); ++r) {
+    // Consume sort-spec changes from ImGui.
+    if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
+      if (sort_specs->SpecsDirty) {
+        if (sort_specs->SpecsCount > 0) {
+          db_sort_col_ = sort_specs->Specs[0].ColumnIndex;
+          db_sort_ascending_ =
+              (sort_specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
+        } else {
+          db_sort_col_ = -1;
+        }
+        db_view_dirty_ = true;
+        // Re-run sort synchronously before rendering this frame.
+        apply_db_filter_sort();
+        db_view_dirty_ = false;
+        sort_specs->SpecsDirty = false;
+      }
+    }
+
+    // One-shot scroll requests.
+    if (scroll_db_top_) {
+      ImGui::SetScrollY(0.0F);
+      scroll_db_top_ = false;
+    } else if (scroll_db_bottom_) {
+      ImGui::SetScrollY(ImGui::GetScrollMaxY());
+      scroll_db_bottom_ = false;
+    }
+
+    for (const std::size_t r : db_display_rows_) {
       ImGui::TableNextRow();
       ImGui::PushID(static_cast<int>(r));
       const auto& row = db_table_data_.rows[r];
@@ -1228,7 +1306,32 @@ void GuiApp::render_db_tab() {
     }
     ImGui::EndTable();
   }
+  ImGui::EndGroup();
+
+  // Vertically centred ^ / v scroll buttons to the right of the table.
+  ImGui::SameLine(0.0F, nav_gap);
+  {
+    const float strip_h = ImGui::GetItemRectSize().y;
+    const float btn_h = ImGui::GetFrameHeight();
+    const float total_btn_h = btn_h * 2.0F + ImGui::GetStyle().ItemSpacing.y;
+    ImGui::BeginChild("##db_nav_strip",
+                      ImVec2(k_NavStripW, strip_h),
+                      false,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    const float v_pad = (strip_h - total_btn_h) * 0.5F;
+    if (v_pad > 0.0F) {
+      ImGui::SetCursorPosY(ImGui::GetCursorPosY() + v_pad);
+    }
+    if (ImGui::Button("^")) {
+      scroll_db_top_ = true;
+    }
+    if (ImGui::Button("v")) {
+      scroll_db_bottom_ = true;
+    }
+    ImGui::EndChild();
+  }
 }
+
 
 void GuiApp::render_log_panel() {
   // Only copy the sink's buffer when new entries have been added.
@@ -1385,6 +1488,70 @@ void GuiApp::apply_game_sort() {
                          return false;
                      }
                    });
+}
+
+// ═════════════════════════════════════════════════════════════════
+// DB Explorer sort + filter
+// ═════════════════════════════════════════════════════════════════
+
+void GuiApp::apply_db_filter_sort() {
+  const std::size_t row_count = db_table_data_.rows.size();
+  db_display_rows_.clear();
+  db_display_rows_.reserve(row_count);
+
+  // Build filtered index list.
+  for (std::size_t i = 0; i < row_count; ++i) {
+    if (db_filter_lower_.empty()) {
+      db_display_rows_.push_back(i);
+      continue;
+    }
+    const auto& row = db_table_data_.rows[i];
+    bool matches = false;
+    for (const auto& cell : row) {
+      std::string cell_lower = cell;
+      std::ranges::transform(cell_lower, cell_lower.begin(), ascii_lower);
+      if (cell_lower.find(db_filter_lower_) != std::string::npos) {
+        matches = true;
+        break;
+      }
+    }
+    if (matches) {
+      db_display_rows_.push_back(i);
+    }
+  }
+
+  // Sort the filtered indices.
+  if (db_sort_col_ < 0 ||
+      db_sort_col_ >= static_cast<int>(db_table_data_.columns.size())) {
+    return;
+  }
+  const std::size_t sort_col = static_cast<std::size_t>(db_sort_col_);
+  const bool ascending = db_sort_ascending_;
+  const std::string& col_type = db_table_data_.columns[sort_col].type;
+
+  // Use numeric comparison for INTEGER / REAL / NUMERIC typed columns.
+  const bool is_numeric = col_type.find("INT") != std::string::npos ||
+                          col_type.find("REAL") != std::string::npos ||
+                          col_type.find("NUMERIC") != std::string::npos;
+
+  std::stable_sort(
+      db_display_rows_.begin(),
+      db_display_rows_.end(),
+      [&](std::size_t a, std::size_t b) {
+        const auto& ra = db_table_data_.rows[a];
+        const auto& rb = db_table_data_.rows[b];
+        const std::string& va = (sort_col < ra.size()) ? ra[sort_col] : "";
+        const std::string& vb = (sort_col < rb.size()) ? rb[sort_col] : "";
+        bool a_less = false;
+        if (is_numeric) {
+          const double na = std::strtod(va.c_str(), nullptr);
+          const double nb = std::strtod(vb.c_str(), nullptr);
+          a_less = na < nb;
+        } else {
+          a_less = va < vb;
+        }
+        return ascending ? a_less : !a_less;
+      });
 }
 
 // ═════════════════════════════════════════════════════════════════

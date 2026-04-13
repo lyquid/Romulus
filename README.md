@@ -144,8 +144,8 @@ sudo apt install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-d
 - Filter bar: free-text name filter + status dropdown (All / Verified / Missing / Unverified / Mismatch)
 - Status breakdown summary: color-coded counts with completion percentage
 - Active DAT shown in a full-width highlighted banner (name, version, import date)
-- **DB tab**: "Read DB" loads all tables; select a table to see a Schema panel (column type + PK/NN/UQ/FK badges) and a full read-only scrollable grid; right-click any cell to copy
-- Scanned ROM directories persisted in the database — loaded automatically on startup
+- **DB tab**: "Read DB" loads all tables; select a table to see a Schema panel (column type + PK/NN/UQ/FK badges) and a full read-only sortable grid with a free-text filter bar and ^ / v navigation arrows; right-click any cell to copy
+- **Folders tab**: registered scan directories are listed with their scanned file count (including archive entries); supports adding, removing, and rescanning folders
 - Right-click any ROM Name, Size, SHA1 cell, or folder path to copy the value to clipboard (with toast notification)
 - Browse buttons open native file/folder picker dialogs
 - Background threading keeps the UI responsive during long operations

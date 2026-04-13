@@ -333,8 +333,9 @@ struct ScanResult {
 /// A directory registered for ROM scanning.
 struct ScannedDirectory {
   std::int64_t id = 0;
-  std::string path;     ///< Absolute filesystem path
-  std::string added_at; ///< ISO-8601 timestamp of first registration
+  std::string path;               ///< Absolute filesystem path
+  std::string added_at;           ///< ISO-8601 timestamp of first registration
+  std::int64_t file_count = 0;    ///< Number of scanned file entries under this directory
 };
 
 /// Report output format.
