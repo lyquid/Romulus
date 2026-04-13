@@ -1529,9 +1529,15 @@ void GuiApp::apply_db_filter_sort() {
   const bool ascending = db_sort_ascending_;
   const std::string& col_type = db_table_data_.columns[sort_col].type;
 
-  // Use numeric comparison for INTEGER / REAL / NUMERIC typed columns.
+  // Follow SQLite's type affinity rules: a column has INTEGER affinity if its declared
+  // type contains the substring "INT" (e.g. INTEGER, BIGINT, SMALLINT — and, per the spec,
+  // also hypothetical types like "POINT", but those never appear in this schema).
+  // REAL affinity applies when the type contains "REAL", "FLOA", or "DOUB".
+  // Non-parseable cells sort as 0.0 — acceptable for a read-only explorer tool.
   const bool is_numeric = col_type.find("INT") != std::string::npos ||
                           col_type.find("REAL") != std::string::npos ||
+                          col_type.find("FLOA") != std::string::npos ||
+                          col_type.find("DOUB") != std::string::npos ||
                           col_type.find("NUMERIC") != std::string::npos;
 
   std::stable_sort(
@@ -1542,15 +1548,19 @@ void GuiApp::apply_db_filter_sort() {
         const auto& rb = db_table_data_.rows[b];
         const std::string& va = (sort_col < ra.size()) ? ra[sort_col] : "";
         const std::string& vb = (sort_col < rb.size()) ? rb[sort_col] : "";
+        // Use separate a_less / b_less to maintain strict-weak-ordering when equal.
         bool a_less = false;
+        bool b_less = false;
         if (is_numeric) {
           const double na = std::strtod(va.c_str(), nullptr);
           const double nb = std::strtod(vb.c_str(), nullptr);
           a_less = na < nb;
+          b_less = nb < na;
         } else {
           a_less = va < vb;
+          b_less = vb < va;
         }
-        return ascending ? a_less : !a_less;
+        return ascending ? a_less : b_less;
       });
 }
 
