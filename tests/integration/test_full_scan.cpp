@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 
@@ -114,6 +115,52 @@ TEST_F(FullScanTest, PurgeDatabaseClearsAllData) {
   auto files_after = svc.get_all_files();
   ASSERT_TRUE(files_after.has_value());
   EXPECT_TRUE(files_after->empty());
+}
+
+TEST_F(FullScanTest, RescanSkipsUnchangedFiles) {
+  romulus::service::RomulusService svc(db_path_);
+
+  // First scan — all files should be hashed
+  auto scan1 = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan1.has_value()) << scan1.error().message;
+  EXPECT_GT(scan1->files_hashed, 0);
+  EXPECT_EQ(scan1->files_skipped, 0);
+
+  // Second scan without touching any file — all files should be skipped
+  auto scan2 = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan2.has_value()) << scan2.error().message;
+  EXPECT_EQ(scan2->files_hashed, 0);
+  EXPECT_EQ(scan2->files_skipped, scan1->files_hashed);
+}
+
+TEST_F(FullScanTest, RescanRehashesModifiedFile) {
+  romulus::service::RomulusService svc(db_path_);
+
+  // First scan
+  auto scan1 = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan1.has_value()) << scan1.error().message;
+  EXPECT_GT(scan1->files_hashed, 0);
+
+  // Overwrite the ROM file with different same-size content and bump its mtime.
+  // Same size isolates the mtime-fingerprint path: the re-hash is triggered solely because
+  // last_write_time changed, not because the file grew or shrank.
+  const auto rom_file = rom_dir_ / "test.bin";
+  const auto original_size = std::filesystem::file_size(rom_file);
+  const auto original_mtime = std::filesystem::last_write_time(rom_file);
+  {
+    std::ofstream f(rom_file, std::ios::binary | std::ios::trunc);
+    f << "ROM content herd"; // same 16 bytes, different bits
+  }
+  ASSERT_EQ(std::filesystem::file_size(rom_file), original_size);
+  // Bump mtime explicitly so the fingerprint check sees a changed timestamp.
+  const auto new_mtime = original_mtime + std::chrono::seconds(2);
+  std::filesystem::last_write_time(rom_file, new_mtime);
+  EXPECT_NE(std::filesystem::last_write_time(rom_file), original_mtime);
+
+  // Second scan — the modified file must be re-hashed, not skipped
+  auto scan2 = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan2.has_value()) << scan2.error().message;
+  EXPECT_GT(scan2->files_hashed, 0);
 }
 
 } // namespace

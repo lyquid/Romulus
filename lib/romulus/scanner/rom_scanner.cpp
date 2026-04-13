@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <ranges>
 #include <thread>
@@ -57,7 +58,7 @@ auto RomScanner::matches_extension(const std::filesystem::path& path,
 }
 
 auto RomScanner::scan(const std::filesystem::path& directory,
-                      std::function<bool(std::string_view)> skip_check,
+                      std::function<bool(std::string_view, std::int64_t, std::int64_t)> skip_check,
                       std::optional<std::vector<std::string>> extensions)
     -> Result<core::ScanResult> {
   if (!std::filesystem::exists(directory)) {
@@ -74,6 +75,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
   struct FileCandidate {
     std::filesystem::path path;
     std::int64_t size;
+    std::int64_t last_write_time; ///< Filesystem mtime (Unix epoch seconds)
     bool is_archive;
   };
 
@@ -87,9 +89,14 @@ auto RomScanner::scan(const std::filesystem::path& directory,
     if (!matches_extension(entry.path(), ext_filter)) {
       continue;
     }
+    // Convert filesystem mtime to Unix epoch seconds.
+    const auto lwt = std::chrono::clock_cast<std::chrono::system_clock>(entry.last_write_time());
+    const auto mtime =
+        std::chrono::duration_cast<std::chrono::seconds>(lwt.time_since_epoch()).count();
     candidates.push_back({
         .path = entry.path(),
         .size = static_cast<std::int64_t>(entry.file_size()),
+        .last_write_time = mtime,
         .is_archive = ArchiveService::is_archive(entry.path()),
     });
   }
@@ -108,6 +115,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
     // Mirrors the ScannedROM::virtual_path() format: "path" or "archive::entry".
     std::string virtual_path;
     std::int64_t size;
+    std::int64_t last_write_time;  ///< Mtime of the physical file (Unix epoch seconds)
     std::filesystem::path real_path;
     std::string entry_name;        // display name; empty for regular files
     std::size_t entry_index;       // stable archive index; only valid when is_archive_entry
@@ -129,6 +137,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
             .virtual_path = candidate.path.string() +
                             std::string(core::k_ArchiveEntrySeparator) + entry.name,
             .size = entry.size,
+            .last_write_time = candidate.last_write_time,
             .real_path = candidate.path,
             .entry_name = entry.name,
             .entry_index = entry.index,
@@ -140,6 +149,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
       jobs.push_back({
           .virtual_path = candidate.path.string(),
           .size = candidate.size,
+          .last_write_time = candidate.last_write_time,
           .real_path = candidate.path,
           .entry_name = {},
           .entry_index = 0,
@@ -160,9 +170,10 @@ auto RomScanner::scan(const std::filesystem::path& directory,
 
   auto process_job = [&](const HashJob& job) {
     // Check if already scanned via caller-supplied predicate.
-    // The predicate may be called concurrently from multiple worker threads;
-    // it must support concurrent read access (see header documentation).
-    if (skip_check && skip_check(job.virtual_path)) {
+    // The predicate receives the virtual path, current size, and physical file mtime so it can
+    // skip re-hashing only when all three match the stored values. Called concurrently from
+    // multiple worker threads — the predicate must be thread-safe for concurrent reads.
+    if (skip_check && skip_check(job.virtual_path, job.size, job.last_write_time)) {
       ++files_skipped;
       return;
     }
@@ -185,6 +196,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
                                            : std::nullopt,
         .size = job.size,
         .hash_digest = *digest,
+        .last_write_time = job.last_write_time,
     };
 
     ROMULUS_DEBUG("Hashed '{}': SHA256={}", job.virtual_path, sha256_hex);

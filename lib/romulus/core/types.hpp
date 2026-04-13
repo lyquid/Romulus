@@ -7,9 +7,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace romulus::core {
@@ -160,11 +162,37 @@ struct FileInfo {
   std::string md5;
   std::string sha1; ///< Primary anchor linking to global_roms.sha1
   std::string sha256;
-  std::int64_t last_scanned = 0; ///< Unix epoch seconds (strftime('%s','now'))
+  std::int64_t last_scanned = 0;    ///< Unix epoch seconds (strftime('%s','now'))
+  std::int64_t last_write_time = 0; ///< Filesystem mtime at scan time (Unix epoch seconds)
 
   /// Returns true when this file was extracted from an archive entry.
   [[nodiscard]] auto is_archive_entry() const noexcept -> bool { return entry_name.has_value(); }
 };
+
+/// Lightweight fingerprint used for skip-checking during scans.
+/// Keyed by virtual path; used to decide whether a file needs re-hashing.
+/// A file is skipped only if its current filesystem size and last_write_time
+/// both match the stored values — otherwise it is re-hashed even if the path
+/// is already in the database.
+struct FileFingerprint {
+  std::int64_t size = 0;            ///< Stored file / uncompressed-entry size
+  std::int64_t last_write_time = 0; ///< Stored mtime of the physical file (Unix epoch seconds)
+};
+
+/// Transparent string hasher — enables heterogeneous lookup on std::unordered_map<string, ...>
+/// using std::string_view keys without constructing a temporary std::string.
+struct StringViewHash {
+  using is_transparent = void;
+  [[nodiscard]] auto operator()(std::string_view sv) const noexcept -> std::size_t {
+    return std::hash<std::string_view>{}(sv);
+  }
+};
+
+/// Map from virtual file path to its stored fingerprint.
+/// Uses a transparent hash + equal so callers can look up by std::string_view without
+/// constructing a temporary std::string.
+using FingerprintMap =
+    std::unordered_map<std::string, FileFingerprint, StringViewHash, std::equal_to<>>;
 
 // ── Matching ─────────────────────────────────────────────────
 
@@ -222,6 +250,7 @@ struct ScannedROM {
   std::optional<std::string> entry_name; ///< Set when this ROM lives inside an archive; absent for bare files
   std::int64_t size = 0;                 ///< Uncompressed ROM size in bytes
   HashDigest hash_digest;                ///< CRC32, MD5, SHA1, and SHA256 computed in a single pass
+  std::int64_t last_write_time = 0;      ///< Mtime of the physical file at scan time (Unix epoch seconds)
 
   /// Returns true when this ROM was extracted from an archive entry.
   [[nodiscard]] auto is_archive_entry() const noexcept -> bool { return entry_name.has_value(); }

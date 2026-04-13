@@ -287,16 +287,17 @@ CREATE TABLE IF NOT EXISTS global_roms (
 );
 
 CREATE TABLE IF NOT EXISTS files (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    path          TEXT NOT NULL COLLATE NOCASE,
-    archive_path  TEXT,
-    entry_name    TEXT,
-    size          INTEGER NOT NULL,
-    crc32         BLOB,
-    md5           BLOB,
-    sha1          BLOB NOT NULL REFERENCES global_roms(sha1),
-    sha256        BLOB,
-    last_scanned  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    path            TEXT NOT NULL COLLATE NOCASE,
+    archive_path    TEXT,
+    entry_name      TEXT,
+    size            INTEGER NOT NULL,
+    crc32           BLOB,
+    md5             BLOB,
+    sha1            BLOB NOT NULL REFERENCES global_roms(sha1),
+    sha256          BLOB,
+    last_scanned    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    last_write_time INTEGER NOT NULL DEFAULT 0,
     UNIQUE(path)
 );
 
@@ -333,7 +334,7 @@ CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 /// Schema version — increment whenever the schema changes in a backward-incompatible way.
 /// Stored in PRAGMA user_version. If the on-disk DB has a different version the database
 /// is wiped and rebuilt so queries never encounter stale column layouts.
-constexpr int k_SchemaVersion = 4;
+constexpr int k_SchemaVersion = 5;
 
 auto match_type_to_int(core::MatchType type) -> int {
   switch (type) {
@@ -912,13 +913,14 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
   // 2. Upsert the physical file record, linking to the global identity
   auto stmt =
       prepare("INSERT INTO files "
-              "(path, archive_path, entry_name, size, crc32, md5, sha1, sha256, last_scanned) "
-              "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, strftime('%s','now')) "
+              "(path, archive_path, entry_name, size, crc32, md5, sha1, sha256, "
+              "last_scanned, last_write_time) "
+              "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, strftime('%s','now'), ?9) "
               "ON CONFLICT(path) DO UPDATE SET "
               "archive_path = excluded.archive_path, entry_name = excluded.entry_name, "
               "size = excluded.size, crc32 = excluded.crc32, "
               "md5 = excluded.md5, sha1 = excluded.sha1, sha256 = excluded.sha256, "
-              "last_scanned = strftime('%s','now')");
+              "last_scanned = strftime('%s','now'), last_write_time = excluded.last_write_time");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -943,6 +945,7 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
   } else {
     stmt->bind_blob(8, hex_to_bytes(file.sha256));
   }
+  stmt->bind_int64(9, file.last_write_time);
   stmt->execute();
 
   // Get the id (either inserted or updated)
@@ -960,7 +963,7 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
 auto Database::find_file_by_path(std::string_view path) -> Result<std::optional<core::FileInfo>> {
   auto stmt =
       prepare("SELECT id, path, archive_path, entry_name, size, crc32, md5, sha1, sha256, "
-              "last_scanned FROM files WHERE path = ?1");
+              "last_scanned, last_write_time FROM files WHERE path = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -981,12 +984,13 @@ auto Database::find_file_by_path(std::string_view path) -> Result<std::optional<
       .sha1 = bytes_to_hex(stmt->column_blob(7)),
       .sha256 = bytes_to_hex(stmt->column_blob(8)),
       .last_scanned = stmt->column_int64(9),
+      .last_write_time = stmt->column_int64(10),
   };
 }
 
 auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
   auto stmt = prepare("SELECT id, path, archive_path, entry_name, size, crc32, md5, sha1, sha256, "
-                      "last_scanned FROM files");
+                      "last_scanned, last_write_time FROM files");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -1004,21 +1008,26 @@ auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
         .sha1 = bytes_to_hex(stmt->column_blob(7)),
         .sha256 = bytes_to_hex(stmt->column_blob(8)),
         .last_scanned = stmt->column_int64(9),
+        .last_write_time = stmt->column_int64(10),
     });
   }
   return files;
 }
 
-auto Database::get_all_file_paths() -> Result<std::vector<std::string>> {
-  auto stmt = prepare("SELECT path FROM files");
+auto Database::get_file_fingerprints() -> Result<core::FingerprintMap> {
+  auto stmt = prepare("SELECT path, size, last_write_time FROM files");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
-  std::vector<std::string> paths;
+  core::FingerprintMap fingerprints;
   while (stmt->step()) {
-    paths.push_back(stmt->column_text(0));
+    fingerprints.emplace(stmt->column_text(0),
+                         core::FileFingerprint{
+                             .size = stmt->column_int64(1),
+                             .last_write_time = stmt->column_int64(2),
+                         });
   }
-  return paths;
+  return fingerprints;
 }
 
 auto Database::remove_missing_files(const std::vector<std::string>& existing_paths)

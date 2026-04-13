@@ -147,8 +147,10 @@ public:
   [[nodiscard]] auto find_file_by_path(std::string_view path)
       -> Result<std::optional<core::FileInfo>>;
   [[nodiscard]] auto get_all_files() -> Result<std::vector<core::FileInfo>>;
-  /// Returns only the path strings of all indexed files — cheap skip-check helper.
-  [[nodiscard]] auto get_all_file_paths() -> Result<std::vector<std::string>>;
+  /// Returns a map of virtual path → FileFingerprint (size + last_write_time).
+  /// Used by the service layer to build the skip-check predicate: a file is skipped
+  /// only when its current size and last_write_time both match the stored values.
+  [[nodiscard]] auto get_file_fingerprints() -> Result<core::FingerprintMap>;
   [[nodiscard]] auto remove_missing_files(const std::vector<std::string>& existing_paths)
       -> Result<std::int64_t>;
 
