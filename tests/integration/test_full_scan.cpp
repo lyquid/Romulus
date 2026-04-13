@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 
@@ -114,6 +115,46 @@ TEST_F(FullScanTest, PurgeDatabaseClearsAllData) {
   auto files_after = svc.get_all_files();
   ASSERT_TRUE(files_after.has_value());
   EXPECT_TRUE(files_after->empty());
+}
+
+TEST_F(FullScanTest, RescanSkipsUnchangedFiles) {
+  romulus::service::RomulusService svc(db_path_);
+
+  // First scan — all files should be hashed
+  auto scan1 = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan1.has_value()) << scan1.error().message;
+  EXPECT_GT(scan1->files_hashed, 0);
+  EXPECT_EQ(scan1->files_skipped, 0);
+
+  // Second scan without touching any file — all files should be skipped
+  auto scan2 = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan2.has_value()) << scan2.error().message;
+  EXPECT_EQ(scan2->files_hashed, 0);
+  EXPECT_EQ(scan2->files_skipped, scan1->files_hashed);
+}
+
+TEST_F(FullScanTest, RescanRehashesModifiedFile) {
+  romulus::service::RomulusService svc(db_path_);
+
+  // First scan
+  auto scan1 = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan1.has_value()) << scan1.error().message;
+  EXPECT_GT(scan1->files_hashed, 0);
+
+  // Overwrite the ROM file with different content and bump its mtime
+  const auto rom_file = rom_dir_ / "test.bin";
+  {
+    std::ofstream f(rom_file, std::ios::binary | std::ios::trunc);
+    f << "MODIFIED ROM content here — different bits";
+  }
+  // Ensure mtime changes by setting it explicitly one second into the future
+  const auto new_mtime = std::filesystem::last_write_time(rom_file) + std::chrono::seconds(2);
+  std::filesystem::last_write_time(rom_file, new_mtime);
+
+  // Second scan — the modified file must be re-hashed, not skipped
+  auto scan2 = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan2.has_value()) << scan2.error().message;
+  EXPECT_GT(scan2->files_hashed, 0);
 }
 
 } // namespace

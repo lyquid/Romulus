@@ -7,6 +7,19 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🔒 Scanner — size + mtime fingerprint skip-checking (fixes issue #4)
+
+- **Problem**: the previous skip-check predicate accepted only a `std::string_view` path, so a file that had been replaced or silently modified (same path, changed content) would be skipped on subsequent scans because its path was already in the database.
+- **Fix**: replaced the path-only skip-check strategy with a **size + `last_write_time` fingerprint** approach. A file is now re-hashed whenever its current filesystem size *or* mtime differs from the stored values — even if the path is unchanged.
+- **Schema** (version → 5): added `last_write_time INTEGER NOT NULL DEFAULT 0` to the `files` table. Existing databases are auto-rebuilt on open.
+- **`core::FileInfo`**: added `last_write_time` field (`std::int64_t`, Unix epoch seconds) — the filesystem mtime recorded at scan time.
+- **`core::ScannedROM`**: added `last_write_time` field — propagated from the filesystem during scanning and forwarded to the `FileInfo` at the DB persistence boundary. For archive entries this is the archive file's mtime.
+- **`core::FileFingerprint`** *(new struct)*: lightweight `{size, last_write_time}` pair used as the skip-check value type.
+- **`Database::get_file_fingerprints()`** *(new method)*: replaces `get_all_file_paths()`; returns a `std::unordered_map<std::string, core::FileFingerprint>` — cheaper than loading full `FileInfo` rows and directly feeds the skip predicate.
+- **`RomScanner::scan()` predicate signature** changed from `bool(std::string_view)` to `bool(std::string_view path, std::int64_t size, std::int64_t last_write_time)`. The `last_write_time` argument is the physical file's mtime (for archive entries: the archive's mtime).
+- **`RomScanner`** now captures `last_write_time` for every `FileCandidate` during directory enumeration using `std::chrono::clock_cast<std::chrono::system_clock>`.
+- **Tests**: two new integration tests — `RescanSkipsUnchangedFiles` (unchanged file is skipped on second scan) and `RescanRehashesModifiedFile` (file with bumped mtime is re-hashed).
+
 ### ✨ GUI — DATs Tab: master-detail split view
 
 - **Split layout**: The DATs tab is now divided into two side-by-side panels:

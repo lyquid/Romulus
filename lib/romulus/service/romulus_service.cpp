@@ -10,7 +10,6 @@
 #include "romulus/scanner/rom_scanner.hpp"
 
 #include <array>
-#include <unordered_set>
 #include <utility>
 
 namespace romulus::service {
@@ -121,25 +120,25 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 auto RomulusService::scan_directory(const std::filesystem::path& dir,
                                     std::optional<std::vector<std::string>> extensions)
     -> Result<core::ScanReport> {
-  // Pre-load only file paths (not full FileInfo rows) so the scanner can skip already-stored
-  // files without decoding unused hash columns.
-  auto existing_paths = db_->get_all_file_paths();
-  if (!existing_paths) {
-    return std::unexpected(existing_paths.error());
+  // Pre-load path → {size, last_write_time} fingerprints so the scanner can skip files that
+  // are already indexed AND whose size and mtime haven't changed. This guards against cases
+  // where a file has been replaced (same path, different content) or silently modified.
+  auto fingerprints = db_->get_file_fingerprints();
+  if (!fingerprints) {
+    return std::unexpected(fingerprints.error());
   }
-  // Use a transparent hash/equal to avoid a temporary std::string allocation on each lookup.
-  struct StringHash {
-    using is_transparent = void;
-    auto operator()(std::string_view sv) const noexcept -> std::size_t {
-      return std::hash<std::string_view>{}(sv);
-    }
-  };
-  std::unordered_set<std::string, StringHash, std::equal_to<>> known_paths(
-      std::make_move_iterator(existing_paths->begin()),
-      std::make_move_iterator(existing_paths->end()));
 
-  auto skip_fn = [&known_paths](std::string_view path) -> bool {
-    return known_paths.contains(path);
+  // Skip only when the virtual path is known AND both size and mtime match the stored values.
+  // The predicate is called concurrently — the fingerprints map is read-only after construction.
+  // std::string construction is intentional: unordered_map requires a transparent hash for
+  // string_view lookup; keeping the map type simple is preferable to a custom hasher here.
+  auto skip_fn = [&fingerprints](std::string_view path, std::int64_t size,
+                                 std::int64_t last_write_time) -> bool {
+    auto it = fingerprints->find(std::string(path));
+    if (it == fingerprints->end()) {
+      return false; // new file — must hash
+    }
+    return it->second.size == size && it->second.last_write_time == last_write_time;
   };
 
   // Run the scanner — no database access inside the scanner itself.
@@ -168,6 +167,7 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
         .md5 = rom.hash_digest.to_hex_md5(),
         .sha1 = rom.hash_digest.to_hex_sha1(),
         .sha256 = rom.hash_digest.to_hex_sha256(),
+        .last_write_time = rom.last_write_time,
     };
     auto upsert = db_->upsert_file(file);
     if (!upsert) {
