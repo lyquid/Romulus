@@ -7,6 +7,12 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🔧 DAT import — explicit SHA-256 naming for DAT deduplication
+
+- **DatFetcher**: switched DAT content hashing from SHA-1 to SHA-256 for version/dedup checks.
+- **Types/API**: renamed ambiguous DAT checksum identifiers to explicit SHA-256 names (`DatVersion::dat_sha256`, `compute_sha256`, `find_dat_version_by_sha256`).
+- **Schema**: `dat_versions.checksum` renamed to `dat_versions.dat_sha256` with `UNIQUE(dat_sha256)`; schema version bumped to 6 so existing databases are rebuilt with the new column layout.
+
 ### ✨ GUI — DB Tab & Folders Tab enhancements
 
 - **DB Tab — sortable columns**: clicking any column header in the data table now toggles ascending/descending sort. Integer and real-typed columns sort numerically; all others sort lexicographically.

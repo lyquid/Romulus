@@ -29,11 +29,11 @@ auto DatFetcher::validate_local(const std::filesystem::path& path)
   return canonical;
 }
 
-auto DatFetcher::compute_checksum(const std::filesystem::path& path) -> Result<std::string> {
+auto DatFetcher::compute_sha256(const std::filesystem::path& path) -> Result<std::string> {
   std::ifstream file(path, std::ios::binary);
   if (!file.is_open()) {
     return std::unexpected(core::Error{core::ErrorCode::FileReadError,
-                                       "Cannot open file for checksum: " + path.string()});
+                                       "Cannot open file for SHA-256: " + path.string()});
   }
 
   auto* ctx = EVP_MD_CTX_new();
@@ -42,7 +42,7 @@ auto DatFetcher::compute_checksum(const std::filesystem::path& path) -> Result<s
         core::Error{core::ErrorCode::HashComputeError, "Failed to create EVP_MD_CTX"});
   }
 
-  EVP_DigestInit_ex(ctx, EVP_sha1(), nullptr);
+  EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr);
 
   constexpr std::size_t k_BufferSize = 65536;
   std::array<char, k_BufferSize> buffer{};
@@ -71,13 +71,13 @@ auto DatFetcher::compute_checksum(const std::filesystem::path& path) -> Result<s
 auto DatFetcher::has_version_changed(const std::filesystem::path& path,
                                      std::string_view dat_name,
                                      database::Database& db) -> Result<bool> {
-  auto checksum = compute_checksum(path);
-  if (!checksum) {
-    return std::unexpected(checksum.error());
+  auto dat_sha256 = compute_sha256(path);
+  if (!dat_sha256) {
+    return std::unexpected(dat_sha256.error());
   }
 
-  // Check by checksum — uniquely identifies a DAT file regardless of name/version.
-  auto existing = db.find_dat_version_by_checksum(*checksum);
+  // Check by DAT SHA-256 — uniquely identifies a DAT file regardless of name/version.
+  auto existing = db.find_dat_version_by_sha256(*dat_sha256);
   if (!existing) {
     return std::unexpected(existing.error());
   }

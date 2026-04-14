@@ -112,7 +112,7 @@ public:
   [[nodiscard]] auto insert_dat_version(const core::DatVersion& dat) -> Result<std::int64_t>;
   [[nodiscard]] auto find_dat_version(std::string_view name, std::string_view version)
       -> Result<std::optional<core::DatVersion>>;
-  [[nodiscard]] auto find_dat_version_by_checksum(std::string_view checksum)
+  [[nodiscard]] auto find_dat_version_by_sha256(std::string_view dat_sha256)
       -> Result<std::optional<core::DatVersion>>;
   [[nodiscard]] auto find_dat_version_by_name(std::string_view name)
       -> Result<std::optional<core::DatVersion>>;
