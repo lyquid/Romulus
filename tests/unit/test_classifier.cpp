@@ -27,7 +27,12 @@ protected:
   /// Creates a DAT version and returns the dat_version_id.
   auto create_dat() -> std::int64_t {
     romulus::core::DatVersion dat{
-        .name = "Test", .version = "1.0", .source_url = {}, .dat_sha256 = "abc", .imported_at = {}};
+        .name = "Test",
+        .version = "1.0",
+        .source_url = {},
+        .dat_sha256 = "abc",
+        .imported_at = {},
+    };
     auto dat_id = db_->insert_dat_version(dat);
     return *dat_id;
   }

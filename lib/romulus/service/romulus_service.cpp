@@ -44,9 +44,11 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
   // Two DAT files with the same SHA-256 are treated as identical regardless of name/version;
   // this prevents re-importing a file that was merely renamed or repackaged.
   auto existing_by_sha256 = db_->find_dat_version_by_sha256(*dat_sha256);
-  if (existing_by_sha256 && existing_by_sha256->has_value()) {
-    ROMULUS_INFO("DAT already imported (SHA-256 match): '{}'",
-                 existing_by_sha256->value().name);
+  if (!existing_by_sha256) {
+    return std::unexpected(existing_by_sha256.error());
+  }
+  if (existing_by_sha256->has_value()) {
+    ROMULUS_INFO("DAT already imported (SHA-256 match): '{}'", existing_by_sha256->value().name);
     return existing_by_sha256->value();
   }
 
