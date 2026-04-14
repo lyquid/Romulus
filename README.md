@@ -82,7 +82,7 @@ Before you can save the princess, you'll need:
 
 > ⚠️ **Copilot Agent note**: `vcpkg` downloads can fail in Copilot agent environments when firewall/network policy blocks package endpoints.
 > By default, treat CI as the source of truth for full `vcpkg` dependency resolution.
-> If needed, repository admins can enable the required outbound access for Copilot agent firewall/proxy settings and use `.github/workflows/copilot-setup-steps.yml` to preinstall dependencies.
+> If needed, repository admins can enable the required outbound access for Copilot agent firewall/proxy settings and use `.github/workflows/copilot-setup-steps.yml` to preinstall dependencies and align the GCC toolchain with CI.
 
 ### 🔨 Build — Stage 1: Dev Mode
 

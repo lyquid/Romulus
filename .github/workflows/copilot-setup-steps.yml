@@ -21,9 +21,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # Match CI's Linux GCC toolchain so agent builds support C++23 <print>.
+      - name: Install GCC 14
+        run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 140
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 140
+
       - name: Install Linux system dependencies for glfw3
         run: |
-          sudo apt-get update
           sudo apt-get install -y \
             libx11-dev libxrandr-dev libxinerama-dev \
             libxcursor-dev libxi-dev libgl-dev
