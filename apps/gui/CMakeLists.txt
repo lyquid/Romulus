@@ -42,6 +42,10 @@ endif()
 add_executable(romulus_gui
     main.cpp
     gui_app.cpp
+    gui_app_tab_dats.cpp
+    gui_app_tab_folders.cpp
+    gui_app_tab_db.cpp
+    gui_app_tab_log.cpp
     file_dialog.cpp
     ${IMGUI_BACKEND_SOURCES}
 )

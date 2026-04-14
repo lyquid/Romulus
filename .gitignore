@@ -6,6 +6,7 @@ cmake-build-*/
 CMakeUserPresets.json
 
 # ── vcpkg ─────────────────────────────────────────────────────
+vcpkg/
 vcpkg_installed/
 vcpkg-cache/
 
@@ -46,6 +47,7 @@ desktop.ini
 # ── Misc ──────────────────────────────────────────────────────
 *.log
 compile_commands.json
+imgui.ini
 
 # ── Roms ─────────────────────────────────────────────────
 roms/
