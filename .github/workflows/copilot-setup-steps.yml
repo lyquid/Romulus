@@ -1,0 +1,59 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
+    # Set to the Copilot setup maximum because dependency bootstrap can be lengthy.
+    timeout-minutes: 59
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Match CI's Linux GCC toolchain so agent builds support C++23 <print>.
+      - name: Install GCC 14
+        run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 140
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 140
+
+      - name: Install Linux system dependencies for glfw3
+        run: |
+          sudo apt-get install -y \
+            libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxi-dev libgl-dev
+
+      - name: Setup vcpkg cache
+        run: mkdir -p ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-ubuntu-latest-copilot-setup-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-ubuntu-latest-copilot-setup-
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          # Keep aligned with the vcpkg baseline used in .github/workflows/ci.yml.
+          vcpkgGitCommitId: "c3867e714dd3a51c272826eea77267876517ed99"
+
+      - name: Verify vcpkg is available
+        run: vcpkg version

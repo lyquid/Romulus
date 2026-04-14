@@ -45,6 +45,9 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 ### 📖 Docs
 
 - **README rewrite**: Replaced ASCII art box borders in the workflow section with clean numbered steps and markdown formatting. Adopted a retro 1982-game-manual style with quirky section headers, tilde dividers, and a Gandalf-ism. All technical content preserved.
+- **Copilot/vcpkg clarification**: documented that Copilot agent environments may fail `vcpkg` downloads due to firewall/proxy restrictions, that CI remains the source of truth by default, and that admins can enable agent network access and use `.github/workflows/copilot-setup-steps.yml` for deterministic dependency setup.
+- **Copilot setup toolchain alignment**: updated `.github/workflows/copilot-setup-steps.yml` to install GCC 14 in addition to Linux X11/OpenGL headers so agent builds match CI's C++23 compiler expectations.
+- **Copilot setup cache + action alignment**: updated `.github/workflows/copilot-setup-steps.yml` to use `actions/checkout@v4` and added a vcpkg binary cache (`VCPKG_DEFAULT_BINARY_CACHE` + `actions/cache@v4`) to speed up repeated setup runs.
 
 ### 🗄️ Database — Schema v4: archive modeling, system context, Unix timestamps, drop redundant columns
 

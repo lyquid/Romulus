@@ -4,6 +4,7 @@
 
 - **Always read the `README.md` before making any code or documentation changes.**
 - **After making any changes, always update `CHANGELOG.md` and `README.md` if needed to reflect the changes.**
+- **Copilot agents may run with restricted networking/firewall policies. If `vcpkg` downloads fail, prefer CI as the source of truth unless repository admins have explicitly configured Copilot firewall/proxy access.**
 
 > These instructions apply to all code generation in this repository.
 > Based on the **C++ Core Guidelines** (Stroustrup & Sutter) adapted for this project.
