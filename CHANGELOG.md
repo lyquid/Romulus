@@ -61,6 +61,7 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 - **Copilot/vcpkg clarification**: documented that Copilot agent environments may fail `vcpkg` downloads due to firewall/proxy restrictions, that CI remains the source of truth by default, and that admins can enable agent network access and use `.github/workflows/copilot-setup-steps.yml` for deterministic dependency setup.
 - **Copilot setup toolchain alignment**: updated `.github/workflows/copilot-setup-steps.yml` to install GCC 14 in addition to Linux X11/OpenGL headers so agent builds match CI's C++23 compiler expectations.
 - **Copilot setup cache + action alignment**: updated `.github/workflows/copilot-setup-steps.yml` to use `actions/checkout@v4` and added a vcpkg binary cache (`VCPKG_DEFAULT_BINARY_CACHE` + `actions/cache@v4`) to speed up repeated setup runs.
+- **Copilot setup cache path hardening**: switched cache path wiring in `.github/workflows/copilot-setup-steps.yml` from `${{ env.VCPKG_DEFAULT_BINARY_CACHE }}` to `${{ github.workspace }}/vcpkg-cache` so "Setup vcpkg cache" does not fail in Copilot cloud-agent setup execution when env interpolation is empty.
 
 ### 🗄️ Database — Schema v4: archive modeling, system context, Unix timestamps, drop redundant columns
 

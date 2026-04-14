@@ -14,8 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
     # Set to the Copilot setup maximum because dependency bootstrap can be lengthy.
     timeout-minutes: 59
 
@@ -39,12 +37,12 @@ jobs:
             libxcursor-dev libxi-dev libgl-dev
 
       - name: Setup vcpkg cache
-        run: mkdir -p ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        run: mkdir -p "${{ github.workspace }}/vcpkg-cache"
 
       - name: Cache vcpkg packages
         uses: actions/cache@v4
         with:
-          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          path: ${{ github.workspace }}/vcpkg-cache
           key: vcpkg-ubuntu-latest-copilot-setup-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
             vcpkg-ubuntu-latest-copilot-setup-
