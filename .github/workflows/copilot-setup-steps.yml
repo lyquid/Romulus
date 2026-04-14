@@ -31,7 +31,7 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          # Keep aligned with the vcpkg baseline used in CI workflows.
+          # Keep aligned with the vcpkg baseline used in .github/workflows/ci.yml.
           vcpkgGitCommitId: "c3867e714dd3a51c272826eea77267876517ed99"
 
       - name: Verify vcpkg is available
