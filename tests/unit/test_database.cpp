@@ -554,13 +554,13 @@ TEST_F(DatabaseTest, ScannedDirectoryFileCountMultipleDirectories) {
   ASSERT_EQ(dirs->size(), 2u);
 
   // Results are ORDER BY added_at; find by path for stable assertions.
-  int gb_count = -1;
-  int gba_count = -1;
+  std::int64_t gb_count = -1;
+  std::int64_t gba_count = -1;
   for (const auto& d : *dirs) {
     if (d.path == "/roms/gb") {
-      gb_count = static_cast<int>(d.file_count);
+      gb_count = d.file_count;
     } else if (d.path == "/roms/gba") {
-      gba_count = static_cast<int>(d.file_count);
+      gba_count = d.file_count;
     }
   }
   EXPECT_EQ(gb_count, 2);
