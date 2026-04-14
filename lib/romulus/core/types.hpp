@@ -75,7 +75,7 @@ struct DatVersion {
   std::string version;
   std::string system = {};     ///< Human-readable system description from the DAT <description> tag
   std::string source_url;
-  std::string checksum;
+  std::string dat_sha256;
   std::string imported_at;
 };
 

@@ -27,7 +27,7 @@ protected:
   void seed_data() {
     romulus::core::DatVersion dat{.name = "Test",
                                   .version = "1.0",
-                                  .source_url = {}, .checksum = "abc", .imported_at = {}};
+                                  .source_url = {}, .dat_sha256 = "abc", .imported_at = {}};
     auto dat_id = db_->insert_dat_version(dat);
     ASSERT_TRUE(dat_id.has_value());
 

@@ -249,9 +249,9 @@ CREATE TABLE IF NOT EXISTS dat_versions (
     version       TEXT NOT NULL,
     system        TEXT,
     source_url    TEXT,
-    checksum      TEXT NOT NULL,
+    dat_sha256    TEXT NOT NULL,
     imported_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-    UNIQUE(checksum)
+    UNIQUE(dat_sha256)
 );
 
 -- Games are the normalized parent entities from DAT files.
@@ -334,7 +334,7 @@ CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 /// Schema version — increment whenever the schema changes in a backward-incompatible way.
 /// Stored in PRAGMA user_version. If the on-disk DB has a different version the database
 /// is wiped and rebuilt so queries never encounter stale column layouts.
-constexpr int k_SchemaVersion = 5;
+constexpr int k_SchemaVersion = 6;
 
 auto match_type_to_int(core::MatchType type) -> int {
   switch (type) {
@@ -508,7 +508,7 @@ auto Database::last_insert_id() const -> std::int64_t {
 
 auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::int64_t> {
   auto stmt = prepare(
-      "INSERT INTO dat_versions (name, version, system, source_url, checksum, imported_at) "
+      "INSERT INTO dat_versions (name, version, system, source_url, dat_sha256, imported_at) "
       "VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', 'localtime'))");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -522,7 +522,7 @@ auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::in
     stmt->bind_text(3, dat.system);
   }
   stmt->bind_text(4, dat.source_url);
-  stmt->bind_text(5, dat.checksum);
+  stmt->bind_text(5, dat.dat_sha256);
   stmt->execute();
 
   return last_insert_id();
@@ -530,7 +530,7 @@ auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::in
 
 auto Database::find_dat_version(std::string_view name, std::string_view version)
     -> Result<std::optional<core::DatVersion>> {
-  auto stmt = prepare("SELECT id, name, version, system, source_url, checksum, imported_at "
+  auto stmt = prepare("SELECT id, name, version, system, source_url, dat_sha256, imported_at "
                       "FROM dat_versions WHERE name = ?1 AND version = ?2 "
                       "ORDER BY imported_at DESC, id DESC LIMIT 1");
   if (!stmt) {
@@ -549,20 +549,20 @@ auto Database::find_dat_version(std::string_view name, std::string_view version)
       .version = stmt->column_text(2),
       .system = stmt->column_text(3),
       .source_url = stmt->column_text(4),
-      .checksum = stmt->column_text(5),
+      .dat_sha256 = stmt->column_text(5),
       .imported_at = stmt->column_text(6),
   };
 }
 
-auto Database::find_dat_version_by_checksum(std::string_view checksum)
+auto Database::find_dat_version_by_sha256(std::string_view dat_sha256)
     -> Result<std::optional<core::DatVersion>> {
-  auto stmt = prepare("SELECT id, name, version, system, source_url, checksum, imported_at "
-                      "FROM dat_versions WHERE checksum = ?1 LIMIT 1");
+  auto stmt = prepare("SELECT id, name, version, system, source_url, dat_sha256, imported_at "
+                      "FROM dat_versions WHERE dat_sha256 = ?1 LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
 
-  stmt->bind_text(1, checksum);
+  stmt->bind_text(1, dat_sha256);
   if (!stmt->step()) {
     return std::nullopt;
   }
@@ -573,7 +573,7 @@ auto Database::find_dat_version_by_checksum(std::string_view checksum)
       .version = stmt->column_text(2),
       .system = stmt->column_text(3),
       .source_url = stmt->column_text(4),
-      .checksum = stmt->column_text(5),
+      .dat_sha256 = stmt->column_text(5),
       .imported_at = stmt->column_text(6),
   };
 }
@@ -581,7 +581,7 @@ auto Database::find_dat_version_by_checksum(std::string_view checksum)
 auto Database::find_dat_version_by_name(std::string_view name)
     -> Result<std::optional<core::DatVersion>> {
   // Returns the most recently imported DAT with the given name (most recent first).
-  auto stmt = prepare("SELECT id, name, version, system, source_url, checksum, imported_at "
+  auto stmt = prepare("SELECT id, name, version, system, source_url, dat_sha256, imported_at "
                       "FROM dat_versions WHERE name = ?1 ORDER BY imported_at DESC LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -598,14 +598,14 @@ auto Database::find_dat_version_by_name(std::string_view name)
       .version = stmt->column_text(2),
       .system = stmt->column_text(3),
       .source_url = stmt->column_text(4),
-      .checksum = stmt->column_text(5),
+      .dat_sha256 = stmt->column_text(5),
       .imported_at = stmt->column_text(6),
   };
 }
 
 
 auto Database::get_all_dat_versions() -> Result<std::vector<core::DatVersion>> {
-  auto stmt = prepare("SELECT id, name, version, system, source_url, checksum, imported_at "
+  auto stmt = prepare("SELECT id, name, version, system, source_url, dat_sha256, imported_at "
                       "FROM dat_versions ORDER BY imported_at DESC");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -619,7 +619,7 @@ auto Database::get_all_dat_versions() -> Result<std::vector<core::DatVersion>> {
         .version = stmt->column_text(2),
         .system = stmt->column_text(3),
         .source_url = stmt->column_text(4),
-        .checksum = stmt->column_text(5),
+        .dat_sha256 = stmt->column_text(5),
         .imported_at = stmt->column_text(6),
     });
   }

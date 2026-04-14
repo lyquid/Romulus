@@ -34,7 +34,7 @@ TEST_F(DatabaseTest, FindOrInsertGameIsIdempotent) {
       .name = "Nintendo - SNES",
       .version = "2024-01-01",
       .source_url = {},
-      .checksum = "gametest1",
+      .dat_sha256 = "gametest1",
       .imported_at = {},
   };
   auto dat_id = db_->insert_dat_version(dat);
@@ -61,7 +61,7 @@ TEST_F(DatabaseTest, GetGamesForDatVersionReturnsAll) {
       .name = "Sega - Genesis",
       .version = "2024-01-01",
       .source_url = {},
-      .checksum = "gametest2",
+      .dat_sha256 = "gametest2",
       .imported_at = {},
   };
   auto dat_id = db_->insert_dat_version(dat);
@@ -91,7 +91,7 @@ TEST_F(DatabaseTest, RomGameNamePopulatedViaJoin) {
       .name = "Nintendo - NES",
       .version = "2024-01-01",
       .source_url = {},
-      .checksum = "gametest3",
+      .dat_sha256 = "gametest3",
       .imported_at = {},
   };
   auto dat_id = db_->insert_dat_version(dat);
@@ -128,7 +128,7 @@ TEST_F(DatabaseTest, InsertAndFindDatVersion) {
       .name = "Nintendo - Game Boy",
       .version = "2024-01-01",
       .source_url = "test.dat",
-      .checksum = "abc123",
+      .dat_sha256 = "abc123",
       .imported_at = {},
   };
 
@@ -142,24 +142,24 @@ TEST_F(DatabaseTest, InsertAndFindDatVersion) {
   EXPECT_EQ(found->value().name, "Nintendo - Game Boy");
   EXPECT_EQ(found->value().version, "2024-01-01");
 
-  auto by_checksum = db_->find_dat_version_by_checksum("abc123");
-  ASSERT_TRUE(by_checksum.has_value());
-  ASSERT_TRUE(by_checksum->has_value());
-  EXPECT_EQ(by_checksum->value().name, "Nintendo - Game Boy");
+  auto by_sha256 = db_->find_dat_version_by_sha256("abc123");
+  ASSERT_TRUE(by_sha256.has_value());
+  ASSERT_TRUE(by_sha256->has_value());
+  EXPECT_EQ(by_sha256->value().name, "Nintendo - Game Boy");
 }
 
-TEST_F(DatabaseTest, DatVersionUniqueByChecksum) {
+TEST_F(DatabaseTest, DatVersionUniqueBySha256) {
   romulus::core::DatVersion dat{
       .name = "Test",
       .version = "1.0",
       .source_url = {},
-      .checksum = "same_checksum",
+      .dat_sha256 = "same_checksum",
       .imported_at = {},
   };
   auto id1 = db_->insert_dat_version(dat);
   ASSERT_TRUE(id1.has_value());
-  // The service layer prevents duplicate imports via find_dat_version_by_checksum before insert.
-  // Direct insert of a duplicate checksum throws due to the UNIQUE constraint.
+  // The service layer prevents duplicate imports via find_dat_version_by_sha256 before insert.
+  // Direct insert of a duplicate DAT SHA-256 throws due to the UNIQUE constraint.
   EXPECT_THROW(
       {
         try {
@@ -179,7 +179,7 @@ TEST_F(DatabaseTest, InsertAndRetrieveRom) {
       .name = "Test System",
       .version = "1.0",
       .source_url = {},
-      .checksum = "abc123",
+      .dat_sha256 = "abc123",
       .imported_at = {},
   };
   auto dat_id = db_->insert_dat_version(dat);
@@ -251,7 +251,7 @@ TEST_F(DatabaseTest, TransactionRollsBackOnScopeExit) {
       .name = "Rollback Test",
       .version = "1.0",
       .source_url = {},
-      .checksum = "rb1",
+      .dat_sha256 = "rb1",
       .imported_at = {},
   };
   {
@@ -271,7 +271,7 @@ TEST_F(DatabaseTest, TransactionCommits) {
       .name = "Commit Test",
       .version = "1.0",
       .source_url = {},
-      .checksum = "cm1",
+      .dat_sha256 = "cm1",
       .imported_at = {},
   };
   {
@@ -291,7 +291,7 @@ TEST_F(DatabaseTest, FindsDuplicateFiles) {
       .name = "Dup",
       .version = "1.0",
       .source_url = {},
-      .checksum = "abc",
+      .dat_sha256 = "abc",
       .imported_at = {},
   };
   auto dat_id = db_->insert_dat_version(dat);
@@ -372,7 +372,7 @@ TEST_F(DatabaseTest, GetAllRomsReturnsAll) {
       .name = "System A",
       .version = "1.0",
       .source_url = {},
-      .checksum = "chk1",
+      .dat_sha256 = "chk1",
       .imported_at = {},
   };
   auto dat_id = db_->insert_dat_version(dat);
@@ -407,7 +407,7 @@ TEST_F(DatabaseTest, ComputedRomStatusMissingWhenNoMatch) {
       .name = "Sys",
       .version = "1.0",
       .source_url = {},
-      .checksum = "c1",
+      .dat_sha256 = "c1",
       .imported_at = {},
   };
   auto dat_id = db_->insert_dat_version(dat);
@@ -438,7 +438,7 @@ TEST_F(DatabaseTest, ComputedRomStatusVerifiedWhenExactMatchAndFileExists) {
       .name = "Sys",
       .version = "1.0",
       .source_url = {},
-      .checksum = "c2",
+      .dat_sha256 = "c2",
       .imported_at = {},
   };
   auto dat_id = db_->insert_dat_version(dat);

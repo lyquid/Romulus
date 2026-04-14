@@ -34,20 +34,20 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
     return std::unexpected(validated.error());
   }
 
-  // Compute checksum
-  auto checksum = dat::DatFetcher::compute_checksum(*validated);
-  if (!checksum) {
-    return std::unexpected(checksum.error());
+  // Compute DAT SHA-256
+  auto dat_sha256 = dat::DatFetcher::compute_sha256(*validated);
+  if (!dat_sha256) {
+    return std::unexpected(dat_sha256.error());
   }
 
-  // Check if already imported by checksum (fast path — avoids full parse on re-import).
-  // Two DAT files with the same checksum are treated as identical regardless of name/version;
+  // Check if already imported by DAT SHA-256 (fast path — avoids full parse on re-import).
+  // Two DAT files with the same SHA-256 are treated as identical regardless of name/version;
   // this prevents re-importing a file that was merely renamed or repackaged.
-  auto existing_by_checksum = db_->find_dat_version_by_checksum(*checksum);
-  if (existing_by_checksum && existing_by_checksum->has_value()) {
-    ROMULUS_INFO("DAT already imported (checksum match): '{}'",
-                 existing_by_checksum->value().name);
-    return existing_by_checksum->value();
+  auto existing_by_sha256 = db_->find_dat_version_by_sha256(*dat_sha256);
+  if (existing_by_sha256 && existing_by_sha256->has_value()) {
+    ROMULUS_INFO("DAT already imported (SHA-256 match): '{}'",
+                 existing_by_sha256->value().name);
+    return existing_by_sha256->value();
   }
 
   // Parse DAT
@@ -63,7 +63,7 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
       .version = dat_file->header.version,
       .system = dat_file->header.description,
       .source_url = validated->string(),
-      .checksum = *checksum,
+      .dat_sha256 = *dat_sha256,
       .imported_at = {},
   };
 

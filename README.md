@@ -193,7 +193,7 @@ The schema is built around that single question.
 
 | Table | What it stores | Why it exists |
 |---|---|---|
-| `dat_versions` | Each imported DAT file (name, version, system description, SHA-256 checksum). Unique by checksum — same file can't be imported twice. | The rulebook — what a given publisher decided correct ROMs look like. |
+| `dat_versions` | Each imported DAT file (name, version, system description, `dat_sha256`). Unique by `dat_sha256` — same file can't be imported twice. | The rulebook — what a given publisher decided correct ROMs look like. |
 | `games` | Normalized game entries — one row per unique game name per DAT version. | Eliminates duplication: 10 ROMs for the same game share one `games` row. |
 | `roms` | The **expected** ROM entries declared by a DAT (`expected_sha1`, `crc32`, `md5`, size). Each ROM is a child of a `games` row via `game_id` FK. | *Opinion* — what the DAT author says a correct ROM looks like. |
 | `files` | Every ROM **file found on disk** (virtual path, optional archive_path, optional entry_name, size, hashes, Unix scan timestamp). Points into `global_roms` via `sha1`. | *Reality* — what is actually sitting in your scan folders. Archive entries are first-class citizens. |
