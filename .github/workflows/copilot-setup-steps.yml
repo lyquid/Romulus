@@ -14,12 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
     # Set to the Copilot setup maximum because dependency bootstrap can be lengthy.
     timeout-minutes: 59
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       # Match CI's Linux GCC toolchain so agent builds support C++23 <print>.
       - name: Install GCC 14
@@ -35,6 +37,17 @@ jobs:
           sudo apt-get install -y \
             libx11-dev libxrandr-dev libxinerama-dev \
             libxcursor-dev libxi-dev libgl-dev
+
+      - name: Setup vcpkg cache
+        run: mkdir -p ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-ubuntu-latest-copilot-setup-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            vcpkg-ubuntu-latest-copilot-setup-
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
