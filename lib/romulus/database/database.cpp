@@ -1452,11 +1452,26 @@ auto Database::add_scanned_directory(std::string_view path) -> Result<core::Scan
       .id = stmt->column_int64(0),
       .path = stmt->column_text(1),
       .added_at = stmt->column_text(2),
+      .file_count = 0, // newly registered directory has no scanned files yet
   };
 }
 
 auto Database::get_all_scanned_directories() -> Result<std::vector<core::ScannedDirectory>> {
-  auto stmt = prepare("SELECT id, path, added_at FROM scanned_directories ORDER BY added_at");
+  // Count files whose virtual path starts with the directory path.
+  // RTRIM normalizes any trailing '/' or '\' on the stored path before comparison so
+  // directories registered with or without a trailing separator both work correctly.
+  // COLLATE BINARY overrides the NOCASE collation on files.path to ensure case-sensitive
+  // prefix matching (important on Linux where paths are case-sensitive).
+  // Two path separators are checked to cover both Unix ('/') and Windows ('\') paths.
+  auto stmt = prepare(
+      "SELECT sd.id, sd.path, sd.added_at, "
+      "  (SELECT COUNT(*) FROM files f "
+      "   WHERE SUBSTR(f.path, 1, LENGTH(RTRIM(sd.path, '/\\')) + 1) "
+      "         = (RTRIM(sd.path, '/\\') || '/') COLLATE BINARY "
+      "      OR SUBSTR(f.path, 1, LENGTH(RTRIM(sd.path, '/\\')) + 1) "
+      "         = (RTRIM(sd.path, '/\\') || '\\') COLLATE BINARY) AS file_count "
+      "FROM scanned_directories sd "
+      "ORDER BY sd.added_at");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -1466,6 +1481,7 @@ auto Database::get_all_scanned_directories() -> Result<std::vector<core::Scanned
         .id = stmt->column_int64(0),
         .path = stmt->column_text(1),
         .added_at = stmt->column_text(2),
+        .file_count = stmt->column_int64(3),
     });
   }
   return dirs;

@@ -82,6 +82,8 @@ private:
   // ── Checklist sorting ──────────────────────────────────
   void apply_checklist_sort();
   void apply_game_sort();
+  void apply_db_filter_sort(); ///< Recompute db_display_rows_ from current filter + sort
+  void rebuild_db_lower_cache(); ///< Pre-compute lowercased cell strings for filter matching
 
   // ── Toast notification ─────────────────────────────────
   void show_toast(const std::string& message);
@@ -188,6 +190,18 @@ private:
   int selected_db_table_index_ = -1;         ///< Currently selected table index
   core::TableQueryResult db_table_data_;     ///< Data for the currently selected table
   bool db_tab_loaded_ = false;               ///< True once "Read DB" has been invoked
+
+  // DB Explorer sort / filter / navigation
+  static constexpr std::size_t k_DbMaxFilterLen = 256;
+  std::array<char, k_DbMaxFilterLen> db_filter_buf_{};
+  std::string db_filter_lower_;              ///< Lowercase copy of db_filter_buf_
+  int db_sort_col_ = -1;                     ///< Active sort column index (-1 = unsorted)
+  bool db_sort_ascending_ = true;            ///< Sort direction
+  bool db_view_dirty_ = true;               ///< Recompute db_display_rows_ on next frame
+  bool scroll_db_top_ = false;              ///< One-shot flag: scroll DB table to top
+  bool scroll_db_bottom_ = false;           ///< One-shot flag: scroll DB table to bottom
+  std::vector<std::size_t> db_display_rows_; ///< Filtered+sorted row indices into db_table_data_
+  std::vector<std::vector<std::string>> db_table_lower_rows_; ///< Pre-lowercased cell cache for filter
 };
 
 } // namespace romulus::gui

@@ -7,6 +7,13 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ✨ GUI — DB Tab & Folders Tab enhancements
+
+- **DB Tab — sortable columns**: clicking any column header in the data table now toggles ascending/descending sort. Integer and real-typed columns sort numerically; all others sort lexicographically.
+- **DB Tab — filter bar**: a "Filter:" text input above the data table allows free-text substring search across all cells (case-insensitive). The row counter updates to show `(filtered / total rows)` while a filter is active.
+- **DB Tab — navigation arrows**: `^` / `v` scroll buttons have been added to the right of the data table, matching the style of the DATs tab nav strip.
+- **Folders Tab — file count**: the folder list now includes a "Files" column displaying the number of scanned file entries (including archive entries) found under each registered directory.
+
 ### 🔒 Scanner — size + mtime fingerprint skip-checking (fixes issue #4)
 
 - **Problem**: the previous skip-check predicate accepted only a `std::string_view` path, so a file that had been replaced or silently modified (same path, changed content) would be skipped on subsequent scans because its path was already in the database.
