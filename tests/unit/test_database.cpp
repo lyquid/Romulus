@@ -480,4 +480,91 @@ TEST_F(DatabaseTest, ComputedRomStatusVerifiedWhenExactMatchAndFileExists) {
   EXPECT_EQ(*status, romulus::core::RomStatusType::Verified);
 }
 
+// Helper to build a minimal FileInfo with unique hashes under a given path.
+static romulus::core::FileInfo make_file(const std::string& path,
+                                         const std::string& sha1_hex) {
+  return romulus::core::FileInfo{
+      .id = 0,
+      .path = path,
+      .archive_path = std::nullopt,
+      .entry_name = std::nullopt,
+      .size = 1,
+      .crc32 = sha1_hex.substr(0, 8),
+      .md5 = sha1_hex.substr(0, 32),
+      .sha1 = sha1_hex,
+      .sha256 = {},
+  };
+}
+
+TEST_F(DatabaseTest, ScannedDirectoryFileCountIsZeroWhenNoFiles) {
+  auto dir = db_->add_scanned_directory("/roms/snes");
+  ASSERT_TRUE(dir.has_value()) << dir.error().message;
+  EXPECT_EQ(dir->file_count, 0);
+
+  auto dirs = db_->get_all_scanned_directories();
+  ASSERT_TRUE(dirs.has_value());
+  ASSERT_EQ(dirs->size(), 1u);
+  EXPECT_EQ(dirs->front().file_count, 0);
+}
+
+TEST_F(DatabaseTest, ScannedDirectoryFileCountIncludesFilesUnderDirectory) {
+  ASSERT_TRUE(db_->add_scanned_directory("/roms/snes").has_value());
+
+  // Insert two files under the registered directory.
+  ASSERT_TRUE(db_->upsert_file(make_file(
+      "/roms/snes/game1.sfc", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).has_value());
+  ASSERT_TRUE(db_->upsert_file(make_file(
+      "/roms/snes/sub/game2.sfc", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")).has_value());
+  // Insert a file in a sibling directory — must NOT be counted.
+  ASSERT_TRUE(db_->upsert_file(make_file(
+      "/roms/snes_hacks/hack.sfc", "cccccccccccccccccccccccccccccccccccccccc")).has_value());
+
+  auto dirs = db_->get_all_scanned_directories();
+  ASSERT_TRUE(dirs.has_value());
+  ASSERT_EQ(dirs->size(), 1u);
+  EXPECT_EQ(dirs->front().file_count, 2);
+}
+
+TEST_F(DatabaseTest, ScannedDirectoryFileCountHandlesTrailingSeparator) {
+  // Directory registered with a trailing slash — count must still work.
+  ASSERT_TRUE(db_->add_scanned_directory("/roms/nes/").has_value());
+
+  ASSERT_TRUE(db_->upsert_file(make_file(
+      "/roms/nes/game.nes", "dddddddddddddddddddddddddddddddddddddddd")).has_value());
+
+  auto dirs = db_->get_all_scanned_directories();
+  ASSERT_TRUE(dirs.has_value());
+  ASSERT_EQ(dirs->size(), 1u);
+  EXPECT_EQ(dirs->front().file_count, 1);
+}
+
+TEST_F(DatabaseTest, ScannedDirectoryFileCountMultipleDirectories) {
+  ASSERT_TRUE(db_->add_scanned_directory("/roms/gb").has_value());
+  ASSERT_TRUE(db_->add_scanned_directory("/roms/gba").has_value());
+
+  ASSERT_TRUE(db_->upsert_file(make_file(
+      "/roms/gb/tetris.gb", "1111111111111111111111111111111111111111")).has_value());
+  ASSERT_TRUE(db_->upsert_file(make_file(
+      "/roms/gb/mario.gb", "2222222222222222222222222222222222222222")).has_value());
+  ASSERT_TRUE(db_->upsert_file(make_file(
+      "/roms/gba/metroid.gba", "3333333333333333333333333333333333333333")).has_value());
+
+  auto dirs = db_->get_all_scanned_directories();
+  ASSERT_TRUE(dirs.has_value());
+  ASSERT_EQ(dirs->size(), 2u);
+
+  // Results are ORDER BY added_at; find by path for stable assertions.
+  int gb_count = -1;
+  int gba_count = -1;
+  for (const auto& d : *dirs) {
+    if (d.path == "/roms/gb") {
+      gb_count = static_cast<int>(d.file_count);
+    } else if (d.path == "/roms/gba") {
+      gba_count = static_cast<int>(d.file_count);
+    }
+  }
+  EXPECT_EQ(gb_count, 2);
+  EXPECT_EQ(gba_count, 1);
+}
+
 } // namespace

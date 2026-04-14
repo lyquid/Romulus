@@ -19,6 +19,7 @@
 // GLFW must come after imgui backend headers
 // NOLINTNEXTLINE(misc-include-cleaner)
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -1058,6 +1059,7 @@ void GuiApp::render_db_tab() {
       db_table_names_ = std::move(*result);
       selected_db_table_index_ = -1;
       db_table_data_ = {};
+      db_table_lower_rows_.clear();
       db_tab_loaded_ = true;
       db_filter_buf_.fill('\0');
       db_filter_lower_.clear();
@@ -1114,6 +1116,7 @@ void GuiApp::render_db_tab() {
             show_toast("Failed to read table: " + data.error().message);
             db_table_data_ = {};
           }
+          rebuild_db_lower_cache();
           // Reset filter, sort, and nav state for the new table.
           db_filter_buf_.fill('\0');
           db_filter_lower_.clear();
@@ -1230,15 +1233,14 @@ void GuiApp::render_db_tab() {
 
   ImGui::Spacing();
 
-  // Recompute the filtered + sorted display index list when dirty.
-  if (db_view_dirty_) {
-    apply_db_filter_sort();
-    db_view_dirty_ = false;
-  }
-
   // Table + nav-strip layout (mirrors DATs tab pattern)
   constexpr float k_NavStripW = 24.0F;
   const float nav_gap = ImGui::GetStyle().ItemSpacing.x;
+
+  // Build a unique table ID from the selected table name so ImGui doesn't persist
+  // sort specs from a previous table when the user switches to a different one.
+  std::string db_table_id = "##db_view:";
+  db_table_id += db_table_names_[static_cast<std::size_t>(selected_db_table_index_)];
 
   constexpr ImGuiTableFlags k_TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                                            ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY |
@@ -1247,7 +1249,7 @@ void GuiApp::render_db_tab() {
                                            ImGuiTableFlags_Sortable;
 
   ImGui::BeginGroup();
-  if (ImGui::BeginTable("##db_table_view",
+  if (ImGui::BeginTable(db_table_id.c_str(),
                         col_count,
                         k_TableFlags,
                         ImVec2(-k_NavStripW - nav_gap, -30))) {
@@ -1258,7 +1260,8 @@ void GuiApp::render_db_tab() {
     }
     ImGui::TableHeadersRow();
 
-    // Consume sort-spec changes from ImGui.
+    // Consume sort-spec changes from ImGui — must happen before apply_db_filter_sort()
+    // so sort and filter are recomputed in a single pass per frame.
     if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
       if (sort_specs->SpecsDirty) {
         if (sort_specs->SpecsCount > 0) {
@@ -1269,11 +1272,14 @@ void GuiApp::render_db_tab() {
           db_sort_col_ = -1;
         }
         db_view_dirty_ = true;
-        // Re-run sort synchronously before rendering this frame.
-        apply_db_filter_sort();
-        db_view_dirty_ = false;
         sort_specs->SpecsDirty = false;
       }
+    }
+
+    // Recompute filtered+sorted view at most once per frame, after sort specs are consumed.
+    if (db_view_dirty_) {
+      apply_db_filter_sort();
+      db_view_dirty_ = false;
     }
 
     // One-shot scroll requests.
@@ -1494,25 +1500,39 @@ void GuiApp::apply_game_sort() {
 // DB Explorer sort + filter
 // ═════════════════════════════════════════════════════════════════
 
+void GuiApp::rebuild_db_lower_cache() {
+  db_table_lower_rows_.clear();
+  db_table_lower_rows_.reserve(db_table_data_.rows.size());
+  for (const auto& row : db_table_data_.rows) {
+    auto& lr = db_table_lower_rows_.emplace_back();
+    lr.reserve(row.size());
+    for (const auto& cell : row) {
+      std::string lower = cell;
+      std::ranges::transform(lower, lower.begin(), ascii_lower);
+      lr.push_back(std::move(lower));
+    }
+  }
+}
+
 void GuiApp::apply_db_filter_sort() {
   const std::size_t row_count = db_table_data_.rows.size();
   db_display_rows_.clear();
   db_display_rows_.reserve(row_count);
 
-  // Build filtered index list.
+  // Build filtered index list using the pre-lowercased cell cache to avoid
+  // per-cell string allocations while filtering.
   for (std::size_t i = 0; i < row_count; ++i) {
     if (db_filter_lower_.empty()) {
       db_display_rows_.push_back(i);
       continue;
     }
-    const auto& row = db_table_data_.rows[i];
     bool matches = false;
-    for (const auto& cell : row) {
-      std::string cell_lower = cell;
-      std::ranges::transform(cell_lower, cell_lower.begin(), ascii_lower);
-      if (cell_lower.find(db_filter_lower_) != std::string::npos) {
-        matches = true;
-        break;
+    if (i < db_table_lower_rows_.size()) {
+      for (const auto& cell_lower : db_table_lower_rows_[i]) {
+        if (cell_lower.find(db_filter_lower_) != std::string::npos) {
+          matches = true;
+          break;
+        }
       }
     }
     if (matches) {
@@ -1527,18 +1547,20 @@ void GuiApp::apply_db_filter_sort() {
   }
   const std::size_t sort_col = static_cast<std::size_t>(db_sort_col_);
   const bool ascending = db_sort_ascending_;
-  const std::string& col_type = db_table_data_.columns[sort_col].type;
 
-  // Follow SQLite's type affinity rules: a column has INTEGER affinity if its declared
-  // type contains the substring "INT" (e.g. INTEGER, BIGINT, SMALLINT — and, per the spec,
-  // also hypothetical types like "POINT", but those never appear in this schema).
-  // REAL affinity applies when the type contains "REAL", "FLOA", or "DOUB".
-  // Non-parseable cells sort as 0.0 — acceptable for a read-only explorer tool.
-  const bool is_numeric = col_type.find("INT") != std::string::npos ||
-                          col_type.find("REAL") != std::string::npos ||
-                          col_type.find("FLOA") != std::string::npos ||
-                          col_type.find("DOUB") != std::string::npos ||
-                          col_type.find("NUMERIC") != std::string::npos;
+  // Normalise declared type to lowercase to handle columns declared as e.g.
+  // "integer" or "Integer" as well as the canonical "INTEGER".
+  std::string col_type_lower = db_table_data_.columns[sort_col].type;
+  std::ranges::transform(col_type_lower, col_type_lower.begin(), ascii_lower);
+
+  // Follow SQLite type affinity rules.  A column has INTEGER affinity when its
+  // declared type contains "int"; REAL affinity when it contains "real", "floa",
+  // or "doub"; NUMERIC affinity when it contains "numeric".
+  const bool is_numeric = col_type_lower.find("int") != std::string::npos ||
+                          col_type_lower.find("real") != std::string::npos ||
+                          col_type_lower.find("floa") != std::string::npos ||
+                          col_type_lower.find("doub") != std::string::npos ||
+                          col_type_lower.find("numeric") != std::string::npos;
 
   std::stable_sort(
       db_display_rows_.begin(),
@@ -1552,8 +1574,12 @@ void GuiApp::apply_db_filter_sort() {
         bool a_less = false;
         bool b_less = false;
         if (is_numeric) {
-          const double na = std::strtod(va.c_str(), nullptr);
-          const double nb = std::strtod(vb.c_str(), nullptr);
+          // std::from_chars is locale-independent unlike strtod.
+          // Unparseable cells (NULL, empty, non-numeric text) default to 0.0.
+          double na = 0.0;
+          double nb = 0.0;
+          std::from_chars(va.data(), va.data() + va.size(), na);
+          std::from_chars(vb.data(), vb.data() + vb.size(), nb);
           a_less = na < nb;
           b_less = nb < na;
         } else {

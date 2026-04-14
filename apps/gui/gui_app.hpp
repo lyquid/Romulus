@@ -83,6 +83,7 @@ private:
   void apply_checklist_sort();
   void apply_game_sort();
   void apply_db_filter_sort(); ///< Recompute db_display_rows_ from current filter + sort
+  void rebuild_db_lower_cache(); ///< Pre-compute lowercased cell strings for filter matching
 
   // ── Toast notification ─────────────────────────────────
   void show_toast(const std::string& message);
@@ -200,6 +201,7 @@ private:
   bool scroll_db_top_ = false;              ///< One-shot flag: scroll DB table to top
   bool scroll_db_bottom_ = false;           ///< One-shot flag: scroll DB table to bottom
   std::vector<std::size_t> db_display_rows_; ///< Filtered+sorted row indices into db_table_data_
+  std::vector<std::vector<std::string>> db_table_lower_rows_; ///< Pre-lowercased cell cache for filter
 };
 
 } // namespace romulus::gui
