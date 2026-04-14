@@ -3,20 +3,8 @@
 #include "gui_app_shared.hpp"
 #include "romulus/core/logging.hpp"
 
-// ImGui and backends — included as system headers to avoid third-party warnings.
-// The SYSTEM include paths are set in CMakeLists.txt.
-#if defined(__GNUC__) || defined(__clang__)
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
-#include <imgui.h>
-#if defined(__GNUC__) || defined(__clang__)
-  #pragma GCC diagnostic pop
-#endif
-
 #include <algorithm>
 #include <charconv>
-#include <cmath>
 #include <ranges>
 #include <string>
 
