@@ -80,6 +80,10 @@ Before you can save the princess, you'll need:
 - 📦 **CMake** ≥ 3.25
 - 🧰 **vcpkg** — the item shop of package managers
 
+> ⚠️ **Copilot Agent note**: `vcpkg` downloads can fail in Copilot agent sessions when the agent firewall/network policy blocks package endpoints.
+> By default, treat CI as the source of truth for full `vcpkg` dependency resolution.
+> If needed, repository admins can enable the required outbound access for Copilot agent firewall/proxy settings and use `.github/workflows/copilot-setup-steps.yml` to preinstall dependencies.
+
 ### 🔨 Build — Stage 1: Dev Mode
 
 ```bash

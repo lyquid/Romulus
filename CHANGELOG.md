@@ -39,6 +39,7 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 ### 📖 Docs
 
 - **README rewrite**: Replaced ASCII art box borders in the workflow section with clean numbered steps and markdown formatting. Adopted a retro 1982-game-manual style with quirky section headers, tilde dividers, and a Gandalf-ism. All technical content preserved.
+- **Copilot/vcpkg clarification**: documented that Copilot agent environments may fail `vcpkg` downloads due to firewall/proxy restrictions, that CI remains the source of truth by default, and that admins can enable agent network access and use `.github/workflows/copilot-setup-steps.yml` for deterministic dependency setup.
 
 ### 🗄️ Database — Schema v4: archive modeling, system context, Unix timestamps, drop redundant columns
 
