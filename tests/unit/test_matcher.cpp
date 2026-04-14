@@ -199,7 +199,7 @@ TEST_F(MatcherTest, MatchesSha256OnlyWhenLowerHashesDiffer) {
   EXPECT_EQ(sha256_match->rom_id, rom_enriched_id_);
 }
 
-TEST_F(MatcherTest, MatchesMd5OnlyUsingPreloadedGlobalRomIndex) {
+TEST_F(MatcherTest, MatchesMd5OnlyWhenOnlyMd5HashIsAvailable) {
   auto results = romulus::engine::Matcher::match_all(*db_);
   ASSERT_TRUE(results.has_value()) << results.error().message;
 
