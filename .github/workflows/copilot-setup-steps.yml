@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    # Keep below 60 minutes (Copilot setup job max is 59).
+    # Set to the Copilot setup maximum because dependency bootstrap can be lengthy.
     timeout-minutes: 59
 
     steps:
