@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # Keep below 60 minutes (Copilot setup job max is 59).
     timeout-minutes: 59
 
     steps:
@@ -30,6 +31,7 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
+          # Keep aligned with the vcpkg baseline used in CI workflows.
           vcpkgGitCommitId: "c3867e714dd3a51c272826eea77267876517ed99"
 
       - name: Verify vcpkg is available
