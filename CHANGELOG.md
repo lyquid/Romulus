@@ -7,6 +7,10 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ⚡ Engine — classifier N+1 query removal
+
+- **Classifier**: `Classifier::classify_all()` now uses a single CTE-backed aggregate query via `Database::get_collection_summary()` instead of computing each ROM status in a loop with per-ROM queries.
+
 ### 🔧 DAT import — explicit SHA-256 naming for DAT deduplication
 
 - **DatFetcher**: switched DAT content hashing from SHA-1 to SHA-256 for version/dedup checks.
