@@ -116,12 +116,39 @@ protected:
         .sha256 = "0000000000000000000000000000000000000000000000000000000000000000",
     };
     ASSERT_TRUE(db_->upsert_file(other).has_value());
+
+    auto game_id4 = db_->find_or_insert_game(*dat_id, "Md5 Only Game");
+    ASSERT_TRUE(game_id4.has_value());
+
+    romulus::core::RomInfo rom_md5_only{.game_id = *game_id4,
+                                        .name = "md5_only.bin",
+                                        .size = 444,
+                                        .crc32 = {},
+                                        .md5 = "99887766998877669988776699887766",
+                                        .sha1 = {},
+                                        .sha256 = {},
+                                        .region = {}};
+    auto rom_md5_only_id = db_->insert_rom(rom_md5_only);
+    ASSERT_TRUE(rom_md5_only_id.has_value());
+    rom_md5_only_id_ = *rom_md5_only_id;
+
+    md5_only_global_sha1_ = "11223344556677889900aabbccddeeff00112233";
+    romulus::core::GlobalRom md5_only_global_rom{
+        .sha1 = md5_only_global_sha1_,
+        .sha256 = {},
+        .md5 = "99887766998877669988776699887766",
+        .crc32 = "99887766",
+        .size = 444,
+    };
+    ASSERT_TRUE(db_->upsert_global_rom(md5_only_global_rom).has_value());
   }
 
   std::filesystem::path db_path_;
   std::unique_ptr<romulus::database::Database> db_;
   std::int64_t rom_enriched_id_ = 0;
+  std::int64_t rom_md5_only_id_ = 0;
   std::int64_t sha256_only_file_id_ = 0;
+  std::string md5_only_global_sha1_;
 };
 
 TEST_F(MatcherTest, MatchesExactByAllHashes) {
@@ -170,6 +197,23 @@ TEST_F(MatcherTest, MatchesSha256OnlyWhenLowerHashesDiffer) {
   ASSERT_TRUE(file_info->has_value());
   EXPECT_EQ(sha256_match->global_rom_sha1, file_info->value().sha1);
   EXPECT_EQ(sha256_match->rom_id, rom_enriched_id_);
+}
+
+TEST_F(MatcherTest, MatchesMd5OnlyUsingPreloadedGlobalRomIndex) {
+  auto results = romulus::engine::Matcher::match_all(*db_);
+  ASSERT_TRUE(results.has_value()) << results.error().message;
+
+  const romulus::core::MatchResult* md5_match = nullptr;
+  for (const auto& result : *results) {
+    if (result.rom_id == rom_md5_only_id_) {
+      md5_match = &result;
+      break;
+    }
+  }
+
+  ASSERT_NE(md5_match, nullptr) << "Expected md5-only ROM match result";
+  EXPECT_EQ(md5_match->match_type, romulus::core::MatchType::Md5Only);
+  EXPECT_EQ(md5_match->global_rom_sha1, md5_only_global_sha1_);
 }
 
 } // namespace

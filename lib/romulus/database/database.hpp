@@ -165,6 +165,7 @@ public:
       -> Result<std::optional<core::GlobalRom>>;
   [[nodiscard]] auto find_global_rom_by_crc32(std::string_view crc32)
       -> Result<std::vector<core::GlobalRom>>;
+  [[nodiscard]] auto get_all_global_roms() -> Result<std::vector<core::GlobalRom>>;
   [[nodiscard]] auto has_files_for_global_rom(std::string_view global_rom_sha1) -> Result<bool>;
 
   // ── ROM Matches ──────────────────────────────────────────
