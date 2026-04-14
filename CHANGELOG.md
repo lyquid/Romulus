@@ -11,6 +11,15 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 - **Classifier**: `Classifier::classify_all()` now uses a single CTE-backed aggregate query via `Database::get_collection_summary()` instead of computing each ROM status in a loop with per-ROM queries.
 
+### ⚡ Matcher — batch-loaded global ROM index for single-pass matching
+
+- **Performance refactor**: `Matcher::match_all()` now preloads `global_roms` once and builds
+  in-memory hash indexes (`sha1`, `sha256`, `md5`, `crc32`) before iterating DAT ROMs.
+- **Query reduction**: removed per-ROM hash lookup queries (`find_global_rom_by_*`) from the
+  matcher hot path; matching now runs as a single pass over ROMs against prebuilt maps.
+- **Database API**: added `Database::get_all_global_roms()` to support bulk loading.
+- **Tests**: added matcher coverage for MD5-only fallback using a preloaded `global_roms` entry.
+
 ### 🔧 DAT import — explicit SHA-256 naming for DAT deduplication
 
 - **DatFetcher**: switched DAT content hashing from SHA-1 to SHA-256 for version/dedup checks.

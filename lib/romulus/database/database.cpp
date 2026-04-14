@@ -1159,6 +1159,23 @@ auto Database::find_global_rom_by_crc32(std::string_view crc32)
   return res;
 }
 
+auto Database::get_all_global_roms() -> Result<std::vector<core::GlobalRom>> {
+  auto stmt = prepare("SELECT sha256, sha1, md5, crc32, size FROM global_roms");
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+
+  std::vector<core::GlobalRom> global_roms;
+  while (stmt->step()) {
+    global_roms.push_back(core::GlobalRom{.sha1 = bytes_to_hex(stmt->column_blob(1)),
+                                          .sha256 = bytes_to_hex(stmt->column_blob(0)),
+                                          .md5 = bytes_to_hex(stmt->column_blob(2)),
+                                          .crc32 = bytes_to_hex(stmt->column_blob(3)),
+                                          .size = stmt->column_int64(4)});
+  }
+  return global_roms;
+}
+
 auto Database::has_files_for_global_rom(std::string_view global_rom_sha1) -> Result<bool> {
   auto stmt = prepare("SELECT 1 FROM files WHERE sha1 = ?1 LIMIT 1");
   if (!stmt) {
