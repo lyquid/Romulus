@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -193,6 +194,11 @@ TEST_F(FullScanTest, ScanDirectoryProgressCallbackReportsProgress) {
     return !update.current_file.empty();
   });
   EXPECT_TRUE(saw_current_file);
+
+  for (std::size_t i = 1; i < progress_updates.size(); ++i) {
+    EXPECT_GE(progress_updates[i].files_hashed, progress_updates[i - 1].files_hashed);
+    EXPECT_GE(progress_updates[i].estimated_percent, progress_updates[i - 1].estimated_percent);
+  }
 }
 
 } // namespace

@@ -47,6 +47,10 @@ public:
   // ── Scan Operations ──────────────────────────────────────
 
   /// Scans a directory for ROM files and hashes them.
+  /// @param progress_callback Optional scan progress callback forwarded to RomScanner.
+  ///                          It may be invoked from scanner worker threads and can be
+  ///                          called frequently; keep it thread-safe, lightweight, and
+  ///                          non-throwing (marshal to the UI thread if needed).
   [[nodiscard]] auto scan_directory(const std::filesystem::path& dir,
                                     std::optional<std::vector<std::string>> extensions = {},
                                     std::function<void(const core::ScanProgress&)>

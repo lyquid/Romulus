@@ -35,7 +35,11 @@ public:
   /// @param extensions   Optional pre-parsed extension filter (e.g. {".nes", ".gb"}).
   ///                     Each entry must be lowercase and include the leading dot.
   ///                     If empty, scans all known ROM and archive extensions.
-  /// @param progress_callback Optional callback invoked during scan progress updates.
+  /// @param progress_callback Optional callback invoked for scan progress snapshots.
+  ///                          Initial and terminal updates are emitted on the caller thread.
+  ///                          Per-file updates are emitted from hashing worker threads.
+  ///                          Callbacks are serialized in emission order and may be frequent.
+  ///                          The callback must be thread-safe, lightweight, and must not throw.
   /// @return ScanResult containing per-file hashes and summary statistics.
   [[nodiscard]] static auto
   scan(const std::filesystem::path& directory,
