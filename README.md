@@ -154,6 +154,7 @@ sudo apt install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-d
 - Browse buttons open native file/folder picker dialogs
 - Background threading keeps the UI responsive during long operations
 - Near-zero CPU usage when idle (event-driven rendering)
+- GUI implementation is split by tab source files with a centralized `GuiState` model for maintainability
 
 ---
 

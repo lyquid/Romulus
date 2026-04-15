@@ -7,6 +7,14 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🧩 GUI — tab source split and centralized UI state
+
+- **Refactor**: split the previous monolithic `apps/gui/gui_app.cpp` implementation into focused tab
+  units (`gui_app_tab_dats.cpp`, `gui_app_tab_folders.cpp`, `gui_app_tab_db.cpp`,
+  `gui_app_tab_log.cpp`) plus shared GUI helper definitions in `gui_app_shared.hpp`.
+- **State architecture**: introduced a centralized `GuiApp::GuiState` struct that groups mutable UI
+  state, while preserving existing behavior and call sites via compatibility aliases.
+
 ### ⚡ Engine — classifier N+1 query removal
 
 - **Classifier**: `Classifier::classify_all()` now uses a single CTE-backed aggregate query via `Database::get_collection_summary()` instead of computing each ROM status in a loop with per-ROM queries.
