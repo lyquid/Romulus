@@ -70,6 +70,8 @@ private:
 /// RAII transaction guard — commits on destruction unless rolled back or released.
 class TransactionGuard final {
 public:
+  /// Wraps an already-started SQLite transaction.
+  /// BEGIN is executed by Database::begin_transaction() so begin errors can be reported.
   explicit TransactionGuard(sqlite3* db);
   ~TransactionGuard();
 
@@ -80,10 +82,10 @@ public:
   auto operator=(const TransactionGuard&) -> TransactionGuard& = delete;
 
   /// Explicitly commit the transaction.
-  void commit();
+  [[nodiscard]] auto commit() -> Result<void>;
 
   /// Explicitly rollback the transaction.
-  void rollback();
+  [[nodiscard]] auto rollback() -> Result<void>;
 
 private:
   sqlite3* db_ = nullptr;
@@ -105,7 +107,7 @@ public:
   auto operator=(const Database&) -> Database& = delete;
 
   /// Creates an RAII transaction guard.
-  [[nodiscard]] auto begin_transaction() -> TransactionGuard;
+  [[nodiscard]] auto begin_transaction() -> Result<TransactionGuard>;
 
   // ── DAT Versions ─────────────────────────────────────────
 

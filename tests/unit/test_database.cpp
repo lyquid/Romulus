@@ -256,6 +256,7 @@ TEST_F(DatabaseTest, TransactionRollsBackOnScopeExit) {
   };
   {
     auto txn = db_->begin_transaction();
+    ASSERT_TRUE(txn.has_value()) << txn.error().message;
     auto id = db_->insert_dat_version(dat);
     (void)id; // intentionally not committed
     // txn goes out of scope without commit -> rollback
@@ -276,9 +277,11 @@ TEST_F(DatabaseTest, TransactionCommits) {
   };
   {
     auto txn = db_->begin_transaction();
+    ASSERT_TRUE(txn.has_value()) << txn.error().message;
     auto id = db_->insert_dat_version(dat);
     (void)id;
-    txn.commit();
+    auto commit = txn->commit();
+    ASSERT_TRUE(commit.has_value()) << commit.error().message;
   }
 
   auto found = db_->find_dat_version("Commit Test", "1.0");

@@ -78,6 +78,9 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
   // Store each game and its ROMs in a transaction.
   // Games are now normalized: one games row per (dat_version_id, name).
   auto txn = db_->begin_transaction();
+  if (!txn) {
+    return std::unexpected(txn.error());
+  }
 
   for (const auto& game : dat_file->games) {
     auto game_id = db_->find_or_insert_game(*dat_id, game.name);
@@ -105,7 +108,10 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
     }
   }
 
-  txn.commit();
+  auto commit = txn->commit();
+  if (!commit) {
+    return std::unexpected(commit.error());
+  }
 
   ROMULUS_INFO("Imported DAT: '{}' v{} — {} games",
                dat_file->header.name,
@@ -153,9 +159,9 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
   // Persist all newly discovered files in a single checked transaction.
   // On per-file upsert failure, we log and continue rather than rolling back the entire
   // transaction — losing one file's record is preferable to discarding all scan work.
-  auto begin = db_->execute("BEGIN TRANSACTION");
-  if (!begin) {
-    return std::unexpected(begin.error());
+  auto txn = db_->begin_transaction();
+  if (!txn) {
+    return std::unexpected(txn.error());
   }
 
   for (const auto& rom : result->files) {
@@ -178,11 +184,13 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
     }
   }
 
-  auto commit = db_->execute("COMMIT");
+  auto commit = txn->commit();
   if (!commit) {
-    auto rollback = db_->execute("ROLLBACK");
+    auto rollback = txn->rollback();
     if (!rollback) {
-      ROMULUS_ERROR("Rollback failed after commit failure: {}", rollback.error().message);
+      return std::unexpected(core::Error{
+          commit.error().code,
+          commit.error().message + "; rollback failed: " + rollback.error().message});
     }
     return std::unexpected(commit.error());
   }
@@ -318,13 +326,19 @@ auto RomulusService::purge_database() -> Result<void> {
   };
 
   auto txn = db_->begin_transaction();
+  if (!txn) {
+    return std::unexpected(txn.error());
+  }
   for (const auto* query : k_DeleteQueries) {
     auto result = db_->execute(query);
     if (!result) {
       return std::unexpected(result.error());
     }
   }
-  txn.commit();
+  auto commit = txn->commit();
+  if (!commit) {
+    return std::unexpected(commit.error());
+  }
 
   // Force WAL checkpoint so the main .db file reflects the purge immediately.
   // Without this, data may still appear in the DB file until SQLite checkpoints.

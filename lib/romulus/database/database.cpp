@@ -197,9 +197,7 @@ auto PreparedStatement::column_display_text(int index) const -> std::string {
 // TransactionGuard
 // ═══════════════════════════════════════════════════════════════
 
-TransactionGuard::TransactionGuard(sqlite3* db) : db_(db) {
-  sqlite3_exec(db_, "BEGIN TRANSACTION", nullptr, nullptr, nullptr);
-}
+TransactionGuard::TransactionGuard(sqlite3* db) : db_(db) {}
 
 TransactionGuard::~TransactionGuard() {
   if (db_ != nullptr && !committed_) {
@@ -222,18 +220,34 @@ auto TransactionGuard::operator=(TransactionGuard&& other) noexcept -> Transacti
   return *this;
 }
 
-void TransactionGuard::commit() {
+auto TransactionGuard::commit() -> Result<void> {
   if (db_ != nullptr && !committed_) {
-    sqlite3_exec(db_, "COMMIT", nullptr, nullptr, nullptr);
+    char* err_msg = nullptr;
+    const int rc = sqlite3_exec(db_, "COMMIT", nullptr, nullptr, &err_msg);
+    if (rc != SQLITE_OK) {
+      std::string err = err_msg != nullptr ? err_msg : "unknown error";
+      sqlite3_free(err_msg);
+      return std::unexpected(
+          core::Error{core::ErrorCode::DatabaseQueryError, "COMMIT failed: " + err});
+    }
     committed_ = true;
   }
+  return {};
 }
 
-void TransactionGuard::rollback() {
+auto TransactionGuard::rollback() -> Result<void> {
   if (db_ != nullptr && !committed_) {
-    sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
-    committed_ = true; // Prevent double-rollback in destructor
+    char* err_msg = nullptr;
+    const int rc = sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, &err_msg);
+    if (rc != SQLITE_OK) {
+      std::string err = err_msg != nullptr ? err_msg : "unknown error";
+      sqlite3_free(err_msg);
+      return std::unexpected(
+          core::Error{core::ErrorCode::DatabaseQueryError, "ROLLBACK failed: " + err});
+    }
+    committed_ = true;
   }
+  return {};
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -473,7 +487,16 @@ DROP TABLE IF EXISTS rom_status;
   ROMULUS_DEBUG("Database migrations applied successfully (schema_version={})", k_SchemaVersion);
 }
 
-auto Database::begin_transaction() -> TransactionGuard {
+auto Database::begin_transaction() -> Result<TransactionGuard> {
+  char* err_msg = nullptr;
+  const int rc = sqlite3_exec(db_, "BEGIN TRANSACTION", nullptr, nullptr, &err_msg);
+  if (rc != SQLITE_OK) {
+    std::string err = err_msg != nullptr ? err_msg : "unknown error";
+    sqlite3_free(err_msg);
+    return std::unexpected(
+        core::Error{core::ErrorCode::DatabaseQueryError, "BEGIN TRANSACTION failed: " + err});
+  }
+
   return TransactionGuard{db_};
 }
 
