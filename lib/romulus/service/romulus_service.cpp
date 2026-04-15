@@ -153,10 +153,7 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
   // Persist all newly discovered files in a single checked transaction.
   // On per-file upsert failure, we log and continue rather than rolling back the entire
   // transaction — losing one file's record is preferable to discarding all scan work.
-  auto begin = db_->execute("BEGIN TRANSACTION");
-  if (!begin) {
-    return std::unexpected(begin.error());
-  }
+  auto transaction = db_->begin_transaction();
 
   for (const auto& rom : result->files) {
     const core::FileInfo file{
@@ -178,14 +175,7 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
     }
   }
 
-  auto commit = db_->execute("COMMIT");
-  if (!commit) {
-    auto rollback = db_->execute("ROLLBACK");
-    if (!rollback) {
-      ROMULUS_ERROR("Rollback failed after commit failure: {}", rollback.error().message);
-    }
-    return std::unexpected(commit.error());
-  }
+  transaction.commit();
 
   return result->report;
 }

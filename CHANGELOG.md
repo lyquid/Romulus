@@ -7,6 +7,12 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🐛 Service — scan transaction RAII safety
+
+- **Fix**: `RomulusService::scan_directory()` now uses `Database::begin_transaction()` with
+  `TransactionGuard` instead of manual raw SQL `BEGIN/COMMIT/ROLLBACK`, preventing transaction
+  leaks if an exception unwinds the scan persistence loop.
+
 ### 🧩 GUI — tab source split and centralized UI state
 
 - **Refactor**: split the previous monolithic `apps/gui/gui_app.cpp` implementation into focused tab
