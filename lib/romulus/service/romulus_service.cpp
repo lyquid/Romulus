@@ -188,7 +188,9 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
   if (!commit) {
     auto rollback = txn->rollback();
     if (!rollback) {
-      ROMULUS_ERROR("Rollback failed after commit failure: {}", rollback.error().message);
+      return std::unexpected(core::Error{
+          commit.error().code,
+          commit.error().message + "; rollback failed: " + rollback.error().message});
     }
     return std::unexpected(commit.error());
   }

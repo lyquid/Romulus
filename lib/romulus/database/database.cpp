@@ -197,8 +197,7 @@ auto PreparedStatement::column_display_text(int index) const -> std::string {
 // TransactionGuard
 // ═══════════════════════════════════════════════════════════════
 
-TransactionGuard::TransactionGuard(sqlite3* db) : db_(db) {
-}
+TransactionGuard::TransactionGuard(sqlite3* db) : db_(db) {}
 
 TransactionGuard::~TransactionGuard() {
   if (db_ != nullptr && !committed_) {

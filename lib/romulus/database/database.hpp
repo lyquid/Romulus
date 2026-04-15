@@ -70,6 +70,8 @@ private:
 /// RAII transaction guard — commits on destruction unless rolled back or released.
 class TransactionGuard final {
 public:
+  /// Wraps an already-started SQLite transaction.
+  /// BEGIN is executed by Database::begin_transaction() so begin errors can be reported.
   explicit TransactionGuard(sqlite3* db);
   ~TransactionGuard();
 
