@@ -194,11 +194,11 @@ auto RomScanner::scan(const std::filesystem::path& directory,
   scanned_files.reserve(jobs.size());
 
   auto process_job = [&](const HashJob& job) {
-    auto finalize_job = [&]() {
+    auto finalize_job = [&](std::int64_t files_hashed_count, std::string current_file) {
       const auto processed = jobs_processed.fetch_add(1) + 1;
       const auto estimated_percent =
           static_cast<double>(processed) * 100.0 / static_cast<double>(jobs.size());
-      emit_progress(files_hashed.load(), job.virtual_path, estimated_percent);
+      emit_progress(files_hashed_count, current_file, estimated_percent);
     };
 
     // Check if already scanned via caller-supplied predicate.
@@ -207,7 +207,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
     // multiple worker threads — the predicate must be thread-safe for concurrent reads.
     if (skip_check && skip_check(job.virtual_path, job.size, job.last_write_time)) {
       ++files_skipped;
-      finalize_job();
+      finalize_job(files_hashed.load(), job.virtual_path);
       return;
     }
 
@@ -218,7 +218,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
 
     if (!digest) {
       ROMULUS_WARN("Hash failed for '{}': {}", job.virtual_path, digest.error().message);
-      finalize_job();
+      finalize_job(files_hashed.load(), job.virtual_path);
       return;
     }
 
@@ -240,8 +240,8 @@ auto RomScanner::scan(const std::filesystem::path& directory,
       scanned_files.push_back(std::move(scanned_rom));
     }
 
-    ++files_hashed;
-    finalize_job();
+    const auto files_hashed_count = ++files_hashed;
+    finalize_job(files_hashed_count, job.virtual_path);
   };
 
   // Simple thread pool using jthread
