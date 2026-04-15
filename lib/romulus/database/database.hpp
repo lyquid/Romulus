@@ -80,10 +80,10 @@ public:
   auto operator=(const TransactionGuard&) -> TransactionGuard& = delete;
 
   /// Explicitly commit the transaction.
-  void commit();
+  [[nodiscard]] auto commit() -> Result<void>;
 
   /// Explicitly rollback the transaction.
-  void rollback();
+  [[nodiscard]] auto rollback() -> Result<void>;
 
 private:
   sqlite3* db_ = nullptr;
@@ -105,7 +105,7 @@ public:
   auto operator=(const Database&) -> Database& = delete;
 
   /// Creates an RAII transaction guard.
-  [[nodiscard]] auto begin_transaction() -> TransactionGuard;
+  [[nodiscard]] auto begin_transaction() -> Result<TransactionGuard>;
 
   // ── DAT Versions ─────────────────────────────────────────
 

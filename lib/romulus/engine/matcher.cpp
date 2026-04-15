@@ -71,6 +71,9 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
 
   std::vector<core::MatchResult> results;
   auto txn = db.begin_transaction();
+  if (!txn) {
+    return std::unexpected(txn.error());
+  }
 
   for (const auto& rom : *roms) {
     core::MatchResult match{
@@ -157,7 +160,10 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
     results.push_back(match);
   }
 
-  txn.commit();
+  auto commit = txn->commit();
+  if (!commit) {
+    return std::unexpected(commit.error());
+  }
 
   auto matched = std::count_if(results.begin(), results.end(), [](const auto& r) {
     return r.match_type != core::MatchType::NoMatch;

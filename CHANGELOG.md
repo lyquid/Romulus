@@ -10,8 +10,9 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 ### 🐛 Service — scan transaction RAII safety
 
 - **Fix**: `RomulusService::scan_directory()` now uses `Database::begin_transaction()` with
-  `TransactionGuard` instead of manual raw SQL `BEGIN/COMMIT/ROLLBACK`, preventing transaction
-  leaks if an exception unwinds the scan persistence loop.
+  `TransactionGuard` instead of manual raw SQL `BEGIN/COMMIT/ROLLBACK`.
+- **Fix**: transaction BEGIN/COMMIT/ROLLBACK now propagate SQLite errors via `Result`, and
+  commit only marks a transaction complete on success.
 
 ### 🧩 GUI — tab source split and centralized UI state
 
