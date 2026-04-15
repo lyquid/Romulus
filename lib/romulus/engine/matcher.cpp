@@ -4,8 +4,6 @@
 #include "romulus/database/database.hpp"
 
 #include <algorithm>
-#include <string_view>
-#include <unordered_map>
 
 namespace romulus::engine {
 
@@ -21,53 +19,7 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
     return std::unexpected(roms.error());
   }
 
-  auto global_roms = db.get_all_global_roms();
-  if (!global_roms) {
-    return std::unexpected(global_roms.error());
-  }
-
   ROMULUS_INFO("Matching ROMs against Global Index (Priority: SHA1 > MD5 > CRC32 > SHA256)...");
-
-  std::unordered_map<std::string_view,
-                     const core::GlobalRom*,
-                     core::StringViewHash,
-                     std::equal_to<>>
-      global_rom_by_sha1;
-  std::unordered_map<std::string_view,
-                     const core::GlobalRom*,
-                     core::StringViewHash,
-                     std::equal_to<>>
-      global_rom_by_sha256;
-  std::unordered_map<std::string_view,
-                     const core::GlobalRom*,
-                     core::StringViewHash,
-                     std::equal_to<>>
-      global_rom_by_md5;
-  std::unordered_map<std::string_view,
-                     std::vector<const core::GlobalRom*>,
-                     core::StringViewHash,
-                     std::equal_to<>>
-      global_roms_by_crc32;
-
-  global_rom_by_sha1.reserve(global_roms->size());
-  global_rom_by_sha256.reserve(global_roms->size());
-  global_rom_by_md5.reserve(global_roms->size());
-  global_roms_by_crc32.reserve(global_roms->size());
-
-  for (const auto& global_rom : *global_roms) {
-    if (!global_rom.sha1.empty()) {
-      global_rom_by_sha1.try_emplace(global_rom.sha1, &global_rom);
-    }
-    if (!global_rom.sha256.empty()) {
-      global_rom_by_sha256.try_emplace(global_rom.sha256, &global_rom);
-    }
-    if (!global_rom.md5.empty()) {
-      global_rom_by_md5.try_emplace(global_rom.md5, &global_rom);
-    }
-    if (!global_rom.crc32.empty()) {
-      global_roms_by_crc32[global_rom.crc32].push_back(&global_rom);
-    }
-  }
 
   std::vector<core::MatchResult> results;
   auto txn = db.begin_transaction();
@@ -79,22 +31,21 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
     core::MatchResult match{
         .rom_id = rom.id, .global_rom_sha1 = "", .match_type = core::MatchType::NoMatch};
 
-    // Priority 1: SHA1 match (Standard for No-Intro, Redump, etc.)
+    // Priority 1: SHA1 match (standard for No-Intro, Redump, etc.)
+    // Uses the global_roms.sha1 PRIMARY KEY index — O(log M) lookup.
     if (!rom.sha1.empty()) {
-      const auto sha1_it = global_rom_by_sha1.find(rom.sha1);
-      if (sha1_it != global_rom_by_sha1.end()) {
-        const auto& g_rom = *sha1_it->second;
-        bool md5_match =
-            rom.md5.empty() || g_rom.md5.empty() || rom.md5 == g_rom.md5;
-        bool crc_match =
-            rom.crc32.empty() || g_rom.crc32.empty() || rom.crc32 == g_rom.crc32;
+      auto global = db.find_global_rom_by_sha1(rom.sha1);
+      if (!global) {
+        return std::unexpected(global.error());
+      }
+      if (global->has_value()) {
+        const auto& g_rom = global->value();
+        bool md5_match = rom.md5.empty() || g_rom.md5.empty() || rom.md5 == g_rom.md5;
+        bool crc_match = rom.crc32.empty() || g_rom.crc32.empty() || rom.crc32 == g_rom.crc32;
 
         match.global_rom_sha1 = g_rom.sha1;
-        if (md5_match && crc_match) {
-          match.match_type = core::MatchType::Exact;
-        } else {
-          match.match_type = core::MatchType::Sha1Only;
-        }
+        match.match_type =
+            (md5_match && crc_match) ? core::MatchType::Exact : core::MatchType::Sha1Only;
 
         auto ins = db.insert_rom_match(match);
         if (!ins) {
@@ -106,10 +57,14 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
     }
 
     // Priority 2: MD5 match
+    // Uses the idx_global_roms_md5 index — O(log M) lookup.
     if (!rom.md5.empty()) {
-      const auto md5_it = global_rom_by_md5.find(rom.md5);
-      if (md5_it != global_rom_by_md5.end()) {
-        match.global_rom_sha1 = md5_it->second->sha1;
+      auto global = db.find_global_rom_by_md5(rom.md5);
+      if (!global) {
+        return std::unexpected(global.error());
+      }
+      if (global->has_value()) {
+        match.global_rom_sha1 = global->value().sha1;
         match.match_type = core::MatchType::Md5Only;
 
         auto ins = db.insert_rom_match(match);
@@ -122,11 +77,14 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
     }
 
     // Priority 3: CRC32 match
+    // Uses the idx_global_roms_crc32 index — O(log M) lookup.
     if (!rom.crc32.empty()) {
-      const auto crc32_it = global_roms_by_crc32.find(rom.crc32);
-      if (crc32_it != global_roms_by_crc32.end() && !crc32_it->second.empty()) {
-        // Take the first match
-        match.global_rom_sha1 = crc32_it->second.front()->sha1;
+      auto globals = db.find_global_rom_by_crc32(rom.crc32);
+      if (!globals) {
+        return std::unexpected(globals.error());
+      }
+      if (!globals->empty()) {
+        match.global_rom_sha1 = globals->front().sha1;
         match.match_type = core::MatchType::Crc32Only;
 
         auto ins = db.insert_rom_match(match);
@@ -139,10 +97,14 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
     }
 
     // Priority 4: SHA256 match (bonus enrichment — not standard in the DAT ecosystem)
+    // Uses the idx_global_roms_sha256 index — O(log M) lookup.
     if (!rom.sha256.empty()) {
-      const auto sha256_it = global_rom_by_sha256.find(rom.sha256);
-      if (sha256_it != global_rom_by_sha256.end()) {
-        match.global_rom_sha1 = sha256_it->second->sha1;
+      auto global = db.find_global_rom_by_sha256(rom.sha256);
+      if (!global) {
+        return std::unexpected(global.error());
+      }
+      if (global->has_value()) {
+        match.global_rom_sha1 = global->value().sha1;
         match.match_type = core::MatchType::Sha256Only;
 
         auto ins = db.insert_rom_match(match);

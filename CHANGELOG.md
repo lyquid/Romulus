@@ -7,6 +7,23 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ⚡ Matcher — indexed DB lookup replaces bulk global_roms load
+
+- **Performance fix**: `Matcher::match_all()` no longer loads the entire `global_roms` table into
+  memory. Each DAT ROM is now matched via targeted SQL queries using the existing DB indexes —
+  O(log M) per lookup instead of O(M) memory allocation.
+- **Schema**: added `idx_global_roms_crc32` and `idx_global_roms_sha256` indexes on `global_roms`
+  so all four hash-priority lookups (SHA-1 → MD5 → CRC32 → SHA-256) are index-backed.
+- Removed unused in-memory hash maps (`global_rom_by_sha1`, `global_rom_by_sha256`,
+  `global_rom_by_md5`, `global_roms_by_crc32`) from the matcher hot path.
+
+### ⚡ Database — fix O(n×m) scan in `remove_missing_files`
+
+- **Performance fix**: `Database::remove_missing_files()` now builds an `unordered_set` from the
+  caller-supplied path list, replacing an O(n×m) nested loop with an O(n + m) set-lookup pass.
+- Uses a lightweight `SELECT id, path FROM files` query instead of the full `get_all_files()`
+  call, avoiding unnecessary hash-column deserialization.
+
 ### 🐛 Engine — fix hash matching priority order
 
 - **Fix**: corrected hash matching priority in `Matcher::match_all()` to follow the DAT ecosystem
