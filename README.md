@@ -266,7 +266,7 @@ romulus scan /path/to/roms/GameBoy
 Compares every `rom` against every `global_rom` in priority order:
 
 ```
-SHA-1  →  SHA-256  →  MD5  →  CRC32
+SHA-1  →  MD5  →  CRC32  →  SHA-256
 ```
 
 Inserts `rom_matches` rows with the `match_type` verdict.

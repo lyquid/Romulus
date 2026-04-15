@@ -26,7 +26,7 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
     return std::unexpected(global_roms.error());
   }
 
-  ROMULUS_INFO("Matching ROMs against Global Index (Priority: SHA1 > SHA256 > MD5 > CRC32)...");
+  ROMULUS_INFO("Matching ROMs against Global Index (Priority: SHA1 > MD5 > CRC32 > SHA256)...");
 
   std::unordered_map<std::string_view,
                      const core::GlobalRom*,
@@ -105,24 +105,7 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
       }
     }
 
-    // Priority 2: SHA256 match (Optional / fallback if DAT specifically supports it and SHA1
-    // didn't exist or wasn't provided)
-    if (!rom.sha256.empty()) {
-      const auto sha256_it = global_rom_by_sha256.find(rom.sha256);
-      if (sha256_it != global_rom_by_sha256.end()) {
-        match.global_rom_sha1 = sha256_it->second->sha1;
-        match.match_type = core::MatchType::Sha256Only;
-
-        auto ins = db.insert_rom_match(match);
-        if (!ins) {
-          ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
-        }
-        results.push_back(match);
-        continue;
-      }
-    }
-
-    // Priority 3: MD5 match
+    // Priority 2: MD5 match
     if (!rom.md5.empty()) {
       const auto md5_it = global_rom_by_md5.find(rom.md5);
       if (md5_it != global_rom_by_md5.end()) {
@@ -138,13 +121,29 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
       }
     }
 
-    // Priority 4: CRC32 match (weakest)
+    // Priority 3: CRC32 match
     if (!rom.crc32.empty()) {
       const auto crc32_it = global_roms_by_crc32.find(rom.crc32);
       if (crc32_it != global_roms_by_crc32.end() && !crc32_it->second.empty()) {
         // Take the first match
         match.global_rom_sha1 = crc32_it->second.front()->sha1;
         match.match_type = core::MatchType::Crc32Only;
+
+        auto ins = db.insert_rom_match(match);
+        if (!ins) {
+          ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
+        }
+        results.push_back(match);
+        continue;
+      }
+    }
+
+    // Priority 4: SHA256 match (bonus enrichment — not standard in the DAT ecosystem)
+    if (!rom.sha256.empty()) {
+      const auto sha256_it = global_rom_by_sha256.find(rom.sha256);
+      if (sha256_it != global_rom_by_sha256.end()) {
+        match.global_rom_sha1 = sha256_it->second->sha1;
+        match.match_type = core::MatchType::Sha256Only;
 
         auto ins = db.insert_rom_match(match);
         if (!ins) {
