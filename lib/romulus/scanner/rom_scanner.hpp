@@ -22,6 +22,8 @@ using romulus::core::Result;
 /// The scanner is pure discovery — it does not interact with any storage layer.
 class RomScanner final {
 public:
+  using ProgressCallback = std::function<void(const core::ScanProgress&)>;
+
   /// Scans a directory recursively for ROM files.
   /// @param directory    Root directory to scan.
   /// @param skip_check   Optional predicate: given the virtual path, current filesystem size,
@@ -33,11 +35,13 @@ public:
   /// @param extensions   Optional pre-parsed extension filter (e.g. {".nes", ".gb"}).
   ///                     Each entry must be lowercase and include the leading dot.
   ///                     If empty, scans all known ROM and archive extensions.
+  /// @param progress_callback Optional callback invoked during scan progress updates.
   /// @return ScanResult containing per-file hashes and summary statistics.
   [[nodiscard]] static auto
   scan(const std::filesystem::path& directory,
        std::function<bool(std::string_view, std::int64_t, std::int64_t)> skip_check = {},
-       std::optional<std::vector<std::string>> extensions = {}) -> Result<core::ScanResult>;
+       std::optional<std::vector<std::string>> extensions = {},
+       ProgressCallback progress_callback = {}) -> Result<core::ScanResult>;
 
 private:
   /// Default ROM file extensions to scan for.

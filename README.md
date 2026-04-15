@@ -52,6 +52,7 @@ romulus report summary
 - 🗜️ **Archive Support** — Reads zip/7z files without extracting to disk — no mess, no fuss
 - ⚡ **Parallel Hashing** — CRC32 + MD5 + SHA1 in a single pass using all CPU cores — *TURBO MODE*
 - 🧠 **Smart Scanning** — Skips unchanged files, tracks modifications — smarter than a save-state
+- 📈 **Scan Progress Callbacks** — Report discovered files, hashed files, current filename, and % complete during long scans
 - 🎯 **Multi-Hash Matching** — SHA1 › SHA256 › MD5 › CRC32 priority — triple-verified, like a 100% save file
 - 📊 **Reports** — Summary, missing ROMs, duplicates in text/CSV/JSON — the high score board
 - 🗂️ **Multi-DAT** — Import and track multiple DAT files in one database — all your cartridges, one shelf

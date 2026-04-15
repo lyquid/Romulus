@@ -8,6 +8,7 @@
 #include "romulus/core/types.hpp"
 
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,7 +48,9 @@ public:
 
   /// Scans a directory for ROM files and hashes them.
   [[nodiscard]] auto scan_directory(const std::filesystem::path& dir,
-                                    std::optional<std::vector<std::string>> extensions = {})
+                                    std::optional<std::vector<std::string>> extensions = {},
+                                    std::function<void(const core::ScanProgress&)>
+                                        progress_callback = {})
       -> Result<core::ScanReport>;
 
   /// Runs matching + classification on all files.

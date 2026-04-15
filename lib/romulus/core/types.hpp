@@ -320,6 +320,14 @@ struct ScanReport {
   std::int64_t matches_found = 0;
 };
 
+/// Progress snapshot emitted while a scan is running.
+struct ScanProgress {
+  std::int64_t files_discovered = 0;
+  std::int64_t files_hashed = 0;
+  std::string current_file;
+  double estimated_percent = 0.0;
+};
+
 /// Result of a scan operation: statistics plus the list of discovered (newly hashed) ROMs.
 /// The scanner itself does not interact with storage; callers are responsible for persisting
 /// the files vector (e.g. via Database::upsert_file).

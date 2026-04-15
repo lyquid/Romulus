@@ -126,7 +126,9 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 // ═══════════════════════════════════════════════════════════════
 
 auto RomulusService::scan_directory(const std::filesystem::path& dir,
-                                    std::optional<std::vector<std::string>> extensions)
+                                    std::optional<std::vector<std::string>> extensions,
+                                    std::function<void(const core::ScanProgress&)>
+                                        progress_callback)
     -> Result<core::ScanReport> {
   // Pre-load path → {size, last_write_time} fingerprints so the scanner can skip files that
   // are already indexed AND whose size and mtime haven't changed. This guards against cases
@@ -151,7 +153,8 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
   };
 
   // Run the scanner — no database access inside the scanner itself.
-  auto result = scanner::RomScanner::scan(dir, skip_fn, std::move(extensions));
+  auto result =
+      scanner::RomScanner::scan(dir, skip_fn, std::move(extensions), std::move(progress_callback));
   if (!result) {
     return std::unexpected(result.error());
   }

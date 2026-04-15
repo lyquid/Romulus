@@ -2,9 +2,11 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 
 namespace {
 
@@ -161,6 +163,36 @@ TEST_F(FullScanTest, RescanRehashesModifiedFile) {
   auto scan2 = svc.scan_directory(rom_dir_);
   ASSERT_TRUE(scan2.has_value()) << scan2.error().message;
   EXPECT_GT(scan2->files_hashed, 0);
+}
+
+TEST_F(FullScanTest, ScanDirectoryProgressCallbackReportsProgress) {
+  romulus::service::RomulusService svc(db_path_);
+
+  std::vector<romulus::core::ScanProgress> progress_updates;
+  std::mutex progress_mutex;
+
+  auto scan = svc.scan_directory(
+      rom_dir_,
+      {},
+      [&progress_updates, &progress_mutex](const romulus::core::ScanProgress& progress) {
+        std::lock_guard lock(progress_mutex);
+        progress_updates.push_back(progress);
+      });
+  ASSERT_TRUE(scan.has_value()) << scan.error().message;
+
+  ASSERT_FALSE(progress_updates.empty());
+  const auto& final_update = progress_updates.back();
+  EXPECT_EQ(final_update.files_discovered, scan->files_scanned);
+  EXPECT_EQ(final_update.files_hashed, scan->files_hashed);
+  EXPECT_DOUBLE_EQ(final_update.estimated_percent, 100.0);
+  EXPECT_TRUE(final_update.current_file.empty());
+
+  const auto saw_current_file = std::any_of(progress_updates.begin(),
+                                            progress_updates.end(),
+                                            [](const auto& update) {
+    return !update.current_file.empty();
+  });
+  EXPECT_TRUE(saw_current_file);
 }
 
 } // namespace

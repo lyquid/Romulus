@@ -59,7 +59,8 @@ auto RomScanner::matches_extension(const std::filesystem::path& path,
 
 auto RomScanner::scan(const std::filesystem::path& directory,
                       std::function<bool(std::string_view, std::int64_t, std::int64_t)> skip_check,
-                      std::optional<std::vector<std::string>> extensions)
+                      std::optional<std::vector<std::string>> extensions,
+                      ProgressCallback progress_callback)
     -> Result<core::ScanResult> {
   if (!std::filesystem::exists(directory)) {
     return std::unexpected(core::Error{core::ErrorCode::DirectoryNotFound,
@@ -164,17 +165,49 @@ auto RomScanner::scan(const std::filesystem::path& directory,
   auto num_threads = std::max(1u, std::thread::hardware_concurrency());
   ROMULUS_INFO("Hashing with {} threads", num_threads);
 
+  std::atomic<std::int64_t> jobs_processed{0};
+  std::mutex progress_callback_mutex;
+  auto emit_progress = [&](std::int64_t files_hashed_count,
+                           std::string_view current_file,
+                           double estimated_percent) {
+    if (!progress_callback) {
+      return;
+    }
+
+    std::lock_guard lock(progress_callback_mutex);
+    progress_callback(core::ScanProgress{
+        .files_discovered = static_cast<std::int64_t>(jobs.size()),
+        .files_hashed = files_hashed_count,
+        .current_file = std::string(current_file),
+        .estimated_percent = estimated_percent,
+    });
+  };
+
+  if (jobs.empty()) {
+    emit_progress(0, "", 100.0);
+  } else {
+    emit_progress(0, "", 0.0);
+  }
+
   // Reserve capacity for the results vector. jobs.size() is an upper bound since some
   // jobs may be skipped or fail to hash; this avoids reallocations under the mutex.
   scanned_files.reserve(jobs.size());
 
   auto process_job = [&](const HashJob& job) {
+    auto finalize_job = [&]() {
+      const auto processed = jobs_processed.fetch_add(1) + 1;
+      const auto estimated_percent =
+          static_cast<double>(processed) * 100.0 / static_cast<double>(jobs.size());
+      emit_progress(files_hashed.load(), job.virtual_path, estimated_percent);
+    };
+
     // Check if already scanned via caller-supplied predicate.
     // The predicate receives the virtual path, current size, and physical file mtime so it can
     // skip re-hashing only when all three match the stored values. Called concurrently from
     // multiple worker threads — the predicate must be thread-safe for concurrent reads.
     if (skip_check && skip_check(job.virtual_path, job.size, job.last_write_time)) {
       ++files_skipped;
+      finalize_job();
       return;
     }
 
@@ -185,6 +218,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
 
     if (!digest) {
       ROMULUS_WARN("Hash failed for '{}': {}", job.virtual_path, digest.error().message);
+      finalize_job();
       return;
     }
 
@@ -207,6 +241,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
     }
 
     ++files_hashed;
+    finalize_job();
   };
 
   // Simple thread pool using jthread
@@ -231,6 +266,10 @@ auto RomScanner::scan(const std::filesystem::path& directory,
   report.files_scanned = static_cast<std::int64_t>(jobs.size());
   report.files_hashed = files_hashed.load();
   report.files_skipped = files_skipped.load();
+
+  if (!jobs.empty()) {
+    emit_progress(report.files_hashed, "", 100.0);
+  }
 
   ROMULUS_INFO("Scan complete: {} files, {} hashed, {} skipped, {} archives",
                report.files_scanned,

@@ -7,6 +7,14 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ✨ Scanner — scan progress callback for long-running scans
+
+- **Feature**: added `core::ScanProgress` and optional scan progress callbacks for
+  `scanner::RomScanner::scan()` and `service::RomulusService::scan_directory()`.
+- **Progress payload**: reports discovered file count, hashed file count, current virtual filename,
+  and estimated completion percentage.
+- **Tests**: added integration coverage to verify callback emission and final 100% progress state.
+
 ### 🐛 Service — scan transaction RAII safety
 
 - **Fix**: `RomulusService::scan_directory()` now uses `Database::begin_transaction()` with
