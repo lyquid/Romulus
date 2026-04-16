@@ -34,10 +34,10 @@ public:
   ///                     Each entry must be lowercase and include the leading dot.
   ///                     If empty, scans all known ROM and archive extensions.
   /// @return ScanResult containing per-file hashes and summary statistics.
-  [[nodiscard]] static auto
-  scan(const std::filesystem::path& directory,
-       std::function<bool(std::string_view, std::int64_t, std::int64_t)> skip_check = {},
-       std::optional<std::vector<std::string>> extensions = {}) -> Result<core::ScanResult>;
+  [[nodiscard]] static auto scan(
+      const std::filesystem::path& directory,
+      std::function<bool(std::string_view, std::int64_t, std::int64_t)> skip_check = {},
+      std::optional<std::vector<std::string>> extensions = {}) -> Result<core::ScanResult>;
 
 private:
   /// Default ROM file extensions to scan for.

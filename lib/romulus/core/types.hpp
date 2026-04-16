@@ -73,7 +73,7 @@ struct DatVersion {
   std::int64_t id = 0;
   std::string name;
   std::string version;
-  std::string system = {};     ///< Human-readable system description from the DAT <description> tag
+  std::string system = {}; ///< Human-readable system description from the DAT <description> tag
   std::string source_url;
   std::string dat_sha256;
   std::string imported_at;
@@ -100,12 +100,12 @@ struct GameEntry {
 /// Display fields (populated via JOIN on SELECT, not stored in roms): dat_version_id, game_name.
 struct RomInfo {
   std::int64_t id = 0;
-  std::int64_t game_id = 0;        ///< FK to games.id
+  std::int64_t game_id = 0; ///< FK to games.id
   std::string name;
   std::int64_t size = 0;
   std::string crc32;
   std::string md5;
-  std::string sha1;   ///< Expected SHA-1 from the DAT (stored as expected_sha1 in DB)
+  std::string sha1; ///< Expected SHA-1 from the DAT (stored as expected_sha1 in DB)
   std::string sha256;
   std::string region;
   // Display-only fields — populated via JOIN on SELECT, never stored directly in roms:
@@ -154,9 +154,12 @@ struct GlobalRom {
 /// A file discovered during filesystem scanning.
 struct FileInfo {
   std::int64_t id = 0;
-  std::string path;                                ///< Virtual path — unique storage key ("archive.zip::entry.rom" or "/bare/path.rom")
-  std::optional<std::string> archive_path;         ///< Physical archive path; absent (NULL) for bare files — derive path from \c path field
-  std::optional<std::string> entry_name;           ///< Set when this file lives inside an archive; absent for bare files
+  std::string
+      path; ///< Virtual path — unique storage key ("archive.zip::entry.rom" or "/bare/path.rom")
+  std::optional<std::string> archive_path; ///< Physical archive path; absent (NULL) for bare files
+                                           ///< — derive path from \c path field
+  std::optional<std::string>
+      entry_name; ///< Set when this file lives inside an archive; absent for bare files
   std::int64_t size = 0;
   std::string crc32;
   std::string md5;
@@ -166,7 +169,9 @@ struct FileInfo {
   std::int64_t last_write_time = 0; ///< Filesystem mtime at scan time (Unix epoch seconds)
 
   /// Returns true when this file was extracted from an archive entry.
-  [[nodiscard]] auto is_archive_entry() const noexcept -> bool { return entry_name.has_value(); }
+  [[nodiscard]] auto is_archive_entry() const noexcept -> bool {
+    return entry_name.has_value();
+  }
 };
 
 /// Lightweight fingerprint used for skip-checking during scans.
@@ -199,9 +204,7 @@ using FingerprintMap =
 /// How a file was matched to a ROM.
 enum class MatchType {
   Exact,      ///< CRC32 + MD5 + SHA1 all match
-  Sha256Only, ///< SHA-256 matched but SHA-1/MD5/CRC32 did not — not a valid DAT match;
-              ///< treated identically to NoMatch for classification purposes.
-              ///< Retained in the enum for backward-compatibility with persisted DB values.
+  Sha256Only, ///< Only SHA256 matches
   Sha1Only,   ///< Only SHA1 matches
   Md5Only,    ///< Only MD5 matches
   Crc32Only,  ///< Only CRC32 matches
@@ -248,14 +251,19 @@ inline constexpr std::string_view k_ArchiveEntrySeparator = "::";
 /// For bare ROM files:   archive_path = file path,    entry_name = std::nullopt
 /// For archive entries:  archive_path = archive path, entry_name = filename inside the archive
 struct ScannedROM {
-  std::filesystem::path archive_path;    ///< Physical file on disk (or the archive containing this entry)
-  std::optional<std::string> entry_name; ///< Set when this ROM lives inside an archive; absent for bare files
-  std::int64_t size = 0;                 ///< Uncompressed ROM size in bytes
-  HashDigest hash_digest;                ///< CRC32, MD5, SHA1, and SHA256 computed in a single pass
-  std::int64_t last_write_time = 0;      ///< Mtime of the physical file at scan time (Unix epoch seconds)
+  std::filesystem::path
+      archive_path; ///< Physical file on disk (or the archive containing this entry)
+  std::optional<std::string>
+      entry_name;         ///< Set when this ROM lives inside an archive; absent for bare files
+  std::int64_t size = 0;  ///< Uncompressed ROM size in bytes
+  HashDigest hash_digest; ///< CRC32, MD5, SHA1, and SHA256 computed in a single pass
+  std::int64_t last_write_time =
+      0; ///< Mtime of the physical file at scan time (Unix epoch seconds)
 
   /// Returns true when this ROM was extracted from an archive entry.
-  [[nodiscard]] auto is_archive_entry() const noexcept -> bool { return entry_name.has_value(); }
+  [[nodiscard]] auto is_archive_entry() const noexcept -> bool {
+    return entry_name.has_value();
+  }
 
   /// Returns the display filename.
   /// For bare files:      the filename component of archive_path.
@@ -335,9 +343,9 @@ struct ScanResult {
 /// A directory registered for ROM scanning.
 struct ScannedDirectory {
   std::int64_t id = 0;
-  std::string path;               ///< Absolute filesystem path
-  std::string added_at;           ///< ISO-8601 timestamp of first registration
-  std::int64_t file_count = 0;    ///< Number of scanned file entries under this directory
+  std::string path;            ///< Absolute filesystem path
+  std::string added_at;        ///< ISO-8601 timestamp of first registration
+  std::int64_t file_count = 0; ///< Number of scanned file entries under this directory
 };
 
 /// Report output format.
@@ -359,14 +367,14 @@ enum class ReportType {
 
 /// Metadata for a single column in the DB Explorer schema view.
 struct ColumnInfo {
-  std::string name;             ///< Column name
-  std::string type;             ///< Declared SQLite type (e.g. "INTEGER", "TEXT", "BLOB")
-  bool not_null = false;        ///< Has NOT NULL constraint
-  bool is_primary_key = false;  ///< Part of the primary key
-  int pk_order = 0;             ///< Position within a compound PK (1-based); 0 if not PK
-  bool is_unique = false;       ///< Has an explicit UNIQUE index (separate from PK)
-  std::string fk_table;         ///< Referenced table (empty if not a foreign key)
-  std::string fk_column;        ///< Referenced column (empty if not a foreign key)
+  std::string name;            ///< Column name
+  std::string type;            ///< Declared SQLite type (e.g. "INTEGER", "TEXT", "BLOB")
+  bool not_null = false;       ///< Has NOT NULL constraint
+  bool is_primary_key = false; ///< Part of the primary key
+  int pk_order = 0;            ///< Position within a compound PK (1-based); 0 if not PK
+  bool is_unique = false;      ///< Has an explicit UNIQUE index (separate from PK)
+  std::string fk_table;        ///< Referenced table (empty if not a foreign key)
+  std::string fk_column;       ///< Referenced column (empty if not a foreign key)
 };
 
 /// Raw result from querying an arbitrary database table.

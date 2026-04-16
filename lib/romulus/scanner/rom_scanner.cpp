@@ -115,7 +115,7 @@ auto RomScanner::scan(const std::filesystem::path& directory,
     // Mirrors the ScannedROM::virtual_path() format: "path" or "archive::entry".
     std::string virtual_path;
     std::int64_t size;
-    std::int64_t last_write_time;  ///< Mtime of the physical file (Unix epoch seconds)
+    std::int64_t last_write_time; ///< Mtime of the physical file (Unix epoch seconds)
     std::filesystem::path real_path;
     std::string entry_name;        // display name; empty for regular files
     std::size_t entry_index;       // stable archive index; only valid when is_archive_entry
@@ -134,8 +134,8 @@ auto RomScanner::scan(const std::filesystem::path& directory,
       }
       for (const auto& entry : *entries) {
         jobs.push_back({
-            .virtual_path = candidate.path.string() +
-                            std::string(core::k_ArchiveEntrySeparator) + entry.name,
+            .virtual_path =
+                candidate.path.string() + std::string(core::k_ArchiveEntrySeparator) + entry.name,
             .size = entry.size,
             .last_write_time = candidate.last_write_time,
             .real_path = candidate.path,
@@ -192,8 +192,8 @@ auto RomScanner::scan(const std::filesystem::path& directory,
     const auto sha256_hex = digest->to_hex_sha256();
     core::ScannedROM scanned_rom{
         .archive_path = job.real_path,
-        .entry_name = job.is_archive_entry ? std::optional<std::string>{job.entry_name}
-                                           : std::nullopt,
+        .entry_name =
+            job.is_archive_entry ? std::optional<std::string>{job.entry_name} : std::nullopt,
         .size = job.size,
         .hash_digest = *digest,
         .last_write_time = job.last_write_time,
