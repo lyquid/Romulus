@@ -186,4 +186,71 @@ TEST_F(ClassifierTest, ClassifiesMismatchWhenFileDeleted) {
   EXPECT_EQ(summary->verified, 0);
 }
 
+TEST_F(ClassifierTest, ClassifiesLegacySha256OnlyRowAsMissing) {
+  // A ROM whose only rom_matches row has match_type = Sha256Only (a legacy value that the
+  // matcher no longer produces) must be classified as Missing — SHA-256 is not a valid
+  // DAT-ecosystem identifier (No-Intro/Redump use SHA-1/MD5/CRC32).
+  auto dat_id = create_dat();
+
+  auto game_id = db_->find_or_insert_game(dat_id, "Game");
+  ASSERT_TRUE(game_id.has_value());
+
+  romulus::core::RomInfo rom{.game_id = *game_id,
+                             .name = "sha256_legacy.bin",
+                             .size = 100,
+                             .crc32 = "ee000000",
+                             .md5 = "ee000000ee000000ee000000ee000000",
+                             .sha1 = "ee000000ee000000ee000000ee000000ee000000",
+                             .sha256 = "ee000000ee000000ee000000ee000000ee000000ee000000ee000000ee000000",
+                             .region = {}};
+  auto rom_id = db_->insert_rom(rom);
+  ASSERT_TRUE(rom_id.has_value());
+
+  // A global_rom whose sha1 differs from the DAT entry (the sha256 matched but nothing else).
+  const std::string global_sha1 = "ff000000ff000000ff000000ff000000ff000000";
+  romulus::core::GlobalRom gr{
+      .sha1 = global_sha1,
+      .sha256 = "ee000000ee000000ee000000ee000000ee000000ee000000ee000000ee000000",
+      .md5 = "ff000000ff000000ff000000ff000000",
+      .crc32 = "ff000000",
+      .size = 100};
+  ASSERT_TRUE(db_->upsert_global_rom(gr).has_value());
+
+  // Insert a file on disk with that global sha1 so it looks "present".
+  romulus::core::FileInfo file{
+      .path = "/roms/sha256_legacy.bin",
+      .archive_path = std::nullopt,
+      .entry_name = std::nullopt,
+      .size = 100,
+      .crc32 = "ff000000",
+      .md5 = "ff000000ff000000ff000000ff000000",
+      .sha1 = global_sha1,
+      .sha256 = "ee000000ee000000ee000000ee000000ee000000ee000000ee000000ee000000",
+  };
+  ASSERT_TRUE(db_->upsert_file(file).has_value());
+
+  // Manually insert a legacy Sha256Only match row (as if written by an older build).
+  romulus::core::MatchResult match{.rom_id = *rom_id,
+                                   .global_rom_sha1 = global_sha1,
+                                   .match_type = romulus::core::MatchType::Sha256Only};
+  ASSERT_TRUE(db_->insert_rom_match(match).has_value());
+
+  auto result = romulus::engine::Classifier::classify_all(*db_);
+  ASSERT_TRUE(result.has_value());
+
+  // Both get_collection_summary() and get_computed_rom_status() must report Missing.
+  auto summary = db_->get_collection_summary();
+  ASSERT_TRUE(summary.has_value());
+  EXPECT_EQ(summary->total_roms, 1);
+  EXPECT_EQ(summary->missing, 1) << "Sha256Only-only row must classify as Missing, not Mismatch";
+  EXPECT_EQ(summary->mismatch, 0);
+  EXPECT_EQ(summary->unverified, 0);
+  EXPECT_EQ(summary->verified, 0);
+
+  auto per_rom_status = db_->get_computed_rom_status(*rom_id);
+  ASSERT_TRUE(per_rom_status.has_value());
+  EXPECT_EQ(*per_rom_status, romulus::core::RomStatusType::Missing)
+      << "get_computed_rom_status() must treat Sha256Only as NoMatch";
+}
+
 } // namespace

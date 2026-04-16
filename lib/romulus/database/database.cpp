@@ -109,6 +109,10 @@ void PreparedStatement::bind_blob(int index, const std::vector<uint8_t>& blob) {
   }
 }
 
+void PreparedStatement::bind_blob_hex(int index, std::string_view hex) {
+  bind_blob(index, hex_to_bytes(hex));
+}
+
 void PreparedStatement::bind_null(int index) {
   sqlite3_bind_null(stmt_, index);
 }
@@ -164,6 +168,10 @@ auto PreparedStatement::column_blob(int index) const -> std::vector<uint8_t> {
   }
   const auto* p = static_cast<const uint8_t*>(blob);
   return std::vector<uint8_t>(p, p + bytes);
+}
+
+auto PreparedStatement::column_blob_hex(int index) const -> std::string {
+  return bytes_to_hex(column_blob(index));
 }
 
 auto PreparedStatement::column_display_text(int index) const -> std::string {
@@ -340,7 +348,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_roms_sha256 ON roms(sha256) WHERE sha256 I
 CREATE INDEX IF NOT EXISTS idx_files_sha1 ON files(sha1);
 CREATE INDEX IF NOT EXISTS idx_files_crc32 ON files(crc32);
 CREATE INDEX IF NOT EXISTS idx_files_sha256 ON files(sha256);
+CREATE INDEX IF NOT EXISTS idx_global_roms_crc32 ON global_roms(crc32) WHERE crc32 IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_global_roms_md5 ON global_roms(md5) WHERE md5 IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_global_roms_sha256 ON global_roms(sha256) WHERE sha256 IS NOT NULL;
 -- Hot path: look up matches by file sha1 (global_rom_sha1)
 CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 )SQL";
@@ -349,6 +359,11 @@ CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 /// Stored in PRAGMA user_version. If the on-disk DB has a different version the database
 /// is wiped and rebuilt so queries never encounter stale column layouts.
 constexpr int k_SchemaVersion = 6;
+
+/// Serialised integer value for MatchType::Sha256Only.
+/// Used as a literal in SQL queries to exclude Sha256Only from "partial match" classification
+/// without re-entering C++ enum arithmetic inside string-based SQL.
+constexpr int k_MatchTypeSha256Only = 1;
 
 auto match_type_to_int(core::MatchType type) -> int {
   switch (type) {
@@ -1046,10 +1061,15 @@ auto Database::get_file_fingerprints() -> Result<core::FingerprintMap> {
 
 auto Database::remove_missing_files(const std::vector<std::string>& existing_paths)
     -> Result<std::int64_t> {
-  // Get all file paths from DB, remove those not in existing_paths
-  auto all_files = get_all_files();
-  if (!all_files) {
-    return std::unexpected(all_files.error());
+  // Build a hash set for O(1) path lookup — avoids an O(n×m) nested scan.
+  // string_view into existing_paths (caller-owned) — no extra string copies.
+  const std::unordered_set<std::string_view> existing_set(existing_paths.begin(),
+                                                           existing_paths.end());
+
+  // Only fetch id + path — no need for full FileInfo with hash columns.
+  auto sel_stmt = prepare("SELECT id, path FROM files");
+  if (!sel_stmt) {
+    return std::unexpected(sel_stmt.error());
   }
 
   auto del_stmt = prepare("DELETE FROM files WHERE id = ?1");
@@ -1058,16 +1078,11 @@ auto Database::remove_missing_files(const std::vector<std::string>& existing_pat
   }
 
   std::int64_t removed = 0;
-  for (const auto& file : *all_files) {
-    bool found = false;
-    for (const auto& path : existing_paths) {
-      if (file.path == path) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      del_stmt->bind_int64(1, file.id);
+  while (sel_stmt->step()) {
+    const auto id = sel_stmt->column_int64(0);
+    const auto path = sel_stmt->column_text(1);
+    if (!existing_set.contains(path)) {
+      del_stmt->bind_int64(1, id);
       del_stmt->execute();
       del_stmt->reset();
       ++removed;
@@ -1157,7 +1172,10 @@ auto Database::find_global_rom_by_md5(std::string_view md5)
 
 auto Database::find_global_rom_by_crc32(std::string_view crc32)
     -> Result<std::vector<core::GlobalRom>> {
-  auto stmt = prepare("SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE crc32 = ?1");
+  // ORDER BY sha1 ensures a stable, deterministic result order when multiple
+  // global_roms share the same CRC32 (e.g., different-sized ROMs with a hash collision).
+  auto stmt = prepare(
+      "SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE crc32 = ?1 ORDER BY sha1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -1218,6 +1236,14 @@ auto Database::insert_rom_match(const core::MatchResult& match) -> Result<void> 
   return {};
 }
 
+void Database::insert_rom_match_cached(PreparedStatement& stmt, const core::MatchResult& match) {
+  stmt.bind_int64(1, match.rom_id);
+  stmt.bind_blob_hex(2, match.global_rom_sha1);
+  stmt.bind_int64(3, match_type_to_int(match.match_type));
+  stmt.execute();
+  stmt.reset();
+}
+
 auto Database::get_matches_for_rom(std::int64_t rom_id) -> Result<std::vector<core::MatchResult>> {
   auto stmt =
       prepare("SELECT rom_id, global_rom_sha1, match_type FROM rom_matches WHERE rom_id = ?1");
@@ -1264,13 +1290,17 @@ auto Database::get_computed_rom_status(std::int64_t rom_id) -> Result<core::RomS
   bool has_partial = false;
 
   while (stmt->step()) {
+    const auto mt = int_to_match_type(static_cast<int>(stmt->column_int64(0)));
+    // Sha256Only is not a valid DAT match — treat it identically to NoMatch.
+    if (mt == core::MatchType::Sha256Only || mt == core::MatchType::NoMatch) {
+      continue;
+    }
     has_any_match = true;
     const bool file_exists = stmt->column_int64(1) != 0;
     if (file_exists) {
-      const auto mt = int_to_match_type(static_cast<int>(stmt->column_int64(0)));
       if (mt == core::MatchType::Exact) {
         has_exact = true;
-      } else if (mt != core::MatchType::NoMatch) {
+      } else {
         has_partial = true;
       }
     }
@@ -1292,17 +1322,26 @@ auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id
     -> Result<core::CollectionSummary> {
   // Compute status dynamically using a CTE.
   // Status mapping: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch
+  // Sha256Only (match_type = k_MatchTypeSha256Only) is excluded from the Unverified branch:
+  // the DAT ecosystem (No-Intro/Redump) does not recognise SHA-256 as an authoritative
+  // identifier, so a SHA-256-only match is treated identically to NoMatch.
+  const auto sha256_excl = std::to_string(k_MatchTypeSha256Only);
   std::string sql =
       "WITH computed AS ("
       "  SELECT r.id AS rom_id,"
       "    CASE"
-      "      WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1" // 1=Missing: no match entry
+      // Count only valid (non-Sha256Only) match entries — a ROM with only Sha256Only
+      // rows must be treated as Missing, just like one with no entries at all.
+      "      WHEN COUNT(CASE WHEN rm.match_type != " +
+      sha256_excl +
+      " THEN rm.global_rom_sha1 END) = 0 THEN 1"  // 1=Missing
       "      WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
-      "           THEN 0" // 0=Verified: exact match (type=0) with file on disk
-      "      WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2" // 2=Unverified:
-                                                                                  // partial match +
-                                                                                  // file present
-      "      ELSE 3" // 3=Mismatch: match exists but file deleted
+      "           THEN 0"  // 0=Verified: exact match (type=0) with file on disk
+      "      WHEN MAX(CASE WHEN rm.match_type != " +
+      sha256_excl +  // exclude Sha256Only — not a valid DAT match
+      " AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
+      "           THEN 2"  // 2=Unverified: partial match (SHA-1/MD5/CRC32 only) + file present
+      "      ELSE 3"       // 3=Mismatch: valid match recorded but file deleted
       "    END AS status"
       "  FROM roms r"
       "  JOIN games g ON r.game_id = g.id"

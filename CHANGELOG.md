@@ -16,6 +16,55 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 - **Types**: rewrote `core::FileInfo` path/archive/entry field docs as preceding `///` comments and
   restored one-line member declarations for consistency.
 
+### 🐛 Matcher — `Sha256Only` match type is not a valid DAT match
+
+- **Fix**: Removed SHA-256 as a fallback match criterion in `Matcher::match_all()`. DAT files
+  (No-Intro, Redump, etc.) use SHA-1, MD5, and CRC32 as authoritative identifiers — not SHA-256.
+  A file that matches only via SHA-256 is an "unknown but identical" curiosity, not a valid DAT
+  match, and must not make a ROM appear as **Unverified** rather than **Missing**.
+- `MatchType::Sha256Only` is retained in the enum for backward-compatibility with existing database
+  rows, but the matcher no longer produces it and both `get_computed_rom_status` and the
+  `get_collection_summary` CTE now treat `Sha256Only` identically to `NoMatch`.
+- Match priority is now **SHA-1 → MD5 → CRC32** (SHA-256 removed from cascade).
+- Updated README, log message, and matcher tests accordingly.
+
+### ⚡ Matcher — prepared-statement reuse eliminates O(N) prepare calls
+
+- **Performance fix**: `Matcher::match_all()` now prepares the 4 hash-lookup statements and the
+  insert statement exactly once before the ROM loop. Each ROM reuses them via `bind_*` + `reset()`,
+  eliminating up to 5 × N `sqlite3_prepare_v2` calls that previously dominated match runtime.
+- **Correctness fix**: CRC32 lookup now uses `ORDER BY sha1 LIMIT 1` to guarantee a deterministic
+  winner when multiple `global_roms` rows share the same CRC32.
+- **API additions**: `PreparedStatement::bind_blob_hex()` and `column_blob_hex()` convenience
+  helpers added; `Database::insert_rom_match_cached()` overload for pre-prepared insert statements.
+
+### ⚡ Matcher — indexed DB lookup replaces bulk global_roms load
+
+- **Performance fix**: `Matcher::match_all()` no longer loads the entire `global_roms` table into
+  memory. Each DAT ROM is now matched via targeted SQL queries using the existing DB indexes —
+  O(log M) per lookup instead of O(M) memory allocation.
+- **Schema**: added `idx_global_roms_crc32` and `idx_global_roms_sha256` indexes on `global_roms`
+  so all four hash-priority lookups (SHA-1 → MD5 → CRC32 → SHA-256) are index-backed.
+- Removed unused in-memory hash maps (`global_rom_by_sha1`, `global_rom_by_sha256`,
+  `global_rom_by_md5`, `global_roms_by_crc32`) from the matcher hot path.
+
+### ⚡ Database — fix O(n×m) scan in `remove_missing_files`
+
+- **Performance fix**: `Database::remove_missing_files()` now builds an `unordered_set` from the
+  caller-supplied path list, replacing an O(n×m) nested loop with an O(n + m) set-lookup pass.
+- Uses a lightweight `SELECT id, path FROM files` query instead of the full `get_all_files()`
+  call, avoiding unnecessary hash-column deserialization.
+- **Tests**: added three unit tests (`RemoveMissingFilesDeletesOnlyAbsentPaths`,
+  `RemoveMissingFilesWithEmptyListDeletesAll`,
+  `RemoveMissingFilesWithAllPathsPresentRemovesNothing`).
+
+### 🐛 Engine — fix hash matching priority order
+
+- **Fix**: corrected hash matching priority in `Matcher::match_all()` to follow the DAT ecosystem
+  standard: **SHA-1 → MD5 → CRC32 → SHA-256** (was SHA-1 → SHA-256 → MD5 → CRC32).
+- SHA-256 is now treated as bonus enrichment (Priority 4), not as an ecosystem authority.
+- Updated log message and README documentation to reflect the corrected order.
+
 ### 🐛 Service — scan transaction RAII safety
 
 - **Fix**: `RomulusService::scan_directory()` now uses `Database::begin_transaction()` with
