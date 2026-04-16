@@ -1300,15 +1300,17 @@ auto Database::get_computed_rom_status(std::int64_t rom_id) -> Result<core::RomS
   bool has_partial = false;
 
   while (stmt->step()) {
+    const auto mt = int_to_match_type(static_cast<int>(stmt->column_int64(0)));
+    // Sha256Only is not a valid DAT match — treat it identically to NoMatch.
+    if (mt == core::MatchType::Sha256Only || mt == core::MatchType::NoMatch) {
+      continue;
+    }
     has_any_match = true;
     const bool file_exists = stmt->column_int64(1) != 0;
     if (file_exists) {
-      const auto mt = int_to_match_type(static_cast<int>(stmt->column_int64(0)));
       if (mt == core::MatchType::Exact) {
         has_exact = true;
-      } else if (mt != core::MatchType::NoMatch && mt != core::MatchType::Sha256Only) {
-        // Sha256Only is excluded: DAT files don't use SHA-256 as an authoritative
-        // identifier, so a SHA-256-only match is not a valid partial DAT match.
+      } else {
         has_partial = true;
       }
     }
@@ -1338,14 +1340,18 @@ auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id
       "WITH computed AS ("
       "  SELECT r.id AS rom_id,"
       "    CASE"
-      "      WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1"  // 1=Missing: no match entry
+      // Count only valid (non-Sha256Only) match entries — a ROM with only Sha256Only
+      // rows must be treated as Missing, just like one with no entries at all.
+      "      WHEN COUNT(CASE WHEN rm.match_type != " +
+      sha256_excl +
+      " THEN rm.global_rom_sha1 END) = 0 THEN 1"  // 1=Missing
       "      WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
       "           THEN 0"  // 0=Verified: exact match (type=0) with file on disk
       "      WHEN MAX(CASE WHEN rm.match_type != " +
       sha256_excl +  // exclude Sha256Only — not a valid DAT match
       " AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
       "           THEN 2"  // 2=Unverified: partial match (SHA-1/MD5/CRC32 only) + file present
-      "      ELSE 3"       // 3=Mismatch: match exists but file deleted
+      "      ELSE 3"       // 3=Mismatch: valid match recorded but file deleted
       "    END AS status"
       "  FROM roms r"
       "  JOIN games g ON r.game_id = g.id"
