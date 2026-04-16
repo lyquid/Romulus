@@ -7,7 +7,7 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
-### ✨ feat(cli): Add delete-dat Command
+### ✨ feat(cli,gui): Add delete-dat Command
 
 - **Database**: `Database::delete_dat_version(id)` removes a DAT version and its associated games,
   ROMs, and match records while preserving scanned files and global ROMs.

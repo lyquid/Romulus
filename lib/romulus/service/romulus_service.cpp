@@ -305,6 +305,7 @@ Result<std::vector<core::FileInfo>> RomulusService::get_all_files() {
 // ═══════════════════════════════════════════════════════════════
 
 Result<void> RomulusService::purge_database() {
+  // Deletion order must respect FK constraints (children before parents):
   //   rom_matches     →  roms, global_roms
   //   files           →  global_roms
   //   global_roms     (no remaining children)
