@@ -7,6 +7,18 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🐛 Matcher — `Sha256Only` match type is not a valid DAT match
+
+- **Fix**: Removed SHA-256 as a fallback match criterion in `Matcher::match_all()`. DAT files
+  (No-Intro, Redump, etc.) use SHA-1, MD5, and CRC32 as authoritative identifiers — not SHA-256.
+  A file that matches only via SHA-256 is an "unknown but identical" curiosity, not a valid DAT
+  match, and must not make a ROM appear as **Unverified** rather than **Missing**.
+- `MatchType::Sha256Only` is retained in the enum for backward-compatibility with existing database
+  rows, but the matcher no longer produces it and both `get_computed_rom_status` and the
+  `get_collection_summary` CTE now treat `Sha256Only` identically to `NoMatch`.
+- Match priority is now **SHA-1 → MD5 → CRC32** (SHA-256 removed from cascade).
+- Updated README, log message, and matcher tests accordingly.
+
 ### ⚡ Matcher — prepared-statement reuse eliminates O(N) prepare calls
 
 - **Performance fix**: `Matcher::match_all()` now prepares the 4 hash-lookup statements and the

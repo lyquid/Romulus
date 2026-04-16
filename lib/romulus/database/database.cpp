@@ -1301,7 +1301,9 @@ auto Database::get_computed_rom_status(std::int64_t rom_id) -> Result<core::RomS
       const auto mt = int_to_match_type(static_cast<int>(stmt->column_int64(0)));
       if (mt == core::MatchType::Exact) {
         has_exact = true;
-      } else if (mt != core::MatchType::NoMatch) {
+      } else if (mt != core::MatchType::NoMatch && mt != core::MatchType::Sha256Only) {
+        // Sha256Only is excluded: DAT files don't use SHA-256 as an authoritative
+        // identifier, so a SHA-256-only match is not a valid partial DAT match.
         has_partial = true;
       }
     }
@@ -1330,7 +1332,9 @@ auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id
       "      WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1"  // 1=Missing: no match entry
       "      WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
       "           THEN 0"  // 0=Verified: exact match (type=0) with file on disk
-      "      WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2"  // 2=Unverified: partial match + file present
+      "      WHEN MAX(CASE WHEN rm.match_type != 1 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
+      "           THEN 2"  // 2=Unverified: partial match (SHA-1/MD5/CRC32 only) + file present
+                           // match_type=1 (Sha256Only) is excluded — not a valid DAT match
       "      ELSE 3"  // 3=Mismatch: match exists but file deleted
       "    END AS status"
       "  FROM roms r"

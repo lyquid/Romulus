@@ -19,10 +19,10 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
     return std::unexpected(roms.error());
   }
 
-  ROMULUS_INFO("Matching ROMs against Global Index (Priority: SHA1 > MD5 > CRC32 > SHA256)...");
+  ROMULUS_INFO("Matching ROMs against Global Index (Priority: SHA1 > MD5 > CRC32)...");
 
   // Prepare all lookup + insert statements once before the ROM loop —
-  // avoids O(N) sqlite3_prepare_v2 calls (up to 5 per ROM otherwise).
+  // avoids O(N) sqlite3_prepare_v2 calls (up to 4 per ROM otherwise).
   auto sha1_stmt = db.prepare(
       "SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE sha1 = ?1 LIMIT 1");
   if (!sha1_stmt) {
@@ -39,11 +39,6 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
       "WHERE crc32 = ?1 ORDER BY sha1 LIMIT 1");
   if (!crc32_stmt) {
     return std::unexpected(crc32_stmt.error());
-  }
-  auto sha256_stmt = db.prepare(
-      "SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE sha256 = ?1 LIMIT 1");
-  if (!sha256_stmt) {
-    return std::unexpected(sha256_stmt.error());
   }
   auto ins_stmt = db.prepare(
       "INSERT OR REPLACE INTO rom_matches (rom_id, global_rom_sha1, match_type) "
@@ -118,23 +113,8 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
       crc32_stmt->reset();
     }
 
-    // Priority 4: SHA256 match (bonus enrichment — not standard in the DAT ecosystem)
-    // Uses the idx_global_roms_sha256 index — O(log M) lookup.
-    if (!rom.sha256.empty()) {
-      sha256_stmt->bind_blob_hex(1, rom.sha256);
-      if (sha256_stmt->step()) {
-        match.global_rom_sha1 = sha256_stmt->column_blob_hex(1);
-        sha256_stmt->reset();
-
-        match.match_type = core::MatchType::Sha256Only;
-        db.insert_rom_match_cached(*ins_stmt, match);
-        results.push_back(match);
-        continue;
-      }
-      sha256_stmt->reset();
-    }
-
-    // No match
+    // No match — SHA-256 is not a DAT-ecosystem identifier; a SHA-256-only hit
+    // is an "unknown but identical" curiosity and does not constitute a valid match.
     match.match_type = core::MatchType::NoMatch;
     results.push_back(match);
   }
