@@ -360,6 +360,11 @@ CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 /// is wiped and rebuilt so queries never encounter stale column layouts.
 constexpr int k_SchemaVersion = 6;
 
+/// Serialised integer value for MatchType::Sha256Only.
+/// Used as a literal in SQL queries to exclude Sha256Only from "partial match" classification
+/// without re-entering C++ enum arithmetic inside string-based SQL.
+constexpr int k_MatchTypeSha256Only = 1;
+
 auto match_type_to_int(core::MatchType type) -> int {
   switch (type) {
     case core::MatchType::Exact:
@@ -1325,6 +1330,10 @@ auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id
     -> Result<core::CollectionSummary> {
   // Compute status dynamically using a CTE.
   // Status mapping: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch
+  // Sha256Only (match_type = k_MatchTypeSha256Only) is excluded from the Unverified branch:
+  // the DAT ecosystem (No-Intro/Redump) does not recognise SHA-256 as an authoritative
+  // identifier, so a SHA-256-only match is treated identically to NoMatch.
+  const auto sha256_excl = std::to_string(k_MatchTypeSha256Only);
   std::string sql =
       "WITH computed AS ("
       "  SELECT r.id AS rom_id,"
@@ -1332,10 +1341,11 @@ auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id
       "      WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1"  // 1=Missing: no match entry
       "      WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
       "           THEN 0"  // 0=Verified: exact match (type=0) with file on disk
-      "      WHEN MAX(CASE WHEN rm.match_type != 1 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
+      "      WHEN MAX(CASE WHEN rm.match_type != " +
+      sha256_excl +  // exclude Sha256Only — not a valid DAT match
+      " AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
       "           THEN 2"  // 2=Unverified: partial match (SHA-1/MD5/CRC32 only) + file present
-                           // match_type=1 (Sha256Only) is excluded — not a valid DAT match
-      "      ELSE 3"  // 3=Mismatch: match exists but file deleted
+      "      ELSE 3"       // 3=Mismatch: match exists but file deleted
       "    END AS status"
       "  FROM roms r"
       "  JOIN games g ON r.game_id = g.id"

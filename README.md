@@ -310,8 +310,8 @@ Import DAT  →  Scan  →  Hash  →  Match  →  Classify  →  Report
 dat_versions   Files    CRC32     SHA-1      Verified      Text
 games          Scan     MD5       MD5        Missing       CSV
 roms           Skip     SHA-1     CRC32      Unverified    JSON
-               Arch.              ↑          Mismatch
-                          (SHA-256 is NOT a DAT match criterion)
+               Arch.                         Mismatch
+                  (SHA-256 ≠ DAT criterion — SHA-256-only → NoMatch)
 
 👾  "It's dangerous to go alone! Take this pipeline."  👾
 ```
