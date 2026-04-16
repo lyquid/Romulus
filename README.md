@@ -220,7 +220,7 @@ dat_versions ──< games ──< roms
 | `match_type` | Value | Meaning |
 |---|---|---|
 | `Exact` | 0 | CRC32 + MD5 + SHA1 all agree — gold standard |
-| `Sha256Only` | 1 | Only SHA-256 matches (enriched DAT entry) |
+| `Sha256Only` | 1 | SHA-256 matched but SHA-1/MD5/CRC32 did not — **not a valid DAT match**; treated as `NoMatch` for all status classification. Retained only for backward-compatibility with existing databases. |
 | `Sha1Only` | 2 | Only SHA-1 matches |
 | `Md5Only` | 3 | Only MD5 matches |
 | `Crc32Only` | 4 | Only CRC32 matches |
@@ -266,8 +266,12 @@ romulus scan /path/to/roms/GameBoy
 Compares every `rom` against every `global_rom` in priority order:
 
 ```
-SHA-1  →  MD5  →  CRC32  →  SHA-256
+SHA-1  →  MD5  →  CRC32
 ```
+
+SHA-256 is **not** used as a match criterion — the DAT ecosystem (No-Intro, Redump, etc.) does not
+recognise SHA-256 as an authoritative identifier. A file that matches only via SHA-256 but not
+SHA-1/MD5/CRC32 is an "unknown but identical" curiosity and is treated as **NoMatch**.
 
 Inserts `rom_matches` rows with the `match_type` verdict.
 
@@ -280,7 +284,7 @@ Reads `rom_matches` + `files` via CTE — no separate status table, no stale dat
 | Status | Condition |
 |---|---|
 | ✅ **Verified** | Exact match and file exists on disk |
-| ❓ **Missing** | No match entry at all |
+| ❓ **Missing** | No match entry at all (or only `Sha256Only` — not a valid DAT match) |
 | 🔍 **Unverified** | Partial match (SHA-1/MD5/CRC32 only) + file is live |
 | ⚠️ **Mismatch** | Match was recorded but the file has since been deleted |
 
@@ -304,9 +308,10 @@ Import DAT  →  Scan  →  Hash  →  Match  →  Classify  →  Report
      │           │        │         │           │            │
      ▼           ▼        ▼         ▼           ▼            ▼
 dat_versions   Files    CRC32     SHA-1      Verified      Text
-games          Scan     MD5       SHA-256    Missing       CSV
-roms           Skip     SHA-1     MD5        Unverified    JSON
-               Arch.              CRC32      Mismatch
+games          Scan     MD5       MD5        Missing       CSV
+roms           Skip     SHA-1     CRC32      Unverified    JSON
+               Arch.                         Mismatch
+                  (SHA-256 ≠ DAT criterion — SHA-256-only → NoMatch)
 
 👾  "It's dangerous to go alone! Take this pipeline."  👾
 ```

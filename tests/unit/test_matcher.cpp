@@ -177,26 +177,27 @@ TEST_F(MatcherTest, ReportsNoMatchForUnknownRom) {
   EXPECT_TRUE(found_no_match);
 }
 
-TEST_F(MatcherTest, MatchesSha256OnlyWhenLowerHashesDiffer) {
+TEST_F(MatcherTest, TreatsShaDifferentFromDatAsNoMatch) {
+  // A file whose SHA-256 matches a DAT ROM entry but whose SHA-1/MD5/CRC32 do not
+  // must be reported as NoMatch — SHA-256 is not a DAT-ecosystem identifier and
+  // a SHA-256-only hit is philosophically "unknown but identical", not a valid match.
   auto results = romulus::engine::Matcher::match_all(*db_);
   ASSERT_TRUE(results.has_value()) << results.error().message;
 
-  // Locate the result for the file whose only match is via SHA256
-  const romulus::core::MatchResult* sha256_match = nullptr;
+  // rom_enriched_ has SHA-256 "ccdd0022..." and the only file sharing that SHA-256
+  // is sha256_only.bin — whose SHA-1/MD5/CRC32 differ from the DAT entry.
+  // The expected result for rom_enriched_id_ is therefore NoMatch.
+  const romulus::core::MatchResult* enriched_result = nullptr;
   for (const auto& r : *results) {
-    if (r.match_type == romulus::core::MatchType::Sha256Only) {
-      sha256_match = &r;
+    if (r.rom_id == rom_enriched_id_) {
+      enriched_result = &r;
       break;
     }
   }
 
-  ASSERT_NE(sha256_match, nullptr) << "Expected a Sha256Only match result";
-  // The matched file should be the sha256_only.bin file and point to rom_enriched
-  auto file_info = db_->find_file_by_path("/roms/sha256_only.bin");
-  ASSERT_TRUE(file_info.has_value());
-  ASSERT_TRUE(file_info->has_value());
-  EXPECT_EQ(sha256_match->global_rom_sha1, file_info->value().sha1);
-  EXPECT_EQ(sha256_match->rom_id, rom_enriched_id_);
+  ASSERT_NE(enriched_result, nullptr) << "Expected a result for rom_enriched_id_";
+  EXPECT_EQ(enriched_result->match_type, romulus::core::MatchType::NoMatch)
+      << "SHA-256-only match must not be treated as a valid DAT match";
 }
 
 TEST_F(MatcherTest, MatchesMd5OnlyWhenOnlyMd5HashIsAvailable) {

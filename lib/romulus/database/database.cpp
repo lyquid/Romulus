@@ -360,6 +360,11 @@ CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 /// is wiped and rebuilt so queries never encounter stale column layouts.
 constexpr int k_SchemaVersion = 6;
 
+/// Serialised integer value for MatchType::Sha256Only.
+/// Used as a literal in SQL queries to exclude Sha256Only from "partial match" classification
+/// without re-entering C++ enum arithmetic inside string-based SQL.
+constexpr int k_MatchTypeSha256Only = 1;
+
 auto match_type_to_int(core::MatchType type) -> int {
   switch (type) {
     case core::MatchType::Exact:
@@ -1295,13 +1300,17 @@ auto Database::get_computed_rom_status(std::int64_t rom_id) -> Result<core::RomS
   bool has_partial = false;
 
   while (stmt->step()) {
+    const auto mt = int_to_match_type(static_cast<int>(stmt->column_int64(0)));
+    // Sha256Only is not a valid DAT match — treat it identically to NoMatch.
+    if (mt == core::MatchType::Sha256Only || mt == core::MatchType::NoMatch) {
+      continue;
+    }
     has_any_match = true;
     const bool file_exists = stmt->column_int64(1) != 0;
     if (file_exists) {
-      const auto mt = int_to_match_type(static_cast<int>(stmt->column_int64(0)));
       if (mt == core::MatchType::Exact) {
         has_exact = true;
-      } else if (mt != core::MatchType::NoMatch) {
+      } else {
         has_partial = true;
       }
     }
@@ -1323,15 +1332,26 @@ auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id
     -> Result<core::CollectionSummary> {
   // Compute status dynamically using a CTE.
   // Status mapping: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch
+  // Sha256Only (match_type = k_MatchTypeSha256Only) is excluded from the Unverified branch:
+  // the DAT ecosystem (No-Intro/Redump) does not recognise SHA-256 as an authoritative
+  // identifier, so a SHA-256-only match is treated identically to NoMatch.
+  const auto sha256_excl = std::to_string(k_MatchTypeSha256Only);
   std::string sql =
       "WITH computed AS ("
       "  SELECT r.id AS rom_id,"
       "    CASE"
-      "      WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1"  // 1=Missing: no match entry
+      // Count only valid (non-Sha256Only) match entries — a ROM with only Sha256Only
+      // rows must be treated as Missing, just like one with no entries at all.
+      "      WHEN COUNT(CASE WHEN rm.match_type != " +
+      sha256_excl +
+      " THEN rm.global_rom_sha1 END) = 0 THEN 1"  // 1=Missing
       "      WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
       "           THEN 0"  // 0=Verified: exact match (type=0) with file on disk
-      "      WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2"  // 2=Unverified: partial match + file present
-      "      ELSE 3"  // 3=Mismatch: match exists but file deleted
+      "      WHEN MAX(CASE WHEN rm.match_type != " +
+      sha256_excl +  // exclude Sha256Only — not a valid DAT match
+      " AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
+      "           THEN 2"  // 2=Unverified: partial match (SHA-1/MD5/CRC32 only) + file present
+      "      ELSE 3"       // 3=Mismatch: valid match recorded but file deleted
       "    END AS status"
       "  FROM roms r"
       "  JOIN games g ON r.game_id = g.id"

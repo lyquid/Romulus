@@ -199,7 +199,9 @@ using FingerprintMap =
 /// How a file was matched to a ROM.
 enum class MatchType {
   Exact,      ///< CRC32 + MD5 + SHA1 all match
-  Sha256Only, ///< Only SHA256 matches
+  Sha256Only, ///< SHA-256 matched but SHA-1/MD5/CRC32 did not — not a valid DAT match;
+              ///< treated identically to NoMatch for classification purposes.
+              ///< Retained in the enum for backward-compatibility with persisted DB values.
   Sha1Only,   ///< Only SHA1 matches
   Md5Only,    ///< Only MD5 matches
   Crc32Only,  ///< Only CRC32 matches
