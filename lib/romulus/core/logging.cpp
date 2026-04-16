@@ -25,7 +25,7 @@ void init_logging(std::string_view level) {
   });
 }
 
-auto get_logger() -> std::shared_ptr<spdlog::logger>& {
+std::shared_ptr<spdlog::logger>& get_logger() {
   if (!g_logger) {
     init_logging();
   }

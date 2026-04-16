@@ -21,13 +21,13 @@ RomulusService::RomulusService(const std::filesystem::path& db_path)
 
 RomulusService::~RomulusService() = default;
 RomulusService::RomulusService(RomulusService&&) noexcept = default;
-auto RomulusService::operator=(RomulusService&&) noexcept -> RomulusService& = default;
+RomulusService& RomulusService::operator=(RomulusService&&) noexcept = default;
 
 // ═══════════════════════════════════════════════════════════════
 // DAT Operations
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<core::DatVersion> {
+Result<core::DatVersion> RomulusService::import_dat(const std::filesystem::path& path) {
   // Validate file
   auto validated = dat::DatFetcher::validate_local(path);
   if (!validated) {
@@ -125,9 +125,8 @@ auto RomulusService::import_dat(const std::filesystem::path& path) -> Result<cor
 // Scan Operations
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::scan_directory(const std::filesystem::path& dir,
-                                    std::optional<std::vector<std::string>> extensions)
-    -> Result<core::ScanReport> {
+Result<core::ScanReport> RomulusService::scan_directory(
+    const std::filesystem::path& dir, std::optional<std::vector<std::string>> extensions) {
   // Pre-load path → {size, last_write_time} fingerprints so the scanner can skip files that
   // are already indexed AND whose size and mtime haven't changed. This guards against cases
   // where a file has been replaced (same path, different content) or silently modified.
@@ -198,7 +197,7 @@ auto RomulusService::scan_directory(const std::filesystem::path& dir,
   return result->report;
 }
 
-auto RomulusService::verify(std::optional<std::string> dat_name) -> Result<void> {
+Result<void> RomulusService::verify(std::optional<std::string> dat_name) {
   // Step 1: Match files to ROMs
   auto matches = engine::Matcher::match_all(*db_);
   if (!matches) {
@@ -214,8 +213,8 @@ auto RomulusService::verify(std::optional<std::string> dat_name) -> Result<void>
   return engine::Classifier::classify_all(*db_, *dat_id);
 }
 
-auto RomulusService::full_sync(const std::filesystem::path& dat_path,
-                               const std::filesystem::path& rom_dir) -> Result<void> {
+Result<void> RomulusService::full_sync(const std::filesystem::path& dat_path,
+                                       const std::filesystem::path& rom_dir) {
   ROMULUS_INFO("Starting full sync: DAT={}, ROM dir={}", dat_path.string(), rom_dir.string());
 
   // 1. Import DAT
@@ -244,8 +243,7 @@ auto RomulusService::full_sync(const std::filesystem::path& dat_path,
 // Queries
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::get_summary(std::optional<std::string> dat_name)
-    -> Result<core::CollectionSummary> {
+Result<core::CollectionSummary> RomulusService::get_summary(std::optional<std::string> dat_name) {
   auto dat_id = resolve_optional_dat_id(dat_name);
   if (!dat_id) {
     return std::unexpected(dat_id.error());
@@ -253,12 +251,12 @@ auto RomulusService::get_summary(std::optional<std::string> dat_name)
   return db_->get_collection_summary(*dat_id);
 }
 
-auto RomulusService::list_dat_versions() -> Result<std::vector<core::DatVersion>> {
+Result<std::vector<core::DatVersion>> RomulusService::list_dat_versions() {
   return db_->get_all_dat_versions();
 }
 
-auto RomulusService::get_roms_with_status(std::int64_t dat_version_id)
-    -> Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>> {
+Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>> RomulusService::
+    get_roms_with_status(std::int64_t dat_version_id) {
   auto roms = db_->get_roms_for_dat_version(dat_version_id);
   if (!roms) {
     return std::unexpected(roms.error());
@@ -279,8 +277,8 @@ auto RomulusService::get_roms_with_status(std::int64_t dat_version_id)
   return result;
 }
 
-auto RomulusService::get_missing_roms(std::optional<std::string> dat_name)
-    -> Result<std::vector<core::MissingRom>> {
+Result<std::vector<core::MissingRom>> RomulusService::get_missing_roms(
+    std::optional<std::string> dat_name) {
   auto dat_id = resolve_optional_dat_id(dat_name);
   if (!dat_id) {
     return std::unexpected(dat_id.error());
@@ -288,7 +286,7 @@ auto RomulusService::get_missing_roms(std::optional<std::string> dat_name)
   return db_->get_missing_roms(*dat_id);
 }
 
-auto RomulusService::get_all_files() -> Result<std::vector<core::FileInfo>> {
+Result<std::vector<core::FileInfo>> RomulusService::get_all_files() {
   return db_->get_all_files();
 }
 
@@ -296,7 +294,7 @@ auto RomulusService::get_all_files() -> Result<std::vector<core::FileInfo>> {
 // Admin
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::purge_database() -> Result<void> {
+Result<void> RomulusService::purge_database() {
   // Deletion order must respect FK constraints (children before parents):
   //   rom_matches     →  roms, global_roms
   //   files           →  global_roms
@@ -345,16 +343,16 @@ auto RomulusService::purge_database() -> Result<void> {
 // Scanned Directories
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::add_scan_directory(const std::filesystem::path& dir)
-    -> Result<core::ScannedDirectory> {
+Result<core::ScannedDirectory> RomulusService::add_scan_directory(
+    const std::filesystem::path& dir) {
   return db_->add_scanned_directory(dir.string());
 }
 
-auto RomulusService::get_scan_directories() -> Result<std::vector<core::ScannedDirectory>> {
+Result<std::vector<core::ScannedDirectory>> RomulusService::get_scan_directories() {
   return db_->get_all_scanned_directories();
 }
 
-auto RomulusService::remove_scan_directory(std::int64_t id) -> Result<void> {
+Result<void> RomulusService::remove_scan_directory(std::int64_t id) {
   return db_->remove_scanned_directory(id);
 }
 
@@ -362,9 +360,9 @@ auto RomulusService::remove_scan_directory(std::int64_t id) -> Result<void> {
 // Reports
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::generate_report(core::ReportType type,
-                                     core::ReportFormat format,
-                                     std::optional<std::string> dat_name) -> Result<std::string> {
+Result<std::string> RomulusService::generate_report(core::ReportType type,
+                                                    core::ReportFormat format,
+                                                    std::optional<std::string> dat_name) {
   auto dat_id = resolve_optional_dat_id(dat_name);
   if (!dat_id) {
     return std::unexpected(dat_id.error());
@@ -376,15 +374,15 @@ auto RomulusService::generate_report(core::ReportType type,
 // DB Explorer
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::get_db_path() const -> std::filesystem::path {
+std::filesystem::path RomulusService::get_db_path() const {
   return db_path_;
 }
 
-auto RomulusService::get_db_table_names() -> Result<std::vector<std::string>> {
+Result<std::vector<std::string>> RomulusService::get_db_table_names() {
   return db_->get_table_names();
 }
 
-auto RomulusService::query_db_table(std::string_view table_name) -> Result<core::TableQueryResult> {
+Result<core::TableQueryResult> RomulusService::query_db_table(std::string_view table_name) {
   return db_->query_table_data(table_name);
 }
 
@@ -392,8 +390,8 @@ auto RomulusService::query_db_table(std::string_view table_name) -> Result<core:
 // Helpers
 // ═══════════════════════════════════════════════════════════════
 
-auto RomulusService::resolve_optional_dat_id(const std::optional<std::string>& dat_name)
-    -> Result<std::optional<std::int64_t>> {
+Result<std::optional<std::int64_t>> RomulusService::resolve_optional_dat_id(
+    const std::optional<std::string>& dat_name) {
   if (!dat_name.has_value()) {
     return std::nullopt;
   }
@@ -404,7 +402,7 @@ auto RomulusService::resolve_optional_dat_id(const std::optional<std::string>& d
   return *id_result;
 }
 
-auto RomulusService::resolve_dat_version_id(const std::string& dat_name) -> Result<std::int64_t> {
+Result<std::int64_t> RomulusService::resolve_dat_version_id(const std::string& dat_name) {
   auto found = db_->find_dat_version_by_name(dat_name);
   if (!found) {
     return std::unexpected(found.error());

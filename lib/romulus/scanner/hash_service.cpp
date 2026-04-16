@@ -18,7 +18,7 @@ namespace {
 constexpr std::size_t k_BufferSize = 65536; // 64KB
 
 /// CRC32 lookup table (IEEE polynomial).
-constexpr auto make_crc32_table() -> std::array<std::uint32_t, 256> {
+constexpr std::array<std::uint32_t, 256> make_crc32_table() {
   std::array<std::uint32_t, 256> table{};
   for (std::uint32_t i = 0; i < 256; ++i) {
     std::uint32_t crc = i;
@@ -55,7 +55,7 @@ struct HashContext {
 
   /// Creates and initialises all EVP digest contexts.
   /// Returns an error if OpenSSL allocation or initialisation fails.
-  static auto create() -> core::Result<HashContext> {
+  static core::Result<HashContext> create() {
     HashContext ctx;
     ctx.md5_ctx.reset(EVP_MD_CTX_new());
     ctx.sha1_ctx.reset(EVP_MD_CTX_new());
@@ -85,7 +85,7 @@ struct HashContext {
     EVP_DigestUpdate(sha256_ctx.get(), data, size);
   }
 
-  auto finalize() -> core::Result<core::HashDigest> {
+  core::Result<core::HashDigest> finalize() {
     crc32 ^= 0xFFFFFFFFU;
 
     std::array<unsigned char, EVP_MAX_MD_SIZE> md5_hash{};
@@ -127,7 +127,7 @@ struct HashContext {
 
 } // namespace
 
-auto HashService::compute_hashes_stream(const StreamReader& reader) -> Result<core::HashDigest> {
+Result<core::HashDigest> HashService::compute_hashes_stream(const StreamReader& reader) {
   if (!reader) {
     return std::unexpected(
         core::Error{core::ErrorCode::InvalidArgument, "StreamReader must not be empty"});
@@ -149,8 +149,7 @@ auto HashService::compute_hashes_stream(const StreamReader& reader) -> Result<co
   return ctx.finalize();
 }
 
-auto HashService::compute_hashes(const std::filesystem::path& file_path)
-    -> Result<core::HashDigest> {
+Result<core::HashDigest> HashService::compute_hashes(const std::filesystem::path& file_path) {
   auto result = compute_hashes_stream([&file_path](
                                           const DataChunkCallback& callback) -> Result<void> {
     std::ifstream file(file_path, std::ios::binary);
@@ -181,8 +180,8 @@ auto HashService::compute_hashes(const std::filesystem::path& file_path)
   return result;
 }
 
-auto HashService::compute_hashes_archive(const std::filesystem::path& archive_path,
-                                         std::size_t entry_index) -> Result<core::HashDigest> {
+Result<core::HashDigest> HashService::compute_hashes_archive(
+    const std::filesystem::path& archive_path, std::size_t entry_index) {
   auto result = compute_hashes_stream(
       [&archive_path, entry_index](const DataChunkCallback& callback) -> Result<void> {
         return ArchiveService::stream_entry(archive_path, entry_index, callback);

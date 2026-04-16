@@ -7,6 +7,16 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🎨 Style — convert all trailing return types to standard syntax
+
+- **Refactor**: converted all C++ function declarations and definitions from trailing return type
+  syntax (`auto fn() -> T`) to standard return type syntax (`T fn()`) across all 27 source files.
+  Lambdas retain their trailing return types where needed.
+- **Linter**: updated `.clang-tidy` to document the intentional disabling of
+  `modernize-use-trailing-return-type` — this check is suppressed to prevent re-introducing the
+  style we are actively removing. See `C++ Trailing Return Type Guidelines` in
+  `.github/copilot-instructions.md`.
+
 ### 🐛 Service — scan transaction RAII safety
 
 ### 📖 Docs

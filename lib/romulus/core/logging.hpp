@@ -17,7 +17,7 @@ void init_logging(std::string_view level = "info");
 
 /// Returns the application-wide logger instance.
 /// @return Shared pointer to the spdlog logger.
-[[nodiscard]] auto get_logger() -> std::shared_ptr<spdlog::logger>&;
+[[nodiscard]] std::shared_ptr<spdlog::logger>& get_logger();
 
 } // namespace romulus::core
 

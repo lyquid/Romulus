@@ -12,7 +12,7 @@ namespace {
 const std::filesystem::path k_FixturesDir{ROMULUS_TEST_FIXTURES_DIR};
 const std::filesystem::path k_RepoDatsDir{ROMULUS_REPO_DATS_DIR};
 
-auto find_repo_dat() -> std::optional<std::filesystem::path> {
+std::optional<std::filesystem::path> find_repo_dat() {
   if (!std::filesystem::exists(k_RepoDatsDir)) {
     return std::nullopt;
   }

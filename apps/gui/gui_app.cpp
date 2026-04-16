@@ -688,9 +688,10 @@ void GuiApp::check_pending_task() {
 
         // Reset selected game if it is no longer present in the new checklist.
         if (selected_game_id_ >= 0) {
-          const bool still_present = std::ranges::any_of(
-              game_checklist_,
-              [this](const GameChecklistEntry& g) { return g.game_id == selected_game_id_; });
+          const bool still_present =
+              std::ranges::any_of(game_checklist_, [this](const GameChecklistEntry& g) {
+                return g.game_id == selected_game_id_;
+              });
           if (!still_present) {
             selected_game_id_ = -1;
           }
@@ -719,7 +720,7 @@ void GuiApp::check_pending_task() {
   show_toast(status_message_);
 }
 
-auto GuiApp::is_busy() const -> bool {
+bool GuiApp::is_busy() const {
   return pending_task_.has_value() && pending_task_->result.valid();
 }
 

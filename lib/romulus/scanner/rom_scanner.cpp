@@ -14,7 +14,7 @@
 
 namespace romulus::scanner {
 
-auto RomScanner::get_default_extensions() -> std::vector<std::string> {
+std::vector<std::string> RomScanner::get_default_extensions() {
   return {
       // Nintendo
       ".nes",
@@ -48,8 +48,8 @@ auto RomScanner::get_default_extensions() -> std::vector<std::string> {
   };
 }
 
-auto RomScanner::matches_extension(const std::filesystem::path& path,
-                                   const std::vector<std::string>& extensions) -> bool {
+bool RomScanner::matches_extension(const std::filesystem::path& path,
+                                   const std::vector<std::string>& extensions) {
   auto ext = path.extension().string();
   std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
@@ -57,10 +57,10 @@ auto RomScanner::matches_extension(const std::filesystem::path& path,
   return std::ranges::any_of(extensions, [&ext](const std::string& e) { return ext == e; });
 }
 
-auto RomScanner::scan(const std::filesystem::path& directory,
-                      std::function<bool(std::string_view, std::int64_t, std::int64_t)> skip_check,
-                      std::optional<std::vector<std::string>> extensions)
-    -> Result<core::ScanResult> {
+Result<core::ScanResult> RomScanner::scan(
+    const std::filesystem::path& directory,
+    std::function<bool(std::string_view, std::int64_t, std::int64_t)> skip_check,
+    std::optional<std::vector<std::string>> extensions) {
   if (!std::filesystem::exists(directory)) {
     return std::unexpected(core::Error{core::ErrorCode::DirectoryNotFound,
                                        "Scan directory not found: " + directory.string()});

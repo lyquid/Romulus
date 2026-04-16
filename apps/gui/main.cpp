@@ -13,7 +13,7 @@ namespace {
 
 constexpr std::string_view k_DefaultDb = "romulus.db";
 
-auto parse_no_gui(int argc, char** argv) -> bool {
+bool parse_no_gui(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--no-gui") == 0) {
       return true;
@@ -22,7 +22,7 @@ auto parse_no_gui(int argc, char** argv) -> bool {
   return false;
 }
 
-auto parse_db_path(int argc, char** argv) -> std::string {
+std::string parse_db_path(int argc, char** argv) {
   for (int i = 1; i < argc - 1; ++i) {
     if (std::strcmp(argv[i], "--db") == 0) {
       return argv[i + 1];
@@ -31,7 +31,7 @@ auto parse_db_path(int argc, char** argv) -> std::string {
   return std::string(k_DefaultDb);
 }
 
-auto parse_log_level(int argc, char** argv) -> std::string {
+std::string parse_log_level(int argc, char** argv) {
   for (int i = 1; i < argc - 1; ++i) {
     if (std::strcmp(argv[i], "--log-level") == 0) {
       return argv[i + 1];
@@ -52,7 +52,7 @@ void print_usage() {
             << "  --help         Show this help message\n";
 }
 
-auto parse_help(int argc, char** argv) -> bool {
+bool parse_help(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
       return true;

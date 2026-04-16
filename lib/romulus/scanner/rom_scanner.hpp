@@ -34,18 +34,18 @@ public:
   ///                     Each entry must be lowercase and include the leading dot.
   ///                     If empty, scans all known ROM and archive extensions.
   /// @return ScanResult containing per-file hashes and summary statistics.
-  [[nodiscard]] static auto scan(
+  [[nodiscard]] static Result<core::ScanResult> scan(
       const std::filesystem::path& directory,
       std::function<bool(std::string_view, std::int64_t, std::int64_t)> skip_check = {},
-      std::optional<std::vector<std::string>> extensions = {}) -> Result<core::ScanResult>;
+      std::optional<std::vector<std::string>> extensions = {});
 
 private:
   /// Default ROM file extensions to scan for.
-  static auto get_default_extensions() -> std::vector<std::string>;
+  static std::vector<std::string> get_default_extensions();
 
   /// Checks if a file extension matches the filter.
-  [[nodiscard]] static auto matches_extension(const std::filesystem::path& path,
-                                              const std::vector<std::string>& extensions) -> bool;
+  [[nodiscard]] static bool matches_extension(const std::filesystem::path& path,
+                                              const std::vector<std::string>& extensions);
 };
 
 } // namespace romulus::scanner

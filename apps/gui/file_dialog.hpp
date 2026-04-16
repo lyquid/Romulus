@@ -11,10 +11,10 @@ namespace romulus::gui {
 
 /// Opens a native folder picker dialog.
 /// @return Selected folder path, or empty string on cancel/unavailable.
-[[nodiscard]] auto open_folder_dialog() -> std::string;
+[[nodiscard]] std::string open_folder_dialog();
 
 /// Opens a native file picker dialog filtered for DAT files.
 /// @return Selected file path, or empty string on cancel/unavailable.
-[[nodiscard]] auto open_file_dialog() -> std::string;
+[[nodiscard]] std::string open_file_dialog();
 
 } // namespace romulus::gui

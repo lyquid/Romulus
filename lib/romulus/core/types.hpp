@@ -22,7 +22,7 @@ namespace detail {
 
 /// Converts a fixed-size byte array to a lowercase hex string.
 template <std::size_t N>
-[[nodiscard]] inline auto bytes_to_hex(const std::array<std::byte, N>& bytes) -> std::string {
+[[nodiscard]] inline std::string bytes_to_hex(const std::array<std::byte, N>& bytes) {
   static constexpr std::string_view k_Hex = "0123456789abcdef";
   std::string result;
   result.reserve(N * 2);
@@ -46,22 +46,22 @@ struct HashDigest {
   std::array<std::byte, 32> sha256; ///< 32-byte SHA-256 digest
 
   /// Returns the CRC32 as a zero-padded 8-character lowercase hex string.
-  [[nodiscard]] auto to_hex_crc32() const -> std::string {
+  [[nodiscard]] std::string to_hex_crc32() const {
     return detail::bytes_to_hex(crc32);
   }
 
   /// Returns the MD5 as a 32-character lowercase hex string.
-  [[nodiscard]] auto to_hex_md5() const -> std::string {
+  [[nodiscard]] std::string to_hex_md5() const {
     return detail::bytes_to_hex(md5);
   }
 
   /// Returns the SHA-1 as a 40-character lowercase hex string.
-  [[nodiscard]] auto to_hex_sha1() const -> std::string {
+  [[nodiscard]] std::string to_hex_sha1() const {
     return detail::bytes_to_hex(sha1);
   }
 
   /// Returns the SHA-256 as a 64-character lowercase hex string.
-  [[nodiscard]] auto to_hex_sha256() const -> std::string {
+  [[nodiscard]] std::string to_hex_sha256() const {
     return detail::bytes_to_hex(sha256);
   }
 };
@@ -169,7 +169,7 @@ struct FileInfo {
   std::int64_t last_write_time = 0; ///< Filesystem mtime at scan time (Unix epoch seconds)
 
   /// Returns true when this file was extracted from an archive entry.
-  [[nodiscard]] auto is_archive_entry() const noexcept -> bool {
+  [[nodiscard]] bool is_archive_entry() const noexcept {
     return entry_name.has_value();
   }
 };
@@ -188,7 +188,7 @@ struct FileFingerprint {
 /// using std::string_view keys without constructing a temporary std::string.
 struct StringViewHash {
   using is_transparent = void;
-  [[nodiscard]] auto operator()(std::string_view sv) const noexcept -> std::size_t {
+  [[nodiscard]] std::size_t operator()(std::string_view sv) const noexcept {
     return std::hash<std::string_view>{}(sv);
   }
 };
@@ -261,7 +261,7 @@ struct ScannedROM {
       0; ///< Mtime of the physical file at scan time (Unix epoch seconds)
 
   /// Returns true when this ROM was extracted from an archive entry.
-  [[nodiscard]] auto is_archive_entry() const noexcept -> bool {
+  [[nodiscard]] bool is_archive_entry() const noexcept {
     return entry_name.has_value();
   }
 
@@ -269,7 +269,7 @@ struct ScannedROM {
   /// For bare files:      the filename component of archive_path.
   /// For archive entries: the leaf filename component of the in-archive path.
   /// @pre archive_path must be a valid file path when entry_name is absent.
-  [[nodiscard]] auto filename() const -> std::string {
+  [[nodiscard]] std::string filename() const {
     if (entry_name) {
       return std::filesystem::path(*entry_name).filename().string();
     }
@@ -279,7 +279,7 @@ struct ScannedROM {
   /// Returns the canonical virtual path used as the unique storage key.
   /// For bare files:      "/path/to/game.rom"
   /// For archive entries: "/path/to/archive.zip::game.rom"
-  [[nodiscard]] auto virtual_path() const -> std::string {
+  [[nodiscard]] std::string virtual_path() const {
     if (entry_name) {
       return archive_path.string() + std::string(k_ArchiveEntrySeparator) + *entry_name;
     }
@@ -298,7 +298,7 @@ struct CollectionSummary {
   std::int64_t unverified = 0;
   std::int64_t mismatch = 0;
 
-  [[nodiscard]] auto verified_percent() const -> double {
+  [[nodiscard]] double verified_percent() const {
     if (total_roms == 0) {
       return 0.0;
     }
