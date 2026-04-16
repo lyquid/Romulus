@@ -61,8 +61,8 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 ### 🐛 Engine — fix hash matching priority order
 
 - **Fix**: corrected hash matching priority in `Matcher::match_all()` to follow the DAT ecosystem
-  standard: **SHA-1 → MD5 → CRC32 → SHA-256** (was SHA-1 → SHA-256 → MD5 → CRC32).
-- SHA-256 is now treated as bonus enrichment (Priority 4), not as an ecosystem authority.
+  standard: **SHA-1 → MD5 → CRC32** (removed SHA-256 fallback).
+- SHA-256 is no longer used as a matching criterion in the matcher pipeline.
 - Updated log message and README documentation to reflect the corrected order.
 
 ### 🐛 Service — scan transaction RAII safety
