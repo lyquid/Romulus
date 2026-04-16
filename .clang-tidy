@@ -1,4 +1,7 @@
 ---
+# modernize-use-trailing-return-type is disabled because we prefer standard return-type syntax
+# (ReturnType fn()) over trailing return types (auto fn() -> ReturnType).
+# See "C++ Trailing Return Type Guidelines" in .github/copilot-instructions.md.
 Checks: >
   -*,
   bugprone-*,
@@ -14,8 +17,6 @@ Checks: >
   misc-*,
   -misc-non-private-member-variables-in-classes,
   modernize-*,
-  # Disabled: we prefer standard return-type syntax (ReturnType fn()) over trailing (auto fn() -> ReturnType).
-  # See C++ Trailing Return Type Guidelines in .github/copilot-instructions.md.
   -modernize-use-trailing-return-type,
   performance-*,
   readability-*,
