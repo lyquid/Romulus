@@ -574,6 +574,7 @@ void GuiApp::action_purge_database() {
                            }),
       .refresh_dat_versions = true,
       .refresh_checklist = false,
+      .refresh_folders = true,
   };
 }
 
