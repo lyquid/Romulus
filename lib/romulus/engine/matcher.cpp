@@ -4,6 +4,8 @@
 #include "romulus/database/database.hpp"
 
 #include <algorithm>
+#include <string_view>
+#include <unordered_map>
 
 namespace romulus::engine {
 
@@ -19,32 +21,46 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
     return std::unexpected(roms.error());
   }
 
-  ROMULUS_INFO("Matching ROMs against Global Index (Priority: SHA1 > MD5 > CRC32)...");
+  auto global_roms = db.get_all_global_roms();
+  if (!global_roms) {
+    return std::unexpected(global_roms.error());
+  }
 
-  // Prepare all lookup + insert statements once before the ROM loop —
-  // avoids O(N) sqlite3_prepare_v2 calls (up to 4 per ROM otherwise).
-  auto sha1_stmt = db.prepare(
-      "SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE sha1 = ?1 LIMIT 1");
-  if (!sha1_stmt) {
-    return std::unexpected(sha1_stmt.error());
-  }
-  auto md5_stmt = db.prepare(
-      "SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE md5 = ?1 LIMIT 1");
-  if (!md5_stmt) {
-    return std::unexpected(md5_stmt.error());
-  }
-  // CRC32 may match multiple rows; ORDER BY sha1 ensures a deterministic winner.
-  auto crc32_stmt = db.prepare(
-      "SELECT sha256, sha1, md5, crc32, size FROM global_roms "
-      "WHERE crc32 = ?1 ORDER BY sha1 LIMIT 1");
-  if (!crc32_stmt) {
-    return std::unexpected(crc32_stmt.error());
-  }
-  auto ins_stmt = db.prepare(
-      "INSERT OR REPLACE INTO rom_matches (rom_id, global_rom_sha1, match_type) "
-      "VALUES (?1, ?2, ?3)");
-  if (!ins_stmt) {
-    return std::unexpected(ins_stmt.error());
+  ROMULUS_INFO("Matching ROMs against Global Index (Priority: SHA1 > SHA256 > MD5 > CRC32)...");
+
+  std::
+      unordered_map<std::string_view, const core::GlobalRom*, core::StringViewHash, std::equal_to<>>
+          global_rom_by_sha1;
+  std::
+      unordered_map<std::string_view, const core::GlobalRom*, core::StringViewHash, std::equal_to<>>
+          global_rom_by_sha256;
+  std::
+      unordered_map<std::string_view, const core::GlobalRom*, core::StringViewHash, std::equal_to<>>
+          global_rom_by_md5;
+  std::unordered_map<std::string_view,
+                     std::vector<const core::GlobalRom*>,
+                     core::StringViewHash,
+                     std::equal_to<>>
+      global_roms_by_crc32;
+
+  global_rom_by_sha1.reserve(global_roms->size());
+  global_rom_by_sha256.reserve(global_roms->size());
+  global_rom_by_md5.reserve(global_roms->size());
+  global_roms_by_crc32.reserve(global_roms->size());
+
+  for (const auto& global_rom : *global_roms) {
+    if (!global_rom.sha1.empty()) {
+      global_rom_by_sha1.try_emplace(global_rom.sha1, &global_rom);
+    }
+    if (!global_rom.sha256.empty()) {
+      global_rom_by_sha256.try_emplace(global_rom.sha256, &global_rom);
+    }
+    if (!global_rom.md5.empty()) {
+      global_rom_by_md5.try_emplace(global_rom.md5, &global_rom);
+    }
+    if (!global_rom.crc32.empty()) {
+      global_roms_by_crc32[global_rom.crc32].push_back(&global_rom);
+    }
   }
 
   std::vector<core::MatchResult> results;
@@ -57,64 +73,81 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
     core::MatchResult match{
         .rom_id = rom.id, .global_rom_sha1 = "", .match_type = core::MatchType::NoMatch};
 
-    // Priority 1: SHA1 match (standard for No-Intro, Redump, etc.)
-    // Uses the global_roms.sha1 PRIMARY KEY index — O(log M) lookup.
+    // Priority 1: SHA1 match (Standard for No-Intro, Redump, etc.)
     if (!rom.sha1.empty()) {
-      sha1_stmt->bind_blob_hex(1, rom.sha1);
-      if (sha1_stmt->step()) {
-        const auto g_sha1 = sha1_stmt->column_blob_hex(1);
-        const auto g_md5 = sha1_stmt->column_blob_hex(2);
-        const auto g_crc32 = sha1_stmt->column_blob_hex(3);
-        sha1_stmt->reset();
+      const auto sha1_it = global_rom_by_sha1.find(rom.sha1);
+      if (sha1_it != global_rom_by_sha1.end()) {
+        const auto& g_rom = *sha1_it->second;
+        bool md5_match = rom.md5.empty() || g_rom.md5.empty() || rom.md5 == g_rom.md5;
+        bool crc_match = rom.crc32.empty() || g_rom.crc32.empty() || rom.crc32 == g_rom.crc32;
 
-        bool md5_match = rom.md5.empty() || g_md5.empty() || rom.md5 == g_md5;
-        bool crc_match = rom.crc32.empty() || g_crc32.empty() || rom.crc32 == g_crc32;
+        match.global_rom_sha1 = g_rom.sha1;
+        if (md5_match && crc_match) {
+          match.match_type = core::MatchType::Exact;
+        } else {
+          match.match_type = core::MatchType::Sha1Only;
+        }
 
-        match.global_rom_sha1 = g_sha1;
-        match.match_type =
-            (md5_match && crc_match) ? core::MatchType::Exact : core::MatchType::Sha1Only;
-        db.insert_rom_match_cached(*ins_stmt, match);
+        auto ins = db.insert_rom_match(match);
+        if (!ins) {
+          ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
+        }
         results.push_back(match);
         continue;
       }
-      sha1_stmt->reset();
     }
 
-    // Priority 2: MD5 match
-    // Uses the idx_global_roms_md5 index — O(log M) lookup.
+    // Priority 2: SHA256 match (Optional / fallback if DAT specifically supports it and SHA1
+    // didn't exist or wasn't provided)
+    if (!rom.sha256.empty()) {
+      const auto sha256_it = global_rom_by_sha256.find(rom.sha256);
+      if (sha256_it != global_rom_by_sha256.end()) {
+        match.global_rom_sha1 = sha256_it->second->sha1;
+        match.match_type = core::MatchType::Sha256Only;
+
+        auto ins = db.insert_rom_match(match);
+        if (!ins) {
+          ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
+        }
+        results.push_back(match);
+        continue;
+      }
+    }
+
+    // Priority 3: MD5 match
     if (!rom.md5.empty()) {
-      md5_stmt->bind_blob_hex(1, rom.md5);
-      if (md5_stmt->step()) {
-        match.global_rom_sha1 = md5_stmt->column_blob_hex(1);
-        md5_stmt->reset();
-
+      const auto md5_it = global_rom_by_md5.find(rom.md5);
+      if (md5_it != global_rom_by_md5.end()) {
+        match.global_rom_sha1 = md5_it->second->sha1;
         match.match_type = core::MatchType::Md5Only;
-        db.insert_rom_match_cached(*ins_stmt, match);
+
+        auto ins = db.insert_rom_match(match);
+        if (!ins) {
+          ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
+        }
         results.push_back(match);
         continue;
       }
-      md5_stmt->reset();
     }
 
-    // Priority 3: CRC32 match
-    // Uses the idx_global_roms_crc32 index — O(log M) lookup.
-    // ORDER BY sha1 in the query ensures a stable winner when multiple rows share a CRC32.
+    // Priority 4: CRC32 match (weakest)
     if (!rom.crc32.empty()) {
-      crc32_stmt->bind_blob_hex(1, rom.crc32);
-      if (crc32_stmt->step()) {
-        match.global_rom_sha1 = crc32_stmt->column_blob_hex(1);
-        crc32_stmt->reset();
-
+      const auto crc32_it = global_roms_by_crc32.find(rom.crc32);
+      if (crc32_it != global_roms_by_crc32.end() && !crc32_it->second.empty()) {
+        // Take the first match
+        match.global_rom_sha1 = crc32_it->second.front()->sha1;
         match.match_type = core::MatchType::Crc32Only;
-        db.insert_rom_match_cached(*ins_stmt, match);
+
+        auto ins = db.insert_rom_match(match);
+        if (!ins) {
+          ROMULUS_WARN("Failed to insert match: {}", ins.error().message);
+        }
         results.push_back(match);
         continue;
       }
-      crc32_stmt->reset();
     }
 
-    // No match — SHA-256 is not a DAT-ecosystem identifier; a SHA-256-only hit
-    // is an "unknown but identical" curiosity and does not constitute a valid match.
+    // No match
     match.match_type = core::MatchType::NoMatch;
     results.push_back(match);
   }

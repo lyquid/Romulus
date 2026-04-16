@@ -154,13 +154,12 @@ struct GlobalRom {
 /// A file discovered during filesystem scanning.
 struct FileInfo {
   std::int64_t id = 0;
-  /// Virtual path — unique storage key ("archive.zip::entry.rom" or "/bare/path.rom").
-  std::string path;
-  /// Physical archive path; absent (NULL) for bare files.
-  /// Derive the physical path from path when this value is not set.
-  std::optional<std::string> archive_path;
-  /// Set when this file lives inside an archive; absent for bare files.
-  std::optional<std::string> entry_name;
+  std::string
+      path; ///< Virtual path — unique storage key ("archive.zip::entry.rom" or "/bare/path.rom")
+  std::optional<std::string> archive_path; ///< Physical archive path; absent (NULL) for bare files
+                                           ///< — derive path from \c path field
+  std::optional<std::string>
+      entry_name; ///< Set when this file lives inside an archive; absent for bare files
   std::int64_t size = 0;
   std::string crc32;
   std::string md5;
@@ -205,9 +204,7 @@ using FingerprintMap =
 /// How a file was matched to a ROM.
 enum class MatchType {
   Exact,      ///< CRC32 + MD5 + SHA1 all match
-  Sha256Only, ///< SHA-256 matched but SHA-1/MD5/CRC32 did not — not a valid DAT match;
-              ///< treated identically to NoMatch for classification purposes.
-              ///< Retained in the enum for backward-compatibility with persisted DB values.
+  Sha256Only, ///< Only SHA256 matches
   Sha1Only,   ///< Only SHA1 matches
   Md5Only,    ///< Only MD5 matches
   Crc32Only,  ///< Only CRC32 matches

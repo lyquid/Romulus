@@ -42,8 +42,6 @@ public:
   void bind_int64(int index, std::int64_t value);
   void bind_text(int index, std::string_view value);
   void bind_blob(int index, const std::vector<uint8_t>& blob);
-  /// Decodes @p hex to raw bytes and binds as BLOB. Binds NULL for empty / invalid hex.
-  void bind_blob_hex(int index, std::string_view hex);
   void bind_null(int index);
 
   /// Steps the statement. Returns true if a row is available (SQLITE_ROW).
@@ -59,8 +57,6 @@ public:
   [[nodiscard]] auto column_text(int index) const -> std::string;
   [[nodiscard]] auto column_optional_text(int index) const -> std::optional<std::string>;
   [[nodiscard]] auto column_blob(int index) const -> std::vector<uint8_t>;
-  /// Reads a BLOB column and returns it as a lowercase hex string.
-  [[nodiscard]] auto column_blob_hex(int index) const -> std::string;
 
   /// Returns a display-friendly string for the column value at @p index.
   /// BLOBs are rendered as lowercase hex strings; NULLs become "(NULL)".
@@ -177,10 +173,6 @@ public:
   // ── ROM Matches ──────────────────────────────────────────
 
   [[nodiscard]] auto insert_rom_match(const core::MatchResult& match) -> Result<void>;
-  /// Inserts a match using an already-prepared statement — avoids repeated sqlite3_prepare_v2
-  /// calls when inserting many matches in a loop. The statement is reset after execution.
-  /// Prepare with: "INSERT OR REPLACE INTO rom_matches (rom_id, global_rom_sha1, match_type) VALUES (?1, ?2, ?3)"
-  void insert_rom_match_cached(PreparedStatement& stmt, const core::MatchResult& match);
   [[nodiscard]] auto get_matches_for_rom(std::int64_t rom_id)
       -> Result<std::vector<core::MatchResult>>;
   [[nodiscard]] auto clear_matches() -> Result<void>;
