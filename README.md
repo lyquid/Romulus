@@ -171,7 +171,7 @@ romulus scan /path/to/roms
 # Match files and classify ROM status — The boss fight
 romulus verify
 
-# Full pipeline (import → scan → verify) — SPEEDRUN MODE
+# Full pipeline (scan → import → verify) — SPEEDRUN MODE
 romulus sync path/to/dat.dat /path/to/roms
 
 # Reports — Check your high scores
@@ -232,7 +232,23 @@ dat_versions ──< games ──< roms
 
 > *"All we have to decide is what to do with the ROMs that are given to us."* — Gandalf, probably
 
-**Step 1 — IMPORT DAT** 📜
+**Step 1 — SCAN FOLDERS** 🔍
+
+Walk the dungeon and hash every file (CRC32 + MD5 + SHA1 + SHA-256 in a single pass):
+
+```bash
+romulus scan /path/to/roms/GameBoy
+```
+
+- `global_roms` — content identity, keyed by SHA-1
+- `files` — path → global_rom link
+- Already-known files with unchanged size/mtime are skipped (smart caching!)
+- Archive files (zip/7z) are opened and each entry hashed individually
+- Scanning is **independent of DATs** — scan once, verify against many DATs
+
+---
+
+**Step 2 — IMPORT DAT** 📜
 
 Load the sacred DAT scroll. Parses the LogiqX XML and inserts:
 
@@ -243,21 +259,6 @@ romulus import-dat "Nintendo - Game Boy (20240101).dat"
 - `dat_versions` — one row for this DAT file
 - `games` — one row per unique game name
 - `roms` — one row per ROM entry, linked to its game
-
----
-
-**Step 2 — SCAN FOLDERS** 🔍
-
-Walk the dungeon and hash every file (CRC32 + MD5 + SHA1 in a single pass):
-
-```bash
-romulus scan /path/to/roms/GameBoy
-```
-
-- `global_roms` — content identity, keyed by SHA-1
-- `files` — path → global_rom link
-- Already-known files with unchanged size/mtime are skipped (smart caching!)
-- Archive files (zip/7z) are opened and each entry hashed individually
 
 ---
 
@@ -300,13 +301,13 @@ romulus report missing  [--format text|csv|json]
 ### Verification Flow at a Glance
 
 ```
-Import DAT  →  Scan  →  Hash  →  Match  →  Classify  →  Report
-     │           │        │         │           │            │
-     ▼           ▼        ▼         ▼           ▼            ▼
-dat_versions   Files    CRC32     SHA-1      Verified      Text
-games          Scan     MD5       SHA-256    Missing       CSV
-roms           Skip     SHA-1     MD5        Unverified    JSON
-               Arch.              CRC32      Mismatch
+Scan/Hash  →  Import DAT  →  Match  →  Classify  →  Report
+    │              │            │           │            │
+    ▼              ▼            ▼           ▼            ▼
+Files         dat_versions   SHA-1      Verified      Text
+Scan          games          MD5        Missing       CSV
+Skip          roms           CRC32      Unverified    JSON
+Arch.                        SHA-256    Mismatch
 
 👾  "It's dangerous to go alone! Take this pipeline."  👾
 ```

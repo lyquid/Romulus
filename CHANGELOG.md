@@ -7,6 +7,15 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ⚡ Service — reorder pipeline: scan before importing DAT
+
+- **Refactor**: `RomulusService::full_sync()` now runs scan first, then imports the DAT, then
+  verifies. Scanning is independent of any DAT (it only inspects files on disk), so running it
+  before the import avoids coupling the scan to a specific DAT and allows the same scan results to
+  be reused across multiple DATs without re-hashing files.
+- **Docs**: updated README workflow steps, pipeline diagram, and CLI `sync` description to reflect
+  the new order: `Scan → Import DAT → Match → Classify`.
+
 ### 🎨 Style — convert all trailing return types to standard syntax
 
 - **Refactor**: converted all C++ function declarations and definitions from trailing return type

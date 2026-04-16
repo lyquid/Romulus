@@ -175,4 +175,39 @@ TEST_F(FullScanTest, RescanRehashesModifiedFile) {
   EXPECT_GT(scan2->files_hashed, 0);
 }
 
+TEST_F(FullScanTest, FullSyncPipelineProducesExpectedSummary) {
+  romulus::service::RomulusService svc(db_path_);
+
+  auto result = svc.full_sync(k_FixturesDir / "sample.dat", rom_dir_);
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+
+  // DAT must be imported
+  auto dats = svc.list_dat_versions();
+  ASSERT_TRUE(dats.has_value());
+  EXPECT_EQ(dats->size(), 1u);
+
+  // Files must be scanned
+  auto files = svc.get_all_files();
+  ASSERT_TRUE(files.has_value());
+  EXPECT_GT(files->size(), 0u);
+
+  // Summary must reflect the DAT's ROM count (3 ROMs in sample.dat)
+  auto summary = svc.get_summary();
+  ASSERT_TRUE(summary.has_value()) << summary.error().message;
+  EXPECT_EQ(summary->total_roms, 3);
+}
+
+TEST_F(FullScanTest, FullSyncFailsFastOnInvalidDatWithoutScanning) {
+  romulus::service::RomulusService svc(db_path_);
+
+  // Pass a non-existent DAT — fail-fast validation should prevent the scan.
+  auto result = svc.full_sync(rom_dir_ / "nonexistent.dat", rom_dir_);
+  EXPECT_FALSE(result.has_value());
+
+  // Because the DAT was validated before scanning, no files should have been persisted.
+  auto files = svc.get_all_files();
+  ASSERT_TRUE(files.has_value());
+  EXPECT_TRUE(files->empty());
+}
+
 } // namespace

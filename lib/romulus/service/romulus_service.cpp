@@ -215,21 +215,31 @@ Result<void> RomulusService::verify(std::optional<std::string> dat_name) {
 
 Result<void> RomulusService::full_sync(const std::filesystem::path& dat_path,
                                        const std::filesystem::path& rom_dir) {
-  ROMULUS_INFO("Starting full sync: DAT={}, ROM dir={}", dat_path.string(), rom_dir.string());
+  ROMULUS_INFO("Starting full sync: ROM dir={}, DAT={}", rom_dir.string(), dat_path.string());
 
-  // 1. Import DAT
-  auto dat = import_dat(dat_path);
-  if (!dat) {
-    return std::unexpected(dat.error());
+  // 0. Fail-fast: validate the DAT path before spending time scanning.
+  //    A missing or unreadable DAT file is a common user error; report it
+  //    immediately rather than after a potentially lengthy scan.
+  auto validated_dat = dat::DatFetcher::validate_local(dat_path);
+  if (!validated_dat) {
+    return std::unexpected(validated_dat.error());
   }
 
-  // 2. Scan directory
+  // 1. Scan directory — scanning is independent of any DAT, so it runs first.
+  //    Persisted scan results can then be reused by later DAT imports/verifications,
+  //    while repeated scans rely on the scan cache to skip re-hashing unchanged files.
   auto scan = scan_directory(rom_dir);
   if (!scan) {
     return std::unexpected(scan.error());
   }
 
-  // 3. Verify (match + classify)
+  // 2. Import DAT — load the expectations (what correct ROMs look like).
+  auto dat = import_dat(dat_path);
+  if (!dat) {
+    return std::unexpected(dat.error());
+  }
+
+  // 3. Verify (match + classify) — link reality to expectations.
   auto result = verify();
   if (!result) {
     return std::unexpected(result.error());

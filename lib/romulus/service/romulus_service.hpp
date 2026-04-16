@@ -52,7 +52,7 @@ public:
   /// Runs matching + classification on all files.
   [[nodiscard]] Result<void> verify(std::optional<std::string> dat_name = {});
 
-  /// Full pipeline: import DAT → scan → match → classify.
+  /// Full pipeline: scan → import DAT → match → classify.
   [[nodiscard]] Result<void> full_sync(const std::filesystem::path& dat_path,
                                        const std::filesystem::path& rom_dir);
 
