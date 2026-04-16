@@ -23,7 +23,7 @@ namespace romulus::gui {
 // Uses IFileOpenDialog (Vista+) for folder picker,
 // GetOpenFileNameA for file picker.
 
-auto open_folder_dialog() -> std::string {
+std::string open_folder_dialog() {
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 
   IFileOpenDialog* dialog = nullptr;
@@ -65,7 +65,7 @@ auto open_folder_dialog() -> std::string {
   return result;
 }
 
-auto open_file_dialog() -> std::string {
+std::string open_file_dialog() {
   char filename[MAX_PATH] = "";
   OPENFILENAMEA ofn = {};
   ofn.lStructSize = sizeof(ofn);
@@ -89,7 +89,7 @@ auto open_file_dialog() -> std::string {
 
 namespace {
 
-auto try_command(const char* cmd) -> std::string {
+std::string try_command(const char* cmd) {
   // NOLINTNEXTLINE(cert-env33-c) — commands are compile-time constants, not user input
   FILE* pipe = popen(cmd, "r");
   if (pipe == nullptr) {
@@ -113,13 +113,13 @@ auto try_command(const char* cmd) -> std::string {
   return result;
 }
 
-auto has_display() -> bool {
+bool has_display() {
   return std::getenv("DISPLAY") != nullptr || std::getenv("WAYLAND_DISPLAY") != nullptr;
 }
 
 } // namespace
 
-auto open_folder_dialog() -> std::string {
+std::string open_folder_dialog() {
   if (!has_display()) {
     return "";
   }
@@ -135,7 +135,7 @@ auto open_folder_dialog() -> std::string {
   return result;
 }
 
-auto open_file_dialog() -> std::string {
+std::string open_file_dialog() {
   if (!has_display()) {
     return "";
   }

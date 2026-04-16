@@ -18,7 +18,7 @@ namespace {
 constexpr std::string_view k_Version = "0.1.0";
 constexpr std::string_view k_DefaultDb = "romulus.db";
 
-auto get_executable_dir(const char* argv0) -> std::filesystem::path {
+std::filesystem::path get_executable_dir(const char* argv0) {
   std::error_code error;
   auto absolute_path = std::filesystem::absolute(argv0, error);
   if (error) {
@@ -33,8 +33,8 @@ auto get_executable_dir(const char* argv0) -> std::filesystem::path {
   return canonical_path.parent_path();
 }
 
-auto get_db_path(const std::string& db_flag,
-                 const std::filesystem::path& executable_dir) -> std::filesystem::path {
+std::filesystem::path get_db_path(const std::string& db_flag,
+                                  const std::filesystem::path& executable_dir) {
   if (!db_flag.empty()) {
     return db_flag;
   }
@@ -42,7 +42,7 @@ auto get_db_path(const std::string& db_flag,
   return executable_dir / k_DefaultDb;
 }
 
-auto to_lower(std::string value) -> std::string {
+std::string to_lower(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
     return static_cast<char>(std::tolower(ch));
   });
@@ -51,7 +51,7 @@ auto to_lower(std::string value) -> std::string {
 
 /// Normalizes a single extension token: trims leading/trailing whitespace
 /// (spaces, tabs, newlines, etc.), ensures a leading dot, and lowercases the result.
-auto normalize_extension(std::string ext) -> std::string {
+std::string normalize_extension(std::string ext) {
   constexpr std::string_view k_Whitespace = " \t\n\r\f\v";
   const auto first = ext.find_first_not_of(k_Whitespace);
   if (first == std::string::npos) {
@@ -66,7 +66,7 @@ auto normalize_extension(std::string ext) -> std::string {
 }
 
 /// Normalizes a list of raw extension tokens (in-place).
-auto normalize_extensions(std::vector<std::string> exts) -> std::vector<std::string> {
+std::vector<std::string> normalize_extensions(std::vector<std::string> exts) {
   for (auto& ext : exts) {
     ext = normalize_extension(std::move(ext));
   }
@@ -74,13 +74,13 @@ auto normalize_extensions(std::vector<std::string> exts) -> std::vector<std::str
   return exts;
 }
 
-auto is_dat_candidate(const std::filesystem::path& path) -> bool {
+bool is_dat_candidate(const std::filesystem::path& path) {
   const auto extension = to_lower(path.extension().string());
   return extension == ".dat" || extension == ".xml" ||
          romulus::scanner::ArchiveService::is_archive(path);
 }
 
-auto describe_candidates(const std::vector<std::filesystem::path>& paths) -> std::string {
+std::string describe_candidates(const std::vector<std::filesystem::path>& paths) {
   std::ostringstream stream;
   for (std::size_t index = 0; index < paths.size(); ++index) {
     if (index > 0) {
@@ -91,8 +91,8 @@ auto describe_candidates(const std::vector<std::filesystem::path>& paths) -> std
   return stream.str();
 }
 
-auto resolve_bundled_dat_path(const std::filesystem::path& executable_dir)
-    -> romulus::core::Result<std::filesystem::path> {
+romulus::core::Result<std::filesystem::path> resolve_bundled_dat_path(
+    const std::filesystem::path& executable_dir) {
   const auto dats_dir = executable_dir / "dats";
   if (!std::filesystem::exists(dats_dir) || !std::filesystem::is_directory(dats_dir)) {
     return std::unexpected(
@@ -126,9 +126,8 @@ auto resolve_bundled_dat_path(const std::filesystem::path& executable_dir)
   return candidates.front();
 }
 
-auto resolve_import_path(const std::string& import_path,
-                         const std::filesystem::path& executable_dir)
-    -> romulus::core::Result<std::filesystem::path> {
+romulus::core::Result<std::filesystem::path> resolve_import_path(
+    const std::string& import_path, const std::filesystem::path& executable_dir) {
   if (!import_path.empty()) {
     return std::filesystem::path{import_path};
   }
@@ -160,7 +159,9 @@ int main(int argc, char** argv) {
   std::string scan_dir;
   std::vector<std::string> scan_extensions;
   cmd_scan->add_option("directory", scan_dir, "Directory to scan")->required();
-  cmd_scan->add_option("--extensions,-e", scan_extensions, "File extensions (comma-separated, e.g. .nes,.gb)")
+  cmd_scan
+      ->add_option(
+          "--extensions,-e", scan_extensions, "File extensions (comma-separated, e.g. .nes,.gb)")
       ->delimiter(',');
 
   // ── verify ─────────────────────────────────────────────────

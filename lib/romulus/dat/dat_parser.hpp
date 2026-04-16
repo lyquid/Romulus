@@ -20,17 +20,17 @@ public:
   /// Parses a DAT file and returns the complete structured representation.
   /// @param dat_path Path to the DAT artifact on disk.
   /// @return Parsed DatFile containing header + all games/ROMs.
-  [[nodiscard]] auto parse(const std::filesystem::path& dat_path) -> Result<core::DatFile>;
+  [[nodiscard]] Result<core::DatFile> parse(const std::filesystem::path& dat_path);
 
 private:
   /// Extracts header metadata from the <header> XML element.
-  [[nodiscard]] static auto parse_header(const void* node) -> Result<core::DatHeader>;
+  [[nodiscard]] static Result<core::DatHeader> parse_header(const void* node);
 
   /// Extracts a single game and its ROMs from a <game> XML element.
-  [[nodiscard]] static auto parse_game(const void* node) -> Result<core::GameInfo>;
+  [[nodiscard]] static Result<core::GameInfo> parse_game(const void* node);
 
   /// Normalizes hash strings: trims whitespace, converts to lowercase.
-  [[nodiscard]] static auto normalize_hash(std::string_view hash) -> std::string;
+  [[nodiscard]] static std::string normalize_hash(std::string_view hash);
 };
 
 } // namespace romulus::dat

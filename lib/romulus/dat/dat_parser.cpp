@@ -15,20 +15,20 @@ namespace romulus::dat {
 
 namespace {
 
-auto to_lower(std::string value) -> std::string {
+std::string to_lower(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
     return static_cast<char>(std::tolower(ch));
   });
   return value;
 }
 
-auto is_dat_entry(const std::string& entry_name) -> bool {
+bool is_dat_entry(const std::string& entry_name) {
   const auto extension = to_lower(std::filesystem::path{entry_name}.extension().string());
   return extension == ".dat" || extension == ".xml";
 }
 
-auto collect_archive_dat_entries(const std::filesystem::path& dat_path)
-    -> Result<std::vector<core::ArchiveEntry>> {
+Result<std::vector<core::ArchiveEntry>> collect_archive_dat_entries(
+    const std::filesystem::path& dat_path) {
   auto entries = scanner::ArchiveService::list_entries(dat_path);
   if (!entries) {
     return std::unexpected(entries.error());
@@ -44,8 +44,8 @@ auto collect_archive_dat_entries(const std::filesystem::path& dat_path)
   return dat_entries;
 }
 
-auto load_document_from_archive(const std::filesystem::path& dat_path,
-                                pugi::xml_document& doc) -> Result<std::string> {
+Result<std::string> load_document_from_archive(const std::filesystem::path& dat_path,
+                                               pugi::xml_document& doc) {
   auto dat_entries = collect_archive_dat_entries(dat_path);
   if (!dat_entries) {
     return std::unexpected(dat_entries.error());
@@ -94,8 +94,7 @@ auto load_document_from_archive(const std::filesystem::path& dat_path,
   return dat_entries->front().name;
 }
 
-auto load_document(const std::filesystem::path& dat_path,
-                   pugi::xml_document& doc) -> Result<std::string> {
+Result<std::string> load_document(const std::filesystem::path& dat_path, pugi::xml_document& doc) {
   if (scanner::ArchiveService::is_archive(dat_path)) {
     return load_document_from_archive(dat_path, doc);
   }
@@ -115,7 +114,7 @@ auto load_document(const std::filesystem::path& dat_path,
 
 } // namespace
 
-auto DatParser::parse(const std::filesystem::path& dat_path) -> Result<core::DatFile> {
+Result<core::DatFile> DatParser::parse(const std::filesystem::path& dat_path) {
   pugi::xml_document doc;
   auto loaded = load_document(dat_path, doc);
   if (!loaded) {
@@ -161,7 +160,7 @@ auto DatParser::parse(const std::filesystem::path& dat_path) -> Result<core::Dat
   return dat_file;
 }
 
-auto DatParser::parse_header(const void* node_ptr) -> Result<core::DatHeader> {
+Result<core::DatHeader> DatParser::parse_header(const void* node_ptr) {
   const auto& node = *static_cast<const pugi::xml_node*>(node_ptr);
 
   core::DatHeader header;
@@ -180,7 +179,7 @@ auto DatParser::parse_header(const void* node_ptr) -> Result<core::DatHeader> {
   return header;
 }
 
-auto DatParser::parse_game(const void* node_ptr) -> Result<core::GameInfo> {
+Result<core::GameInfo> DatParser::parse_game(const void* node_ptr) {
   const auto& node = *static_cast<const pugi::xml_node*>(node_ptr);
 
   core::GameInfo game;
@@ -221,7 +220,7 @@ auto DatParser::parse_game(const void* node_ptr) -> Result<core::GameInfo> {
   return game;
 }
 
-auto DatParser::normalize_hash(std::string_view hash) -> std::string {
+std::string DatParser::normalize_hash(std::string_view hash) {
   std::string result;
   result.reserve(hash.size());
 

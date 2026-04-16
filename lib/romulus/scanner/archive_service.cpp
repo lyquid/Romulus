@@ -24,7 +24,7 @@ struct ArchiveDeleter {
 };
 using ArchivePtr = std::unique_ptr<struct archive, ArchiveDeleter>;
 
-auto create_archive_reader() -> ArchivePtr {
+ArchivePtr create_archive_reader() {
   auto* a = archive_read_new();
   archive_read_support_format_all(a);
   archive_read_support_filter_all(a);
@@ -45,7 +45,7 @@ constexpr std::array k_ArchiveExtensions = {
 
 } // namespace
 
-auto ArchiveService::is_archive(const std::filesystem::path& path) -> bool {
+bool ArchiveService::is_archive(const std::filesystem::path& path) {
   auto ext = path.extension().string();
   std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
@@ -73,8 +73,8 @@ auto ArchiveService::is_archive(const std::filesystem::path& path) -> bool {
   return false;
 }
 
-auto ArchiveService::list_entries(const std::filesystem::path& path)
-    -> Result<std::vector<core::ArchiveEntry>> {
+Result<std::vector<core::ArchiveEntry>> ArchiveService::list_entries(
+    const std::filesystem::path& path) {
   auto reader = create_archive_reader();
 
   if (archive_read_open_filename(reader.get(), path.string().c_str(), 10240) != ARCHIVE_OK) {
@@ -110,9 +110,9 @@ auto ArchiveService::list_entries(const std::filesystem::path& path)
   return entries;
 }
 
-auto ArchiveService::stream_entry(const std::filesystem::path& path,
-                                  std::size_t entry_index,
-                                  const StreamCallback& callback) -> Result<void> {
+Result<void> ArchiveService::stream_entry(const std::filesystem::path& path,
+                                          std::size_t entry_index,
+                                          const StreamCallback& callback) {
   auto reader = create_archive_reader();
 
   if (archive_read_open_filename(reader.get(), path.string().c_str(), 10240) != ARCHIVE_OK) {

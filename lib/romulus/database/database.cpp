@@ -13,7 +13,7 @@ namespace romulus::database {
 
 namespace {
 
-auto hex_to_bytes(std::string_view hex) -> std::vector<uint8_t> {
+std::vector<uint8_t> hex_to_bytes(std::string_view hex) {
   std::vector<uint8_t> bytes;
   if (hex.empty()) {
     return bytes;
@@ -38,7 +38,7 @@ auto hex_to_bytes(std::string_view hex) -> std::vector<uint8_t> {
   return bytes;
 }
 
-auto bytes_to_hex(const std::vector<uint8_t>& bytes) -> std::string {
+std::string bytes_to_hex(const std::vector<uint8_t>& bytes) {
   static constexpr char hex_chars[] = "0123456789abcdef";
   std::string hex;
   hex.reserve(bytes.size() * 2);
@@ -52,7 +52,7 @@ auto bytes_to_hex(const std::vector<uint8_t>& bytes) -> std::string {
 /// Wraps an SQLite identifier in double-quotes and escapes any embedded
 /// double-quote characters by doubling them (SQLite quoting rules).
 /// Example: my"table → "my""table"
-[[nodiscard]] auto quote_identifier(const std::string& name) -> std::string {
+[[nodiscard]] std::string quote_identifier(const std::string& name) {
   std::string out;
   out.reserve(name.size() + 2U);
   out += '"';
@@ -83,7 +83,7 @@ PreparedStatement::~PreparedStatement() {
 PreparedStatement::PreparedStatement(PreparedStatement&& other) noexcept
     : stmt_(std::exchange(other.stmt_, nullptr)) {}
 
-auto PreparedStatement::operator=(PreparedStatement&& other) noexcept -> PreparedStatement& {
+PreparedStatement& PreparedStatement::operator=(PreparedStatement&& other) noexcept {
   if (this != &other) {
     if (stmt_ != nullptr) {
       sqlite3_finalize(stmt_);
@@ -113,7 +113,7 @@ void PreparedStatement::bind_null(int index) {
   sqlite3_bind_null(stmt_, index);
 }
 
-auto PreparedStatement::step() -> bool {
+bool PreparedStatement::step() {
   int rc = sqlite3_step(stmt_);
   if (rc == SQLITE_ROW) {
     return true;
@@ -134,11 +134,11 @@ void PreparedStatement::reset() {
   sqlite3_clear_bindings(stmt_);
 }
 
-auto PreparedStatement::column_int64(int index) const -> std::int64_t {
+std::int64_t PreparedStatement::column_int64(int index) const {
   return sqlite3_column_int64(stmt_, index);
 }
 
-auto PreparedStatement::column_text(int index) const -> std::string {
+std::string PreparedStatement::column_text(int index) const {
   const auto* text = reinterpret_cast<const char*>(sqlite3_column_text(stmt_, index));
   if (text == nullptr) {
     return {};
@@ -146,14 +146,14 @@ auto PreparedStatement::column_text(int index) const -> std::string {
   return std::string(text);
 }
 
-auto PreparedStatement::column_optional_text(int index) const -> std::optional<std::string> {
+std::optional<std::string> PreparedStatement::column_optional_text(int index) const {
   if (sqlite3_column_type(stmt_, index) == SQLITE_NULL) {
     return std::nullopt;
   }
   return column_text(index);
 }
 
-auto PreparedStatement::column_blob(int index) const -> std::vector<uint8_t> {
+std::vector<uint8_t> PreparedStatement::column_blob(int index) const {
   if (sqlite3_column_type(stmt_, index) == SQLITE_NULL) {
     return {};
   }
@@ -166,7 +166,7 @@ auto PreparedStatement::column_blob(int index) const -> std::vector<uint8_t> {
   return std::vector<uint8_t>(p, p + bytes);
 }
 
-auto PreparedStatement::column_display_text(int index) const -> std::string {
+std::string PreparedStatement::column_display_text(int index) const {
   const int col_type = sqlite3_column_type(stmt_, index);
   if (col_type == SQLITE_NULL) {
     return "(NULL)";
@@ -209,7 +209,7 @@ TransactionGuard::~TransactionGuard() {
 TransactionGuard::TransactionGuard(TransactionGuard&& other) noexcept
     : db_(std::exchange(other.db_, nullptr)), committed_(other.committed_) {}
 
-auto TransactionGuard::operator=(TransactionGuard&& other) noexcept -> TransactionGuard& {
+TransactionGuard& TransactionGuard::operator=(TransactionGuard&& other) noexcept {
   if (this != &other) {
     if (db_ != nullptr && !committed_) {
       sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
@@ -220,7 +220,7 @@ auto TransactionGuard::operator=(TransactionGuard&& other) noexcept -> Transacti
   return *this;
 }
 
-auto TransactionGuard::commit() -> Result<void> {
+Result<void> TransactionGuard::commit() {
   if (db_ != nullptr && !committed_) {
     char* err_msg = nullptr;
     const int rc = sqlite3_exec(db_, "COMMIT", nullptr, nullptr, &err_msg);
@@ -235,7 +235,7 @@ auto TransactionGuard::commit() -> Result<void> {
   return {};
 }
 
-auto TransactionGuard::rollback() -> Result<void> {
+Result<void> TransactionGuard::rollback() {
   if (db_ != nullptr && !committed_) {
     char* err_msg = nullptr;
     const int rc = sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, &err_msg);
@@ -350,7 +350,7 @@ CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 /// is wiped and rebuilt so queries never encounter stale column layouts.
 constexpr int k_SchemaVersion = 6;
 
-auto match_type_to_int(core::MatchType type) -> int {
+int match_type_to_int(core::MatchType type) {
   switch (type) {
     case core::MatchType::Exact:
       return 0;
@@ -368,7 +368,7 @@ auto match_type_to_int(core::MatchType type) -> int {
   return 5;
 }
 
-auto int_to_match_type(int value) -> core::MatchType {
+core::MatchType int_to_match_type(int value) {
   switch (value) {
     case 0:
       return core::MatchType::Exact;
@@ -413,7 +413,7 @@ Database::~Database() {
 
 Database::Database(Database&& other) noexcept : db_(std::exchange(other.db_, nullptr)) {}
 
-auto Database::operator=(Database&& other) noexcept -> Database& {
+Database& Database::operator=(Database&& other) noexcept {
   if (this != &other) {
     if (db_ != nullptr) {
       sqlite3_close(db_);
@@ -488,7 +488,7 @@ DROP TABLE IF EXISTS rom_status;
   ROMULUS_DEBUG("Database migrations applied successfully (schema_version={})", k_SchemaVersion);
 }
 
-auto Database::begin_transaction() -> Result<TransactionGuard> {
+Result<TransactionGuard> Database::begin_transaction() {
   char* err_msg = nullptr;
   const int rc = sqlite3_exec(db_, "BEGIN TRANSACTION", nullptr, nullptr, &err_msg);
   if (rc != SQLITE_OK) {
@@ -501,7 +501,7 @@ auto Database::begin_transaction() -> Result<TransactionGuard> {
   return TransactionGuard{db_};
 }
 
-auto Database::execute(std::string_view sql) -> Result<void> {
+Result<void> Database::execute(std::string_view sql) {
   char* err_msg = nullptr;
   int rc = sqlite3_exec(db_, std::string(sql).c_str(), nullptr, nullptr, &err_msg);
   if (rc != SQLITE_OK) {
@@ -512,7 +512,7 @@ auto Database::execute(std::string_view sql) -> Result<void> {
   return {};
 }
 
-auto Database::prepare(std::string_view sql) -> Result<PreparedStatement> {
+Result<PreparedStatement> Database::prepare(std::string_view sql) {
   sqlite3_stmt* stmt = nullptr;
   int rc = sqlite3_prepare_v2(db_, sql.data(), static_cast<int>(sql.size()), &stmt, nullptr);
   if (rc != SQLITE_OK) {
@@ -522,7 +522,7 @@ auto Database::prepare(std::string_view sql) -> Result<PreparedStatement> {
   return PreparedStatement{stmt};
 }
 
-auto Database::last_insert_id() const -> std::int64_t {
+std::int64_t Database::last_insert_id() const {
   return sqlite3_last_insert_rowid(db_);
 }
 
@@ -530,7 +530,7 @@ auto Database::last_insert_id() const -> std::int64_t {
 // DAT Versions CRUD
 // ═══════════════════════════════════════════════════════════════
 
-auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::int64_t> {
+Result<std::int64_t> Database::insert_dat_version(const core::DatVersion& dat) {
   auto stmt = prepare(
       "INSERT INTO dat_versions (name, version, system, source_url, dat_sha256, imported_at) "
       "VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', 'localtime'))");
@@ -552,8 +552,8 @@ auto Database::insert_dat_version(const core::DatVersion& dat) -> Result<std::in
   return last_insert_id();
 }
 
-auto Database::find_dat_version(std::string_view name, std::string_view version)
-    -> Result<std::optional<core::DatVersion>> {
+Result<std::optional<core::DatVersion>> Database::find_dat_version(std::string_view name,
+                                                                   std::string_view version) {
   auto stmt = prepare("SELECT id, name, version, system, source_url, dat_sha256, imported_at "
                       "FROM dat_versions WHERE name = ?1 AND version = ?2 "
                       "ORDER BY imported_at DESC, id DESC LIMIT 1");
@@ -578,8 +578,8 @@ auto Database::find_dat_version(std::string_view name, std::string_view version)
   };
 }
 
-auto Database::find_dat_version_by_sha256(std::string_view dat_sha256)
-    -> Result<std::optional<core::DatVersion>> {
+Result<std::optional<core::DatVersion>> Database::find_dat_version_by_sha256(
+    std::string_view dat_sha256) {
   auto stmt = prepare("SELECT id, name, version, system, source_url, dat_sha256, imported_at "
                       "FROM dat_versions WHERE dat_sha256 = ?1 LIMIT 1");
   if (!stmt) {
@@ -602,8 +602,7 @@ auto Database::find_dat_version_by_sha256(std::string_view dat_sha256)
   };
 }
 
-auto Database::find_dat_version_by_name(std::string_view name)
-    -> Result<std::optional<core::DatVersion>> {
+Result<std::optional<core::DatVersion>> Database::find_dat_version_by_name(std::string_view name) {
   // Returns the most recently imported DAT with the given name (most recent first).
   auto stmt = prepare("SELECT id, name, version, system, source_url, dat_sha256, imported_at "
                       "FROM dat_versions WHERE name = ?1 ORDER BY imported_at DESC LIMIT 1");
@@ -627,7 +626,7 @@ auto Database::find_dat_version_by_name(std::string_view name)
   };
 }
 
-auto Database::get_all_dat_versions() -> Result<std::vector<core::DatVersion>> {
+Result<std::vector<core::DatVersion>> Database::get_all_dat_versions() {
   auto stmt = prepare("SELECT id, name, version, system, source_url, dat_sha256, imported_at "
                       "FROM dat_versions ORDER BY imported_at DESC");
   if (!stmt) {
@@ -653,8 +652,8 @@ auto Database::get_all_dat_versions() -> Result<std::vector<core::DatVersion>> {
 // Games CRUD
 // ═══════════════════════════════════════════════════════════════
 
-auto Database::find_or_insert_game(std::int64_t dat_version_id,
-                                   std::string_view name) -> Result<std::int64_t> {
+Result<std::int64_t> Database::find_or_insert_game(std::int64_t dat_version_id,
+                                                   std::string_view name) {
   // Use INSERT OR IGNORE so concurrent inserts are safe, then fetch the real id.
   auto ins = prepare("INSERT OR IGNORE INTO games (dat_version_id, name) VALUES (?1, ?2)");
   if (!ins) {
@@ -677,8 +676,8 @@ auto Database::find_or_insert_game(std::int64_t dat_version_id,
   return sel->column_int64(0);
 }
 
-auto Database::get_games_for_dat_version(std::int64_t dat_version_id)
-    -> Result<std::vector<core::GameEntry>> {
+Result<std::vector<core::GameEntry>> Database::get_games_for_dat_version(
+    std::int64_t dat_version_id) {
   auto stmt = prepare("SELECT id, dat_version_id, name FROM games "
                       "WHERE dat_version_id = ?1 ORDER BY name");
   if (!stmt) {
@@ -697,8 +696,7 @@ auto Database::get_games_for_dat_version(std::int64_t dat_version_id)
   return games;
 }
 
-auto Database::get_roms_for_dat_version(std::int64_t dat_version_id)
-    -> Result<std::vector<core::RomInfo>> {
+Result<std::vector<core::RomInfo>> Database::get_roms_for_dat_version(std::int64_t dat_version_id) {
   auto stmt = prepare("SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
                       "r.crc32, r.md5, r.expected_sha1, r.sha256, r.region "
                       "FROM roms r "
@@ -733,7 +731,7 @@ auto Database::get_roms_for_dat_version(std::int64_t dat_version_id)
 // ROMs CRUD
 // ═══════════════════════════════════════════════════════════════
 
-auto Database::insert_rom(const core::RomInfo& rom) -> Result<std::int64_t> {
+Result<std::int64_t> Database::insert_rom(const core::RomInfo& rom) {
   auto stmt = prepare("INSERT INTO roms (game_id, name, size, crc32, md5, "
                       "expected_sha1, sha256, region) "
                       "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)");
@@ -758,7 +756,7 @@ auto Database::insert_rom(const core::RomInfo& rom) -> Result<std::int64_t> {
   return last_insert_id();
 }
 
-auto Database::find_rom_by_sha1(std::string_view sha1) -> Result<std::optional<core::RomInfo>> {
+Result<std::optional<core::RomInfo>> Database::find_rom_by_sha1(std::string_view sha1) {
   auto stmt = prepare("SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
                       "r.crc32, r.md5, r.expected_sha1, r.sha256, r.region "
                       "FROM roms r "
@@ -788,7 +786,7 @@ auto Database::find_rom_by_sha1(std::string_view sha1) -> Result<std::optional<c
   };
 }
 
-auto Database::find_rom_by_sha256(std::string_view sha256) -> Result<std::optional<core::RomInfo>> {
+Result<std::optional<core::RomInfo>> Database::find_rom_by_sha256(std::string_view sha256) {
   auto stmt = prepare("SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
                       "r.crc32, r.md5, r.expected_sha1, r.sha256, r.region "
                       "FROM roms r "
@@ -818,7 +816,7 @@ auto Database::find_rom_by_sha256(std::string_view sha256) -> Result<std::option
   };
 }
 
-auto Database::find_rom_by_md5(std::string_view md5) -> Result<std::optional<core::RomInfo>> {
+Result<std::optional<core::RomInfo>> Database::find_rom_by_md5(std::string_view md5) {
   auto stmt = prepare("SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
                       "r.crc32, r.md5, r.expected_sha1, r.sha256, r.region "
                       "FROM roms r "
@@ -848,7 +846,7 @@ auto Database::find_rom_by_md5(std::string_view md5) -> Result<std::optional<cor
   };
 }
 
-auto Database::find_rom_by_crc32(std::string_view crc32) -> Result<std::vector<core::RomInfo>> {
+Result<std::vector<core::RomInfo>> Database::find_rom_by_crc32(std::string_view crc32) {
   auto stmt = prepare("SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
                       "r.crc32, r.md5, r.expected_sha1, r.sha256, r.region "
                       "FROM roms r "
@@ -879,7 +877,7 @@ auto Database::find_rom_by_crc32(std::string_view crc32) -> Result<std::vector<c
   return roms;
 }
 
-auto Database::get_all_roms() -> Result<std::vector<core::RomInfo>> {
+Result<std::vector<core::RomInfo>> Database::get_all_roms() {
   auto stmt = prepare("SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
                       "r.crc32, r.md5, r.expected_sha1, r.sha256, r.region "
                       "FROM roms r "
@@ -912,7 +910,7 @@ auto Database::get_all_roms() -> Result<std::vector<core::RomInfo>> {
 // Files CRUD
 // ═══════════════════════════════════════════════════════════════
 
-auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
+Result<std::int64_t> Database::upsert_file(const core::FileInfo& file) {
   // 1. Maintain the Global ROM index dynamically based on files on disk
   core::GlobalRom gr;
   gr.size = file.size;
@@ -975,7 +973,7 @@ auto Database::upsert_file(const core::FileInfo& file) -> Result<std::int64_t> {
   return last_insert_id();
 }
 
-auto Database::find_file_by_path(std::string_view path) -> Result<std::optional<core::FileInfo>> {
+Result<std::optional<core::FileInfo>> Database::find_file_by_path(std::string_view path) {
   auto stmt = prepare("SELECT id, path, archive_path, entry_name, size, crc32, md5, sha1, sha256, "
                       "last_scanned, last_write_time FROM files WHERE path = ?1");
   if (!stmt) {
@@ -1002,7 +1000,7 @@ auto Database::find_file_by_path(std::string_view path) -> Result<std::optional<
   };
 }
 
-auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
+Result<std::vector<core::FileInfo>> Database::get_all_files() {
   auto stmt = prepare("SELECT id, path, archive_path, entry_name, size, crc32, md5, sha1, sha256, "
                       "last_scanned, last_write_time FROM files");
   if (!stmt) {
@@ -1028,7 +1026,7 @@ auto Database::get_all_files() -> Result<std::vector<core::FileInfo>> {
   return files;
 }
 
-auto Database::get_file_fingerprints() -> Result<core::FingerprintMap> {
+Result<core::FingerprintMap> Database::get_file_fingerprints() {
   auto stmt = prepare("SELECT path, size, last_write_time FROM files");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -1044,8 +1042,8 @@ auto Database::get_file_fingerprints() -> Result<core::FingerprintMap> {
   return fingerprints;
 }
 
-auto Database::remove_missing_files(const std::vector<std::string>& existing_paths)
-    -> Result<std::int64_t> {
+Result<std::int64_t> Database::remove_missing_files(
+    const std::vector<std::string>& existing_paths) {
   // Get all file paths from DB, remove those not in existing_paths
   auto all_files = get_all_files();
   if (!all_files) {
@@ -1080,7 +1078,7 @@ auto Database::remove_missing_files(const std::vector<std::string>& existing_pat
 // Global ROMs CRUD
 // ═══════════════════════════════════════════════════════════════
 
-auto Database::upsert_global_rom(const core::GlobalRom& rom) -> Result<void> {
+Result<void> Database::upsert_global_rom(const core::GlobalRom& rom) {
   auto stmt = prepare("INSERT INTO global_roms (sha256, sha1, md5, crc32, size) "
                       "VALUES (?1, ?2, ?3, ?4, ?5) "
                       "ON CONFLICT(sha1) DO UPDATE SET "
@@ -1101,8 +1099,8 @@ auto Database::upsert_global_rom(const core::GlobalRom& rom) -> Result<void> {
   return {};
 }
 
-auto Database::find_global_rom_by_sha256(std::string_view sha256)
-    -> Result<std::optional<core::GlobalRom>> {
+Result<std::optional<core::GlobalRom>> Database::find_global_rom_by_sha256(
+    std::string_view sha256) {
   auto stmt =
       prepare("SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE sha256 = ?1 LIMIT 1");
   if (!stmt) {
@@ -1119,8 +1117,7 @@ auto Database::find_global_rom_by_sha256(std::string_view sha256)
                          .size = stmt->column_int64(4)};
 }
 
-auto Database::find_global_rom_by_sha1(std::string_view sha1)
-    -> Result<std::optional<core::GlobalRom>> {
+Result<std::optional<core::GlobalRom>> Database::find_global_rom_by_sha1(std::string_view sha1) {
   auto stmt =
       prepare("SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE sha1 = ?1 LIMIT 1");
   if (!stmt) {
@@ -1137,8 +1134,7 @@ auto Database::find_global_rom_by_sha1(std::string_view sha1)
                          .size = stmt->column_int64(4)};
 }
 
-auto Database::find_global_rom_by_md5(std::string_view md5)
-    -> Result<std::optional<core::GlobalRom>> {
+Result<std::optional<core::GlobalRom>> Database::find_global_rom_by_md5(std::string_view md5) {
   auto stmt =
       prepare("SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE md5 = ?1 LIMIT 1");
   if (!stmt) {
@@ -1155,8 +1151,7 @@ auto Database::find_global_rom_by_md5(std::string_view md5)
                          .size = stmt->column_int64(4)};
 }
 
-auto Database::find_global_rom_by_crc32(std::string_view crc32)
-    -> Result<std::vector<core::GlobalRom>> {
+Result<std::vector<core::GlobalRom>> Database::find_global_rom_by_crc32(std::string_view crc32) {
   auto stmt = prepare("SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE crc32 = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -1173,7 +1168,7 @@ auto Database::find_global_rom_by_crc32(std::string_view crc32)
   return res;
 }
 
-auto Database::get_all_global_roms() -> Result<std::vector<core::GlobalRom>> {
+Result<std::vector<core::GlobalRom>> Database::get_all_global_roms() {
   auto stmt = prepare("SELECT sha256, sha1, md5, crc32, size FROM global_roms");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -1190,7 +1185,7 @@ auto Database::get_all_global_roms() -> Result<std::vector<core::GlobalRom>> {
   return global_roms;
 }
 
-auto Database::has_files_for_global_rom(std::string_view global_rom_sha1) -> Result<bool> {
+Result<bool> Database::has_files_for_global_rom(std::string_view global_rom_sha1) {
   auto stmt = prepare("SELECT 1 FROM files WHERE sha1 = ?1 LIMIT 1");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -1203,7 +1198,7 @@ auto Database::has_files_for_global_rom(std::string_view global_rom_sha1) -> Res
 // ROM Matches CRUD
 // ═══════════════════════════════════════════════════════════════
 
-auto Database::insert_rom_match(const core::MatchResult& match) -> Result<void> {
+Result<void> Database::insert_rom_match(const core::MatchResult& match) {
   auto stmt = prepare("INSERT OR REPLACE INTO rom_matches (rom_id, global_rom_sha1, match_type) "
                       "VALUES (?1, ?2, ?3)");
   if (!stmt) {
@@ -1218,7 +1213,7 @@ auto Database::insert_rom_match(const core::MatchResult& match) -> Result<void> 
   return {};
 }
 
-auto Database::get_matches_for_rom(std::int64_t rom_id) -> Result<std::vector<core::MatchResult>> {
+Result<std::vector<core::MatchResult>> Database::get_matches_for_rom(std::int64_t rom_id) {
   auto stmt =
       prepare("SELECT rom_id, global_rom_sha1, match_type FROM rom_matches WHERE rom_id = ?1");
   if (!stmt) {
@@ -1238,7 +1233,7 @@ auto Database::get_matches_for_rom(std::int64_t rom_id) -> Result<std::vector<co
   return matches;
 }
 
-auto Database::clear_matches() -> Result<void> {
+Result<void> Database::clear_matches() {
   return execute("DELETE FROM rom_matches");
 }
 
@@ -1246,7 +1241,7 @@ auto Database::clear_matches() -> Result<void> {
 // Computed Status (from rom_matches + files — no separate status table)
 // ═══════════════════════════════════════════════════════════════
 
-auto Database::get_computed_rom_status(std::int64_t rom_id) -> Result<core::RomStatusType> {
+Result<core::RomStatusType> Database::get_computed_rom_status(std::int64_t rom_id) {
   // Query all matches for this ROM, left-joining to files to detect which ones
   // have a physical file on disk.
   auto stmt = prepare("SELECT rm.match_type, (f.sha1 IS NOT NULL) AS has_file "
@@ -1288,8 +1283,8 @@ auto Database::get_computed_rom_status(std::int64_t rom_id) -> Result<core::RomS
   return core::RomStatusType::Mismatch;
 }
 
-auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id)
-    -> Result<core::CollectionSummary> {
+Result<core::CollectionSummary> Database::get_collection_summary(
+    std::optional<std::int64_t> dat_version_id) {
   // Compute status dynamically using a CTE.
   // Status mapping: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch
   std::string sql =
@@ -1347,8 +1342,8 @@ auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id
   return summary;
 }
 
-auto Database::get_missing_roms(std::optional<std::int64_t> dat_version_id)
-    -> Result<std::vector<core::MissingRom>> {
+Result<std::vector<core::MissingRom>> Database::get_missing_roms(
+    std::optional<std::int64_t> dat_version_id) {
   // A ROM is "missing" if it has no matching file on disk.
   std::string sql = "SELECT g.name, r.name, dv.name, "
                     "  COALESCE(lower(hex(r.expected_sha1)), '') "
@@ -1387,8 +1382,8 @@ auto Database::get_missing_roms(std::optional<std::int64_t> dat_version_id)
   return missing;
 }
 
-auto Database::get_duplicate_files(std::optional<std::int64_t> dat_version_id)
-    -> Result<std::vector<core::DuplicateFile>> {
+Result<std::vector<core::DuplicateFile>> Database::get_duplicate_files(
+    std::optional<std::int64_t> dat_version_id) {
   // Find files that share the same global ROM identity (sha1) with at least one other file.
   std::string sql = "SELECT f.path, r.name, g.name "
                     "FROM files f "
@@ -1425,7 +1420,7 @@ auto Database::get_duplicate_files(std::optional<std::int64_t> dat_version_id)
   return dupes;
 }
 
-auto Database::get_unverified_files() -> Result<std::vector<core::FileInfo>> {
+Result<std::vector<core::FileInfo>> Database::get_unverified_files() {
   // Use LEFT JOIN to find files with no matches in a single query.
   const std::string_view sql =
       "SELECT f.id, f.path, f.archive_path, f.entry_name, f.size, f.crc32, f.md5, f.sha1, "
@@ -1462,7 +1457,7 @@ auto Database::get_unverified_files() -> Result<std::vector<core::FileInfo>> {
 // Scanned Directories
 // ═══════════════════════════════════════════════════════════════
 
-auto Database::add_scanned_directory(std::string_view path) -> Result<core::ScannedDirectory> {
+Result<core::ScannedDirectory> Database::add_scanned_directory(std::string_view path) {
   // ON CONFLICT DO UPDATE with a no-op assignment is intentional: it ensures
   // the RETURNING clause fires even when the path already exists, so we always
   // get the stored row back.  DO NOTHING would silence RETURNING on conflict.
@@ -1485,7 +1480,7 @@ auto Database::add_scanned_directory(std::string_view path) -> Result<core::Scan
   };
 }
 
-auto Database::get_all_scanned_directories() -> Result<std::vector<core::ScannedDirectory>> {
+Result<std::vector<core::ScannedDirectory>> Database::get_all_scanned_directories() {
   // Count files whose virtual path starts with the directory path.
   // RTRIM normalizes any trailing '/' or '\' on the stored path before comparison so
   // directories registered with or without a trailing separator both work correctly.
@@ -1515,7 +1510,7 @@ auto Database::get_all_scanned_directories() -> Result<std::vector<core::Scanned
   return dirs;
 }
 
-auto Database::remove_scanned_directory(std::int64_t id) -> Result<void> {
+Result<void> Database::remove_scanned_directory(std::int64_t id) {
   auto stmt = prepare("DELETE FROM scanned_directories WHERE id = ?1");
   if (!stmt) {
     return std::unexpected(stmt.error());
@@ -1534,7 +1529,7 @@ auto Database::remove_scanned_directory(std::int64_t id) -> Result<void> {
 // DB Explorer
 // ═══════════════════════════════════════════════════════════════
 
-auto Database::get_table_names() -> Result<std::vector<std::string>> {
+Result<std::vector<std::string>> Database::get_table_names() {
   auto stmt = prepare("SELECT name FROM sqlite_master "
                       "WHERE type='table' AND name NOT LIKE 'sqlite_%' "
                       "ORDER BY name");
@@ -1548,7 +1543,7 @@ auto Database::get_table_names() -> Result<std::vector<std::string>> {
   return names;
 }
 
-auto Database::query_table_data(std::string_view table_name) -> Result<core::TableQueryResult> {
+Result<core::TableQueryResult> Database::query_table_data(std::string_view table_name) {
   // Validate table_name against known tables (defence against SQL injection).
   auto known_tables = get_table_names();
   if (!known_tables) {

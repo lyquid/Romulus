@@ -9,7 +9,7 @@
 
 namespace romulus::engine {
 
-auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::MatchResult>> {
+Result<std::vector<core::MatchResult>> Matcher::match_all(database::Database& db) {
   // Clear previous matches
   auto clear_result = db.clear_matches();
   if (!clear_result) {

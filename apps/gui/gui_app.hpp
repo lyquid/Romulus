@@ -37,9 +37,9 @@ public:
   ~GuiApp();
 
   GuiApp(const GuiApp&) = delete;
-  auto operator=(const GuiApp&) -> GuiApp& = delete;
+  GuiApp& operator=(const GuiApp&) = delete;
   GuiApp(GuiApp&&) = delete;
-  auto operator=(GuiApp&&) -> GuiApp& = delete;
+  GuiApp& operator=(GuiApp&&) = delete;
 
   /// Runs the main render loop until the window is closed.
   void run();
@@ -73,7 +73,7 @@ private:
 
   // ── Background task management ─────────────────────────
   void check_pending_task();
-  [[nodiscard]] auto is_busy() const -> bool;
+  [[nodiscard]] bool is_busy() const;
 
   // ── Data refresh ────────────────────────────────────────
   void refresh_dat_versions();
@@ -82,7 +82,7 @@ private:
   // ── Checklist sorting ──────────────────────────────────
   void apply_checklist_sort();
   void apply_game_sort();
-  void apply_db_filter_sort(); ///< Recompute db_display_rows_ from current filter + sort
+  void apply_db_filter_sort();   ///< Recompute db_display_rows_ from current filter + sort
   void rebuild_db_lower_cache(); ///< Pre-compute lowercased cell strings for filter matching
 
   // ── Toast notification ─────────────────────────────────
@@ -95,7 +95,7 @@ private:
 
   // ROM checklist — full flat list of all ROMs for the selected DAT.
   struct RomChecklistEntry {
-    std::int64_t game_id = 0;           ///< FK to the owning game (used to filter per-game view)
+    std::int64_t game_id = 0; ///< FK to the owning game (used to filter per-game view)
     std::string name;
     std::string name_lower; ///< Lowercase copy of name — precomputed for filter matching
     std::int64_t size = 0;

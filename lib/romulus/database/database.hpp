@@ -30,12 +30,12 @@ public:
   ~PreparedStatement();
 
   PreparedStatement(PreparedStatement&& other) noexcept;
-  auto operator=(PreparedStatement&& other) noexcept -> PreparedStatement&;
+  PreparedStatement& operator=(PreparedStatement&& other) noexcept;
 
   PreparedStatement(const PreparedStatement&) = delete;
-  auto operator=(const PreparedStatement&) -> PreparedStatement& = delete;
+  PreparedStatement& operator=(const PreparedStatement&) = delete;
 
-  [[nodiscard]] auto get() const -> sqlite3_stmt* {
+  [[nodiscard]] sqlite3_stmt* get() const {
     return stmt_;
   }
 
@@ -45,7 +45,7 @@ public:
   void bind_null(int index);
 
   /// Steps the statement. Returns true if a row is available (SQLITE_ROW).
-  [[nodiscard]] auto step() -> bool;
+  [[nodiscard]] bool step();
 
   /// Executes a non-query statement (INSERT/UPDATE/DELETE) discarding the row result.
   void execute();
@@ -53,15 +53,15 @@ public:
   /// Resets the statement for reuse with new bindings.
   void reset();
 
-  [[nodiscard]] auto column_int64(int index) const -> std::int64_t;
-  [[nodiscard]] auto column_text(int index) const -> std::string;
-  [[nodiscard]] auto column_optional_text(int index) const -> std::optional<std::string>;
-  [[nodiscard]] auto column_blob(int index) const -> std::vector<uint8_t>;
+  [[nodiscard]] std::int64_t column_int64(int index) const;
+  [[nodiscard]] std::string column_text(int index) const;
+  [[nodiscard]] std::optional<std::string> column_optional_text(int index) const;
+  [[nodiscard]] std::vector<uint8_t> column_blob(int index) const;
 
   /// Returns a display-friendly string for the column value at @p index.
   /// BLOBs are rendered as lowercase hex strings; NULLs become "(NULL)".
   /// INTEGER, FLOAT, and TEXT are returned as-is via sqlite3_column_text.
-  [[nodiscard]] auto column_display_text(int index) const -> std::string;
+  [[nodiscard]] std::string column_display_text(int index) const;
 
 private:
   sqlite3_stmt* stmt_ = nullptr;
@@ -76,16 +76,16 @@ public:
   ~TransactionGuard();
 
   TransactionGuard(TransactionGuard&& other) noexcept;
-  auto operator=(TransactionGuard&& other) noexcept -> TransactionGuard&;
+  TransactionGuard& operator=(TransactionGuard&& other) noexcept;
 
   TransactionGuard(const TransactionGuard&) = delete;
-  auto operator=(const TransactionGuard&) -> TransactionGuard& = delete;
+  TransactionGuard& operator=(const TransactionGuard&) = delete;
 
   /// Explicitly commit the transaction.
-  [[nodiscard]] auto commit() -> Result<void>;
+  [[nodiscard]] Result<void> commit();
 
   /// Explicitly rollback the transaction.
-  [[nodiscard]] auto rollback() -> Result<void>;
+  [[nodiscard]] Result<void> rollback();
 
 private:
   sqlite3* db_ = nullptr;
@@ -101,122 +101,115 @@ public:
   ~Database();
 
   Database(Database&& other) noexcept;
-  auto operator=(Database&& other) noexcept -> Database&;
+  Database& operator=(Database&& other) noexcept;
 
   Database(const Database&) = delete;
-  auto operator=(const Database&) -> Database& = delete;
+  Database& operator=(const Database&) = delete;
 
   /// Creates an RAII transaction guard.
-  [[nodiscard]] auto begin_transaction() -> Result<TransactionGuard>;
+  [[nodiscard]] Result<TransactionGuard> begin_transaction();
 
   // ── DAT Versions ─────────────────────────────────────────
 
-  [[nodiscard]] auto insert_dat_version(const core::DatVersion& dat) -> Result<std::int64_t>;
-  [[nodiscard]] auto find_dat_version(std::string_view name, std::string_view version)
-      -> Result<std::optional<core::DatVersion>>;
-  [[nodiscard]] auto find_dat_version_by_sha256(std::string_view dat_sha256)
-      -> Result<std::optional<core::DatVersion>>;
-  [[nodiscard]] auto find_dat_version_by_name(std::string_view name)
-      -> Result<std::optional<core::DatVersion>>;
-  [[nodiscard]] auto get_all_dat_versions() -> Result<std::vector<core::DatVersion>>;
-  [[nodiscard]] auto get_roms_for_dat_version(std::int64_t dat_version_id)
-      -> Result<std::vector<core::RomInfo>>;
+  [[nodiscard]] Result<std::int64_t> insert_dat_version(const core::DatVersion& dat);
+  [[nodiscard]] Result<std::optional<core::DatVersion>> find_dat_version(std::string_view name,
+                                                                         std::string_view version);
+  [[nodiscard]] Result<std::optional<core::DatVersion>> find_dat_version_by_sha256(
+      std::string_view dat_sha256);
+  [[nodiscard]] Result<std::optional<core::DatVersion>> find_dat_version_by_name(
+      std::string_view name);
+  [[nodiscard]] Result<std::vector<core::DatVersion>> get_all_dat_versions();
+  [[nodiscard]] Result<std::vector<core::RomInfo>> get_roms_for_dat_version(
+      std::int64_t dat_version_id);
 
   // ── Games ─────────────────────────────────────────────────
 
   /// Inserts a new game with the given dat_version_id and name, or returns the existing
   /// game's id if a game with the same (dat_version_id, name) already exists.
-  [[nodiscard]] auto find_or_insert_game(std::int64_t dat_version_id,
-                                         std::string_view name) -> Result<std::int64_t>;
-  [[nodiscard]] auto get_games_for_dat_version(std::int64_t dat_version_id)
-      -> Result<std::vector<core::GameEntry>>;
+  [[nodiscard]] Result<std::int64_t> find_or_insert_game(std::int64_t dat_version_id,
+                                                         std::string_view name);
+  [[nodiscard]] Result<std::vector<core::GameEntry>> get_games_for_dat_version(
+      std::int64_t dat_version_id);
 
   // ── ROMs ─────────────────────────────────────────────────
 
-  [[nodiscard]] auto insert_rom(const core::RomInfo& rom) -> Result<std::int64_t>;
-  [[nodiscard]] auto find_rom_by_sha256(std::string_view sha256)
-      -> Result<std::optional<core::RomInfo>>;
-  [[nodiscard]] auto find_rom_by_sha1(std::string_view sha1)
-      -> Result<std::optional<core::RomInfo>>;
-  [[nodiscard]] auto find_rom_by_md5(std::string_view md5) -> Result<std::optional<core::RomInfo>>;
-  [[nodiscard]] auto find_rom_by_crc32(std::string_view crc32)
-      -> Result<std::vector<core::RomInfo>>;
-  [[nodiscard]] auto get_all_roms() -> Result<std::vector<core::RomInfo>>;
+  [[nodiscard]] Result<std::int64_t> insert_rom(const core::RomInfo& rom);
+  [[nodiscard]] Result<std::optional<core::RomInfo>> find_rom_by_sha256(std::string_view sha256);
+  [[nodiscard]] Result<std::optional<core::RomInfo>> find_rom_by_sha1(std::string_view sha1);
+  [[nodiscard]] Result<std::optional<core::RomInfo>> find_rom_by_md5(std::string_view md5);
+  [[nodiscard]] Result<std::vector<core::RomInfo>> find_rom_by_crc32(std::string_view crc32);
+  [[nodiscard]] Result<std::vector<core::RomInfo>> get_all_roms();
 
   // ── Files ────────────────────────────────────────────────
 
-  [[nodiscard]] auto upsert_file(const core::FileInfo& file) -> Result<std::int64_t>;
-  [[nodiscard]] auto find_file_by_path(std::string_view path)
-      -> Result<std::optional<core::FileInfo>>;
-  [[nodiscard]] auto get_all_files() -> Result<std::vector<core::FileInfo>>;
+  [[nodiscard]] Result<std::int64_t> upsert_file(const core::FileInfo& file);
+  [[nodiscard]] Result<std::optional<core::FileInfo>> find_file_by_path(std::string_view path);
+  [[nodiscard]] Result<std::vector<core::FileInfo>> get_all_files();
   /// Returns a map of virtual path → FileFingerprint (size + last_write_time).
   /// Used by the service layer to build the skip-check predicate: a file is skipped
   /// only when its current size and last_write_time both match the stored values.
-  [[nodiscard]] auto get_file_fingerprints() -> Result<core::FingerprintMap>;
-  [[nodiscard]] auto remove_missing_files(const std::vector<std::string>& existing_paths)
-      -> Result<std::int64_t>;
+  [[nodiscard]] Result<core::FingerprintMap> get_file_fingerprints();
+  [[nodiscard]] Result<std::int64_t> remove_missing_files(
+      const std::vector<std::string>& existing_paths);
 
   // ── Global ROMs ──────────────────────────────────────────
 
-  [[nodiscard]] auto upsert_global_rom(const core::GlobalRom& rom) -> Result<void>;
-  [[nodiscard]] auto find_global_rom_by_sha256(std::string_view sha256)
-      -> Result<std::optional<core::GlobalRom>>;
-  [[nodiscard]] auto find_global_rom_by_sha1(std::string_view sha1)
-      -> Result<std::optional<core::GlobalRom>>;
-  [[nodiscard]] auto find_global_rom_by_md5(std::string_view md5)
-      -> Result<std::optional<core::GlobalRom>>;
-  [[nodiscard]] auto find_global_rom_by_crc32(std::string_view crc32)
-      -> Result<std::vector<core::GlobalRom>>;
-  [[nodiscard]] auto get_all_global_roms() -> Result<std::vector<core::GlobalRom>>;
-  [[nodiscard]] auto has_files_for_global_rom(std::string_view global_rom_sha1) -> Result<bool>;
+  [[nodiscard]] Result<void> upsert_global_rom(const core::GlobalRom& rom);
+  [[nodiscard]] Result<std::optional<core::GlobalRom>> find_global_rom_by_sha256(
+      std::string_view sha256);
+  [[nodiscard]] Result<std::optional<core::GlobalRom>> find_global_rom_by_sha1(
+      std::string_view sha1);
+  [[nodiscard]] Result<std::optional<core::GlobalRom>> find_global_rom_by_md5(std::string_view md5);
+  [[nodiscard]] Result<std::vector<core::GlobalRom>> find_global_rom_by_crc32(
+      std::string_view crc32);
+  [[nodiscard]] Result<std::vector<core::GlobalRom>> get_all_global_roms();
+  [[nodiscard]] Result<bool> has_files_for_global_rom(std::string_view global_rom_sha1);
 
   // ── ROM Matches ──────────────────────────────────────────
 
-  [[nodiscard]] auto insert_rom_match(const core::MatchResult& match) -> Result<void>;
-  [[nodiscard]] auto get_matches_for_rom(std::int64_t rom_id)
-      -> Result<std::vector<core::MatchResult>>;
-  [[nodiscard]] auto clear_matches() -> Result<void>;
+  [[nodiscard]] Result<void> insert_rom_match(const core::MatchResult& match);
+  [[nodiscard]] Result<std::vector<core::MatchResult>> get_matches_for_rom(std::int64_t rom_id);
+  [[nodiscard]] Result<void> clear_matches();
 
   // ── Status (computed dynamically from rom_matches + files) ───
 
   /// Computes the status of a single ROM by inspecting rom_matches and files.
-  [[nodiscard]] auto get_computed_rom_status(std::int64_t rom_id) -> Result<core::RomStatusType>;
-  [[nodiscard]] auto get_collection_summary(std::optional<std::int64_t> dat_version_id = {})
-      -> Result<core::CollectionSummary>;
-  [[nodiscard]] auto get_missing_roms(std::optional<std::int64_t> dat_version_id = {})
-      -> Result<std::vector<core::MissingRom>>;
-  [[nodiscard]] auto get_duplicate_files(std::optional<std::int64_t> dat_version_id = {})
-      -> Result<std::vector<core::DuplicateFile>>;
-  [[nodiscard]] auto get_unverified_files() -> Result<std::vector<core::FileInfo>>;
+  [[nodiscard]] Result<core::RomStatusType> get_computed_rom_status(std::int64_t rom_id);
+  [[nodiscard]] Result<core::CollectionSummary> get_collection_summary(
+      std::optional<std::int64_t> dat_version_id = {});
+  [[nodiscard]] Result<std::vector<core::MissingRom>> get_missing_roms(
+      std::optional<std::int64_t> dat_version_id = {});
+  [[nodiscard]] Result<std::vector<core::DuplicateFile>> get_duplicate_files(
+      std::optional<std::int64_t> dat_version_id = {});
+  [[nodiscard]] Result<std::vector<core::FileInfo>> get_unverified_files();
 
   // ── Utilities ────────────────────────────────────────────
 
   /// Executes a raw SQL statement (for migrations/admin).
-  [[nodiscard]] auto execute(std::string_view sql) -> Result<void>;
+  [[nodiscard]] Result<void> execute(std::string_view sql);
 
   /// Prepares a SQL statement for reuse.
-  [[nodiscard]] auto prepare(std::string_view sql) -> Result<PreparedStatement>;
+  [[nodiscard]] Result<PreparedStatement> prepare(std::string_view sql);
 
   /// Returns the last inserted row ID.
-  [[nodiscard]] auto last_insert_id() const -> std::int64_t;
+  [[nodiscard]] std::int64_t last_insert_id() const;
 
   // ── Scanned Directories ──────────────────────────────────
 
-  [[nodiscard]] auto add_scanned_directory(std::string_view path) -> Result<core::ScannedDirectory>;
-  [[nodiscard]] auto get_all_scanned_directories() -> Result<std::vector<core::ScannedDirectory>>;
-  [[nodiscard]] auto remove_scanned_directory(std::int64_t id) -> Result<void>;
+  [[nodiscard]] Result<core::ScannedDirectory> add_scanned_directory(std::string_view path);
+  [[nodiscard]] Result<std::vector<core::ScannedDirectory>> get_all_scanned_directories();
+  [[nodiscard]] Result<void> remove_scanned_directory(std::int64_t id);
 
   // ── DB Explorer ──────────────────────────────────────────
 
   /// Returns the names of all user-defined tables (excludes sqlite_* internal tables).
-  [[nodiscard]] auto get_table_names() -> Result<std::vector<std::string>>;
+  [[nodiscard]] Result<std::vector<std::string>> get_table_names();
 
   /// Queries all rows from the named table.
   /// Returns column metadata (including PK / NN / UQ / FK flags) and row data.
   /// BLOB columns are rendered as lowercase hex strings; NULLs as "(NULL)".
   /// @param table_name Must be a name returned by get_table_names().
-  [[nodiscard]] auto query_table_data(std::string_view table_name)
-      -> Result<core::TableQueryResult>;
+  [[nodiscard]] Result<core::TableQueryResult> query_table_data(std::string_view table_name);
 
 private:
   /// Runs the schema migration (CREATE TABLE IF NOT EXISTS).

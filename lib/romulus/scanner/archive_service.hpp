@@ -26,13 +26,13 @@ using StreamCallback = std::function<void(const std::byte* data, std::size_t siz
 class ArchiveService final {
 public:
   /// Checks if a file is a supported archive format based on extension.
-  [[nodiscard]] static auto is_archive(const std::filesystem::path& path) -> bool;
+  [[nodiscard]] static bool is_archive(const std::filesystem::path& path);
 
   /// Lists all entries (files) inside an archive.
   /// @param path Path to the archive file.
   /// @return Vector of archive entries with name and uncompressed size.
-  [[nodiscard]] static auto list_entries(const std::filesystem::path& path)
-      -> Result<std::vector<core::ArchiveEntry>>;
+  [[nodiscard]] static Result<std::vector<core::ArchiveEntry>> list_entries(
+      const std::filesystem::path& path);
 
   /// Streams a specific entry's data in chunks to the callback.
   /// Used by HashService to hash archive contents without extraction.
@@ -40,9 +40,9 @@ public:
   /// @param entry_index Zero-based index of the entry within the archive (from
   /// ArchiveEntry::index).
   /// @param callback Called with each chunk of data.
-  [[nodiscard]] static auto stream_entry(const std::filesystem::path& path,
-                                         std::size_t entry_index,
-                                         const StreamCallback& callback) -> Result<void>;
+  [[nodiscard]] static Result<void> stream_entry(const std::filesystem::path& path,
+                                                 std::size_t entry_index,
+                                                 const StreamCallback& callback);
 };
 
 } // namespace romulus::scanner

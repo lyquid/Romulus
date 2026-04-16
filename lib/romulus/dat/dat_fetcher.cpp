@@ -12,8 +12,7 @@
 
 namespace romulus::dat {
 
-auto DatFetcher::validate_local(const std::filesystem::path& path)
-    -> Result<std::filesystem::path> {
+Result<std::filesystem::path> DatFetcher::validate_local(const std::filesystem::path& path) {
   if (!std::filesystem::exists(path)) {
     return std::unexpected(
         core::Error{core::ErrorCode::FileNotFound, "DAT file not found: " + path.string()});
@@ -29,7 +28,7 @@ auto DatFetcher::validate_local(const std::filesystem::path& path)
   return canonical;
 }
 
-auto DatFetcher::compute_sha256(const std::filesystem::path& path) -> Result<std::string> {
+Result<std::string> DatFetcher::compute_sha256(const std::filesystem::path& path) {
   std::ifstream file(path, std::ios::binary);
   if (!file.is_open()) {
     return std::unexpected(core::Error{core::ErrorCode::FileReadError,
@@ -68,9 +67,9 @@ auto DatFetcher::compute_sha256(const std::filesystem::path& path) -> Result<std
   return hex.str();
 }
 
-auto DatFetcher::has_version_changed(const std::filesystem::path& path,
-                                     std::string_view dat_name,
-                                     database::Database& db) -> Result<bool> {
+Result<bool> DatFetcher::has_version_changed(const std::filesystem::path& path,
+                                             std::string_view dat_name,
+                                             database::Database& db) {
   auto dat_sha256 = compute_sha256(path);
   if (!dat_sha256) {
     return std::unexpected(dat_sha256.error());
