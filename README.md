@@ -234,7 +234,7 @@ dat_versions ──< games ──< roms
 
 **Step 1 — SCAN FOLDERS** 🔍
 
-Walk the dungeon and hash every file (CRC32 + MD5 + SHA1 in a single pass):
+Walk the dungeon and hash every file (CRC32 + MD5 + SHA1 + SHA-256 in a single pass):
 
 ```bash
 romulus scan /path/to/roms/GameBoy
@@ -301,13 +301,13 @@ romulus report missing  [--format text|csv|json]
 ### Verification Flow at a Glance
 
 ```
-Scan  →  Import DAT  →  Hash  →  Match  →  Classify  →  Report
-  │           │           │         │           │            │
-  ▼           ▼           ▼         ▼           ▼            ▼
-Files      dat_versions  CRC32    SHA-1      Verified      Text
-Scan       games         MD5      SHA-256    Missing       CSV
-Skip       roms          SHA-1    MD5        Unverified    JSON
-Arch.                    SHA-256  CRC32      Mismatch
+Scan/Hash  →  Import DAT  →  Match  →  Classify  →  Report
+    │              │            │           │            │
+    ▼              ▼            ▼           ▼            ▼
+Files         dat_versions   SHA-1      Verified      Text
+Scan          games          MD5        Missing       CSV
+Skip          roms           CRC32      Unverified    JSON
+Arch.                        SHA-256    Mismatch
 
 👾  "It's dangerous to go alone! Take this pipeline."  👾
 ```

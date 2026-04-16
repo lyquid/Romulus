@@ -217,9 +217,17 @@ Result<void> RomulusService::full_sync(const std::filesystem::path& dat_path,
                                        const std::filesystem::path& rom_dir) {
   ROMULUS_INFO("Starting full sync: ROM dir={}, DAT={}", rom_dir.string(), dat_path.string());
 
+  // 0. Fail-fast: validate the DAT path before spending time scanning.
+  //    A missing or unreadable DAT file is a common user error; report it
+  //    immediately rather than after a potentially lengthy scan.
+  auto validated_dat = dat::DatFetcher::validate_local(dat_path);
+  if (!validated_dat) {
+    return std::unexpected(validated_dat.error());
+  }
+
   // 1. Scan directory — scanning is independent of any DAT, so it runs first.
-  //    This lets the scan results be reused across multiple DATs and avoids
-  //    re-scanning the same files for every DAT import.
+  //    Persisted scan results can then be reused by later DAT imports/verifications,
+  //    while repeated scans rely on the scan cache to skip re-hashing unchanged files.
   auto scan = scan_directory(rom_dir);
   if (!scan) {
     return std::unexpected(scan.error());
