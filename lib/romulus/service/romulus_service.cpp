@@ -298,12 +298,13 @@ auto RomulusService::get_all_files() -> Result<std::vector<core::FileInfo>> {
 
 auto RomulusService::purge_database() -> Result<void> {
   // Deletion order must respect FK constraints (children before parents):
-  //   rom_matches  →  roms, global_roms
-  //   files        →  global_roms
-  //   global_roms  (no remaining children)
-  //   roms         →  games
-  //   games        →  dat_versions
-  //   dat_versions (no remaining children)
+  //   rom_matches     →  roms, global_roms
+  //   files           →  global_roms
+  //   global_roms     (no remaining children)
+  //   roms            →  games
+  //   games           →  dat_versions
+  //   dat_versions    (no remaining children)
+  //   scanned_directories (independent — no FK children)
   static constexpr std::array k_DeleteQueries = {
       "DELETE FROM rom_matches",
       "DELETE FROM files",
@@ -311,6 +312,7 @@ auto RomulusService::purge_database() -> Result<void> {
       "DELETE FROM roms",
       "DELETE FROM games",
       "DELETE FROM dat_versions",
+      "DELETE FROM scanned_directories",
   };
 
   auto txn = db_->begin_transaction();

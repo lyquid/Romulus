@@ -98,10 +98,18 @@ TEST_F(FullScanTest, PurgeDatabaseClearsAllData) {
   auto scan = svc.scan_directory(rom_dir_);
   ASSERT_TRUE(scan.has_value()) << scan.error().message;
 
+  // Register a scan directory so we can verify it is purged
+  auto add_dir = svc.add_scan_directory(rom_dir_);
+  ASSERT_TRUE(add_dir.has_value()) << add_dir.error().message;
+
   // Verify data exists
   auto dats = svc.list_dat_versions();
   ASSERT_TRUE(dats.has_value());
   EXPECT_FALSE(dats->empty());
+
+  auto dirs_before = svc.get_scan_directories();
+  ASSERT_TRUE(dirs_before.has_value());
+  EXPECT_FALSE(dirs_before->empty());
 
   // Purge
   auto purge = svc.purge_database();
@@ -115,6 +123,10 @@ TEST_F(FullScanTest, PurgeDatabaseClearsAllData) {
   auto files_after = svc.get_all_files();
   ASSERT_TRUE(files_after.has_value());
   EXPECT_TRUE(files_after->empty());
+
+  auto dirs_after = svc.get_scan_directories();
+  ASSERT_TRUE(dirs_after.has_value());
+  EXPECT_TRUE(dirs_after->empty());
 }
 
 TEST_F(FullScanTest, RescanSkipsUnchangedFiles) {
