@@ -126,8 +126,8 @@ public:
 
   /// Inserts a new game with the given dat_version_id and name, or returns the existing
   /// game's id if a game with the same (dat_version_id, name) already exists.
-  [[nodiscard]] auto find_or_insert_game(std::int64_t dat_version_id, std::string_view name)
-      -> Result<std::int64_t>;
+  [[nodiscard]] auto find_or_insert_game(std::int64_t dat_version_id,
+                                         std::string_view name) -> Result<std::int64_t>;
   [[nodiscard]] auto get_games_for_dat_version(std::int64_t dat_version_id)
       -> Result<std::vector<core::GameEntry>>;
 

@@ -85,11 +85,10 @@ auto load_document_from_archive(const std::filesystem::path& dat_path,
   // reference decoding in DAT text and attributes.
   const auto result = doc.load_buffer(xml_content.data(), xml_content.size(), pugi::parse_default);
   if (!result) {
-    return std::unexpected(core::Error{core::ErrorCode::DatParseError,
-                                       "Failed to parse XML '" + dat_path.string() +
-                                           std::string(core::k_ArchiveEntrySeparator) +
-                                           dat_entries->front().name +
-                                           "': " + result.description()});
+    return std::unexpected(core::Error{
+        core::ErrorCode::DatParseError,
+        "Failed to parse XML '" + dat_path.string() + std::string(core::k_ArchiveEntrySeparator) +
+            dat_entries->front().name + "': " + result.description()});
   }
 
   return dat_entries->front().name;

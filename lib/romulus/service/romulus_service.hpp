@@ -99,10 +99,13 @@ public:
 
   /// Queries all rows from the named table.
   /// Callers should be aware that large tables may incur significant query and memory cost.
-  [[nodiscard]] auto query_db_table(std::string_view table_name)
-      -> Result<core::TableQueryResult>;
+  [[nodiscard]] auto query_db_table(std::string_view table_name) -> Result<core::TableQueryResult>;
 
 private:
+  /// Resolves an optional DAT name to an optional ID.
+  [[nodiscard]] auto resolve_optional_dat_id(const std::optional<std::string>& dat_name)
+      -> Result<std::optional<std::int64_t>>;
+
   /// Resolves a DAT version name to its most-recently-imported ID.
   [[nodiscard]] auto resolve_dat_version_id(const std::string& dat_name) -> Result<std::int64_t>;
 
