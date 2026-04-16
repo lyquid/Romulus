@@ -1314,7 +1314,7 @@ auto Database::get_collection_summary(std::optional<std::int64_t> dat_version_id
   }
 
   sql += "  GROUP BY r.id"
-         ")"
+         ") "
          "SELECT"
          "  COALESCE((SELECT name FROM dat_versions WHERE id = ?1), 'All DATs'),"
          "  COUNT(*),"
