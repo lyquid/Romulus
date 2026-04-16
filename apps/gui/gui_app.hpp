@@ -70,6 +70,7 @@ private:
   void action_check_dat();
   void action_verify();
   void action_purge_database();
+  void action_delete_dat();
 
   // ── Background task management ─────────────────────────
   void check_pending_task();
@@ -176,6 +177,7 @@ private:
     std::vector<core::ScannedDirectory> scanned_dirs;
     std::string status_message;
     bool show_purge_confirm = false;
+    bool show_delete_dat_confirm = false;
 
     std::optional<PendingTask> pending_task;
 
@@ -228,6 +230,7 @@ private:
   std::vector<core::ScannedDirectory>& scanned_dirs_ = state_.scanned_dirs;
   std::string& status_message_ = state_.status_message;
   bool& show_purge_confirm_ = state_.show_purge_confirm;
+  bool& show_delete_dat_confirm_ = state_.show_delete_dat_confirm;
   std::optional<PendingTask>& pending_task_ = state_.pending_task;
   std::string& toast_message_ = state_.toast_message;
   float& toast_timer_ = state_.toast_timer;

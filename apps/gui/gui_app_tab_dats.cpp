@@ -62,6 +62,21 @@ void GuiApp::render_dats_tab() {
   }
   ImGui::EndDisabled();
 
+  ImGui::SameLine();
+
+  ImGui::BeginDisabled(busy || selected_dat_index_ < 0);
+  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55F, 0.12F, 0.12F, 1.0F));
+  ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.75F, 0.18F, 0.18F, 1.0F));
+  ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.85F, 0.22F, 0.22F, 1.0F));
+  if (ImGui::Button("Delete DAT")) {
+    show_delete_dat_confirm_ = true;
+  }
+  ImGui::PopStyleColor(3);
+  if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && selected_dat_index_ < 0) {
+    ImGui::SetTooltip("Select a DAT first");
+  }
+  ImGui::EndDisabled();
+
   // ── Active DAT banner ─────────────────────────────────────────
   ImGui::Spacing();
   {

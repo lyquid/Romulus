@@ -210,4 +210,49 @@ TEST_F(FullScanTest, FullSyncFailsFastOnInvalidDatWithoutScanning) {
   EXPECT_TRUE(files->empty());
 }
 
+TEST_F(FullScanTest, DeleteDatRemovesDatGamesAndRoms) {
+  romulus::service::RomulusService svc(db_path_);
+
+  // Import DAT and scan so we have matches to verify cascade
+  auto dat = svc.import_dat(k_FixturesDir / "sample.dat");
+  ASSERT_TRUE(dat.has_value()) << dat.error().message;
+  auto scan = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan.has_value()) << scan.error().message;
+  auto verify = svc.verify();
+  ASSERT_TRUE(verify.has_value()) << verify.error().message;
+
+  // Verify DAT is present
+  auto dats_before = svc.list_dat_versions();
+  ASSERT_TRUE(dats_before.has_value());
+  ASSERT_EQ(dats_before->size(), 1u);
+
+  const std::int64_t dat_id = dats_before->front().id;
+
+  // Delete the DAT version
+  auto del = svc.delete_dat(dat_id);
+  ASSERT_TRUE(del.has_value()) << del.error().message;
+
+  // DAT should be gone
+  auto dats_after = svc.list_dat_versions();
+  ASSERT_TRUE(dats_after.has_value());
+  EXPECT_TRUE(dats_after->empty());
+
+  // Summary should show zero ROMs
+  auto summary = svc.get_summary();
+  ASSERT_TRUE(summary.has_value()) << summary.error().message;
+  EXPECT_EQ(summary->total_roms, 0);
+
+  // Scanned files should still be present (delete-dat does not purge scan data)
+  auto files = svc.get_all_files();
+  ASSERT_TRUE(files.has_value());
+  EXPECT_GT(files->size(), 0u);
+}
+
+TEST_F(FullScanTest, DeleteDatReturnsErrorForUnknownId) {
+  romulus::service::RomulusService svc(db_path_);
+
+  auto result = svc.delete_dat(9999);
+  EXPECT_FALSE(result.has_value());
+}
+
 } // namespace

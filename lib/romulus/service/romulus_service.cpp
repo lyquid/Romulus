@@ -305,7 +305,6 @@ Result<std::vector<core::FileInfo>> RomulusService::get_all_files() {
 // ═══════════════════════════════════════════════════════════════
 
 Result<void> RomulusService::purge_database() {
-  // Deletion order must respect FK constraints (children before parents):
   //   rom_matches     →  roms, global_roms
   //   files           →  global_roms
   //   global_roms     (no remaining children)
@@ -346,6 +345,15 @@ Result<void> RomulusService::purge_database() {
   }
 
   ROMULUS_INFO("Database purged — all tables cleared");
+  return {};
+}
+
+Result<void> RomulusService::delete_dat(std::int64_t id) {
+  auto result = db_->delete_dat_version(id);
+  if (!result) {
+    return result;
+  }
+  ROMULUS_INFO("Deleted DAT version id={}", id);
   return {};
 }
 

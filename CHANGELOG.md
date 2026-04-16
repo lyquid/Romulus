@@ -7,6 +7,14 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ✨ feat(cli): Add delete-dat Command
+
+- **Database**: `Database::delete_dat_version(id)` removes a DAT version and its associated games,
+  ROMs, and match records while preserving scanned files and global ROMs.
+- **Service**: `RomulusService::delete_dat(id)` exposes the operation through the service facade.
+- **CLI**: New `delete-dat <id>` subcommand deletes an imported DAT version by its numeric ID.
+  The `dats` command now also prints the ID for each entry so users can easily find the right ID.
+
 ### ⚡ Service — reorder pipeline: scan before importing DAT
 
 - **Refactor**: `RomulusService::full_sync()` now runs scan first, then imports the DAT, then
