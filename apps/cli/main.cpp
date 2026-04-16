@@ -170,7 +170,7 @@ int main(int argc, char** argv) {
   cmd_verify->add_option("--dat,-d", verify_dat, "Filter by DAT name");
 
   // ── sync ───────────────────────────────────────────────────
-  auto* cmd_sync = app.add_subcommand("sync", "Full pipeline: import → scan → verify");
+  auto* cmd_sync = app.add_subcommand("sync", "Full pipeline: scan → import → verify");
   std::string sync_dat;
   std::string sync_dir;
   cmd_sync->add_option("dat", sync_dat, "Path to .dat file")->required();
