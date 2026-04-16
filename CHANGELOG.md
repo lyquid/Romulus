@@ -7,6 +7,16 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ⚡ Matcher — prepared-statement reuse eliminates O(N) prepare calls
+
+- **Performance fix**: `Matcher::match_all()` now prepares the 4 hash-lookup statements and the
+  insert statement exactly once before the ROM loop. Each ROM reuses them via `bind_*` + `reset()`,
+  eliminating up to 5 × N `sqlite3_prepare_v2` calls that previously dominated match runtime.
+- **Correctness fix**: CRC32 lookup now uses `ORDER BY sha1 LIMIT 1` to guarantee a deterministic
+  winner when multiple `global_roms` rows share the same CRC32.
+- **API additions**: `PreparedStatement::bind_blob_hex()` and `column_blob_hex()` convenience
+  helpers added; `Database::insert_rom_match_cached()` overload for pre-prepared insert statements.
+
 ### ⚡ Matcher — indexed DB lookup replaces bulk global_roms load
 
 - **Performance fix**: `Matcher::match_all()` no longer loads the entire `global_roms` table into
@@ -23,6 +33,9 @@ This changelog is automatically generated from [Conventional Commits](https://ww
   caller-supplied path list, replacing an O(n×m) nested loop with an O(n + m) set-lookup pass.
 - Uses a lightweight `SELECT id, path FROM files` query instead of the full `get_all_files()`
   call, avoiding unnecessary hash-column deserialization.
+- **Tests**: added three unit tests (`RemoveMissingFilesDeletesOnlyAbsentPaths`,
+  `RemoveMissingFilesWithEmptyListDeletesAll`,
+  `RemoveMissingFilesWithAllPathsPresentRemovesNothing`).
 
 ### 🐛 Engine — fix hash matching priority order
 
