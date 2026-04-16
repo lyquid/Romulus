@@ -586,7 +586,8 @@ void GuiApp::action_verify() {
 }
 
 void GuiApp::action_delete_dat() {
-  if (is_busy() || selected_dat_index_ < 0) {
+  if (is_busy() || selected_dat_index_ < 0 ||
+      selected_dat_index_ >= static_cast<int>(dat_versions_.size())) {
     return;
   }
 

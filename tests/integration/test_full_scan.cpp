@@ -252,7 +252,9 @@ TEST_F(FullScanTest, DeleteDatReturnsErrorForUnknownId) {
   romulus::service::RomulusService svc(db_path_);
 
   auto result = svc.delete_dat(9999);
-  EXPECT_FALSE(result.has_value());
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error().code, romulus::core::ErrorCode::NotFound);
+  EXPECT_NE(result.error().message.find("9999"), std::string::npos);
 }
 
 } // namespace

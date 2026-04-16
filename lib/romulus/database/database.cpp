@@ -689,6 +689,10 @@ Result<void> Database::delete_dat_version(std::int64_t id) {
   del_dat->execute();
 
   if (sqlite3_changes(db_) == 0) {
+    auto rb = txn->rollback();
+    if (!rb) {
+      return std::unexpected(rb.error());
+    }
     return std::unexpected(
         core::Error{core::ErrorCode::NotFound, "DAT version not found: id=" + std::to_string(id)});
   }
