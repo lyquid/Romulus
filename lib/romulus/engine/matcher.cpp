@@ -28,15 +28,13 @@ auto Matcher::match_all(database::Database& db) -> Result<std::vector<core::Matc
 
   ROMULUS_INFO("Matching ROMs against Global Index (Priority: SHA1 > SHA256 > MD5 > CRC32)...");
 
-  std::
-      unordered_map<std::string_view, const core::GlobalRom*, core::StringViewHash, std::equal_to<>>
-          global_rom_by_sha1;
-  std::
-      unordered_map<std::string_view, const core::GlobalRom*, core::StringViewHash, std::equal_to<>>
-          global_rom_by_sha256;
-  std::
-      unordered_map<std::string_view, const core::GlobalRom*, core::StringViewHash, std::equal_to<>>
-          global_rom_by_md5;
+  using GlobalRomByHash = std::unordered_map<std::string_view,
+                                             const core::GlobalRom*,
+                                             core::StringViewHash,
+                                             std::equal_to<>>;
+  GlobalRomByHash global_rom_by_sha1;
+  GlobalRomByHash global_rom_by_sha256;
+  GlobalRomByHash global_rom_by_md5;
   std::unordered_map<std::string_view,
                      std::vector<const core::GlobalRom*>,
                      core::StringViewHash,

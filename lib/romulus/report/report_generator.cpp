@@ -282,9 +282,10 @@ auto ReportGenerator::duplicates_json(database::Database& db,
 // ═══════════════════════════════════════════════════════════════
 
 // Unverified files are files on disk that match no ROM in any DAT, so they have no
-// DAT association. The dat_version_id parameter is intentionally unused here.
-auto ReportGenerator::unverified_text(
-    database::Database& db, std::optional<std::int64_t> /*dat_version_id*/) -> Result<std::string> {
+// DAT association. The optional DAT filter parameter is intentionally unused here.
+auto ReportGenerator::unverified_text(database::Database& db,
+                                      std::optional<std::int64_t> sys) -> Result<std::string> {
+  static_cast<void>(sys);
   auto unverified = db.get_unverified_files();
   if (!unverified) {
     return std::unexpected(unverified.error());
@@ -303,8 +304,9 @@ auto ReportGenerator::unverified_text(
   return out.str();
 }
 
-auto ReportGenerator::unverified_csv(
-    database::Database& db, std::optional<std::int64_t> /*dat_version_id*/) -> Result<std::string> {
+auto ReportGenerator::unverified_csv(database::Database& db,
+                                     std::optional<std::int64_t> sys) -> Result<std::string> {
+  static_cast<void>(sys);
   auto unverified = db.get_unverified_files();
   if (!unverified) {
     return std::unexpected(unverified.error());
@@ -321,8 +323,9 @@ auto ReportGenerator::unverified_csv(
   return out.str();
 }
 
-auto ReportGenerator::unverified_json(
-    database::Database& db, std::optional<std::int64_t> /*dat_version_id*/) -> Result<std::string> {
+auto ReportGenerator::unverified_json(database::Database& db,
+                                      std::optional<std::int64_t> sys) -> Result<std::string> {
+  static_cast<void>(sys);
   auto unverified = db.get_unverified_files();
   if (!unverified) {
     return std::unexpected(unverified.error());

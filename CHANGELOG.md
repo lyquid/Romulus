@@ -7,6 +7,15 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🧹 Formatting — PR review follow-ups
+
+- **Matcher**: introduced a local `GlobalRomByHash` alias in `Matcher::match_all()` so hash-map
+  declarations stay readable and avoid awkward `std::` line splitting.
+- **ReportGenerator**: wrapped `unverified_*` function signatures to match surrounding style and
+  keep declarations easier to scan.
+- **Types**: rewrote `core::FileInfo` path/archive/entry field docs as preceding `///` comments and
+  restored one-line member declarations for consistency.
+
 ### 🐛 Service — scan transaction RAII safety
 
 - **Fix**: `RomulusService::scan_directory()` now uses `Database::begin_transaction()` with
