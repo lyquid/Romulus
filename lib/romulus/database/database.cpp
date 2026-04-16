@@ -109,6 +109,10 @@ void PreparedStatement::bind_blob(int index, const std::vector<uint8_t>& blob) {
   }
 }
 
+void PreparedStatement::bind_blob_hex(int index, std::string_view hex) {
+  bind_blob(index, hex_to_bytes(hex));
+}
+
 void PreparedStatement::bind_null(int index) {
   sqlite3_bind_null(stmt_, index);
 }
@@ -164,6 +168,10 @@ auto PreparedStatement::column_blob(int index) const -> std::vector<uint8_t> {
   }
   const auto* p = static_cast<const uint8_t*>(blob);
   return std::vector<uint8_t>(p, p + bytes);
+}
+
+auto PreparedStatement::column_blob_hex(int index) const -> std::string {
+  return bytes_to_hex(column_blob(index));
 }
 
 auto PreparedStatement::column_display_text(int index) const -> std::string {
@@ -340,7 +348,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_roms_sha256 ON roms(sha256) WHERE sha256 I
 CREATE INDEX IF NOT EXISTS idx_files_sha1 ON files(sha1);
 CREATE INDEX IF NOT EXISTS idx_files_crc32 ON files(crc32);
 CREATE INDEX IF NOT EXISTS idx_files_sha256 ON files(sha256);
+CREATE INDEX IF NOT EXISTS idx_global_roms_crc32 ON global_roms(crc32) WHERE crc32 IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_global_roms_md5 ON global_roms(md5) WHERE md5 IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_global_roms_sha256 ON global_roms(sha256) WHERE sha256 IS NOT NULL;
 -- Hot path: look up matches by file sha1 (global_rom_sha1)
 CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 )SQL";
@@ -1055,10 +1065,15 @@ auto Database::get_file_fingerprints() -> Result<core::FingerprintMap> {
 
 auto Database::remove_missing_files(const std::vector<std::string>& existing_paths)
     -> Result<std::int64_t> {
-  // Get all file paths from DB, remove those not in existing_paths
-  auto all_files = get_all_files();
-  if (!all_files) {
-    return std::unexpected(all_files.error());
+  // Build a hash set for O(1) path lookup — avoids an O(n×m) nested scan.
+  // string_view into existing_paths (caller-owned) — no extra string copies.
+  const std::unordered_set<std::string_view> existing_set(existing_paths.begin(),
+                                                           existing_paths.end());
+
+  // Only fetch id + path — no need for full FileInfo with hash columns.
+  auto sel_stmt = prepare("SELECT id, path FROM files");
+  if (!sel_stmt) {
+    return std::unexpected(sel_stmt.error());
   }
 
   auto del_stmt = prepare("DELETE FROM files WHERE id = ?1");
@@ -1067,16 +1082,11 @@ auto Database::remove_missing_files(const std::vector<std::string>& existing_pat
   }
 
   std::int64_t removed = 0;
-  for (const auto& file : *all_files) {
-    bool found = false;
-    for (const auto& path : existing_paths) {
-      if (file.path == path) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      del_stmt->bind_int64(1, file.id);
+  while (sel_stmt->step()) {
+    const auto id = sel_stmt->column_int64(0);
+    const auto path = sel_stmt->column_text(1);
+    if (!existing_set.contains(path)) {
+      del_stmt->bind_int64(1, id);
       del_stmt->execute();
       del_stmt->reset();
       ++removed;
@@ -1166,7 +1176,10 @@ auto Database::find_global_rom_by_md5(std::string_view md5)
 
 auto Database::find_global_rom_by_crc32(std::string_view crc32)
     -> Result<std::vector<core::GlobalRom>> {
-  auto stmt = prepare("SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE crc32 = ?1");
+  // ORDER BY sha1 ensures a stable, deterministic result order when multiple
+  // global_roms share the same CRC32 (e.g., different-sized ROMs with a hash collision).
+  auto stmt = prepare(
+      "SELECT sha256, sha1, md5, crc32, size FROM global_roms WHERE crc32 = ?1 ORDER BY sha1");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -1225,6 +1238,14 @@ auto Database::insert_rom_match(const core::MatchResult& match) -> Result<void> 
   stmt->execute();
 
   return {};
+}
+
+void Database::insert_rom_match_cached(PreparedStatement& stmt, const core::MatchResult& match) {
+  stmt.bind_int64(1, match.rom_id);
+  stmt.bind_blob_hex(2, match.global_rom_sha1);
+  stmt.bind_int64(3, match_type_to_int(match.match_type));
+  stmt.execute();
+  stmt.reset();
 }
 
 auto Database::get_matches_for_rom(std::int64_t rom_id) -> Result<std::vector<core::MatchResult>> {
