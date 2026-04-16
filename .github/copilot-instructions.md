@@ -17,6 +17,7 @@ ROMULUS is a production-grade C++23 backend system for verifying and cataloging 
 
 ---
 
+
 ## C++ Standard & Language
 
 - **Use C++23**. Leverage modern features where they improve clarity:
@@ -29,6 +30,34 @@ ROMULUS is a production-grade C++23 backend system for verifying and cataloging 
   - Structured bindings (`auto [key, value] = ...`)
   - `enum class` (never unscoped enums)
 - **Never use**: `new`/`delete`, raw owning pointers, C-style casts, `#define` for constants, `using namespace std;`
+
+---
+
+## C++ Trailing Return Type Guidelines
+
+* Prefer the standard return type syntax for clarity:
+
+  ```cpp
+  std::string open_file_dialog();
+  ```
+
+* Avoid using trailing return types (`auto -> type`) for simple functions:
+
+  ```cpp
+  auto open_file_dialog() -> std::string; // less readable, unnecessary
+  ```
+
+* Use trailing return types only when required or beneficial:
+
+  * When the return type depends on parameters (e.g., `decltype`)
+  * In template-heavy or generic code
+  * When working with lambdas that require explicit return types
+
+* Rationale:
+
+  * Standard syntax is more readable and conventional
+  * Trailing return types add complexity unless they solve a real problem
+  * Prefer simplicity unless advanced type deduction is needed
 
 ---
 

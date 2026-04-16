@@ -7,16 +7,11 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
-### 🐛 Fix: Purge database now deletes scanned directories
-
-- **Fix**: `RomulusService::purge_database()` now also deletes all rows from the
-  `scanned_directories` table, so scanned directories no longer persist after a purge.
-- **Fix**: `GuiApp::action_purge_database()` now sets `refresh_folders = true` so
-  the scanned-directories list in the GUI is cleared immediately after a successful purge.
-- **Test**: `PurgeDatabaseClearsAllData` integration test extended to also verify that
-  scanned directories are empty after purge.
-
 ### 🐛 Service — scan transaction RAII safety
+
+### 📖 Docs
+
+- **Copilot instructions**: Added section on C++ Trailing Return Type Guidelines, clarifying when to use standard return type syntax vs. trailing return types (`auto -> type`) in function declarations.
 
 - **Fix**: `RomulusService::scan_directory()` now uses `Database::begin_transaction()` with
   `TransactionGuard` instead of manual raw SQL `BEGIN/COMMIT/ROLLBACK`.
