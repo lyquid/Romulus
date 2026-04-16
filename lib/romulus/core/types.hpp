@@ -157,7 +157,7 @@ struct FileInfo {
   /// Virtual path — unique storage key ("archive.zip::entry.rom" or "/bare/path.rom").
   std::string path;
   /// Physical archive path; absent (NULL) for bare files.
-  /// Derive the physical path from \c path when this value is not set.
+  /// Derive the physical path from path when this value is not set.
   std::optional<std::string> archive_path;
   /// Set when this file lives inside an archive; absent for bare files.
   std::optional<std::string> entry_name;
