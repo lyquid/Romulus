@@ -10,7 +10,7 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 ### 🐛 Fix: Purge database now deletes scanned directories
 
 - **Fix**: `RomulusService::purge_database()` now also deletes all rows from the
-  `scan_directories` table, so scanned directories no longer persist after a purge.
+  `scanned_directories` table, so scanned directories no longer persist after a purge.
 - **Fix**: `GuiApp::action_purge_database()` now sets `refresh_folders = true` so
   the scanned-directories list in the GUI is cleared immediately after a successful purge.
 - **Test**: `PurgeDatabaseClearsAllData` integration test extended to also verify that
