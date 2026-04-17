@@ -15,8 +15,10 @@ protected:
   void SetUp() override {
     db_path_ = std::filesystem::temp_directory_path() / "romulus_integration_test.db";
     rom_dir_ = std::filesystem::temp_directory_path() / "romulus_test_roms";
+    other_dir_ = std::filesystem::temp_directory_path() / "romulus_test_other_roms";
     std::filesystem::remove(db_path_);
     std::filesystem::create_directories(rom_dir_);
+    // other_dir_ is created on demand by the test that needs it
 
     // Create some fake ROM files
     {
@@ -30,10 +32,12 @@ protected:
     std::filesystem::remove(db_path_.string() + "-wal");
     std::filesystem::remove(db_path_.string() + "-shm");
     std::filesystem::remove_all(rom_dir_);
+    std::filesystem::remove_all(other_dir_); // no-op if not created
   }
 
   std::filesystem::path db_path_;
   std::filesystem::path rom_dir_;
+  std::filesystem::path other_dir_; ///< Secondary scan directory; created on demand by individual tests
 };
 
 TEST_F(FullScanTest, ImportDatAndScanDirectory) {
@@ -287,11 +291,10 @@ TEST_F(FullScanTest, ScanPrunesDeletedFiles) {
 }
 
 TEST_F(FullScanTest, ScanPreservesFilesFromOtherDirectories) {
-  // Create a second directory with its own ROM file.
-  const auto other_dir = std::filesystem::temp_directory_path() / "romulus_test_other_roms";
-  std::filesystem::create_directories(other_dir);
+  // Create a second directory with its own ROM file (cleaned up by TearDown via other_dir_).
+  std::filesystem::create_directories(other_dir_);
   {
-    std::ofstream f(other_dir / "other.bin", std::ios::binary);
+    std::ofstream f(other_dir_ / "other.bin", std::ios::binary);
     f << "Other ROM content";
   }
 
@@ -302,7 +305,7 @@ TEST_F(FullScanTest, ScanPreservesFilesFromOtherDirectories) {
   ASSERT_TRUE(scan_main.has_value()) << scan_main.error().message;
   EXPECT_EQ(scan_main->files_scanned, 1);
 
-  auto scan_other = svc.scan_directory(other_dir);
+  auto scan_other = svc.scan_directory(other_dir_);
   ASSERT_TRUE(scan_other.has_value()) << scan_other.error().message;
   EXPECT_EQ(scan_other->files_scanned, 1);
 
@@ -324,8 +327,6 @@ TEST_F(FullScanTest, ScanPreservesFilesFromOtherDirectories) {
   ASSERT_TRUE(files_after.has_value());
   ASSERT_EQ(files_after->size(), 1u);
   EXPECT_NE(files_after->front().path.find("other.bin"), std::string::npos);
-
-  std::filesystem::remove_all(other_dir);
 }
 
 } // namespace

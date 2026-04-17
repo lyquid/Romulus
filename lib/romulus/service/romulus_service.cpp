@@ -221,7 +221,7 @@ Result<core::ScanReport> RomulusService::scan_directory(
 
     std::vector<std::string> existing_paths = result->all_virtual_paths;
     existing_paths.reserve(existing_paths.size() + fingerprints->size());
-    for (const auto& [path, unused] : *fingerprints) {
+    for (const auto& [path, _] : *fingerprints) {
       if (!is_under_scan_dir(path)) {
         existing_paths.emplace_back(path);
       }
