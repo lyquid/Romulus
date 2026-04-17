@@ -13,6 +13,21 @@
 
 namespace romulus::gui {
 
+// ── Status label / icon string constants ─────────────────────
+// Single source of truth for all ROM status display strings.
+// gui_app_shared.hpp references these so both headers stay consistent.
+
+inline constexpr const char* k_StatusLabelVerified = "[OK] Verified";
+inline constexpr const char* k_StatusLabelMissing = "[--] Missing";
+inline constexpr const char* k_StatusLabelUnverified = "? Unverified";
+inline constexpr const char* k_StatusLabelMismatch = "! Mismatch";
+inline constexpr const char* k_StatusLabelUnknown = "? Unknown";
+
+inline constexpr const char* k_StatusIconVerified = "[OK]";
+inline constexpr const char* k_StatusIconMissing = "[--]";
+inline constexpr const char* k_StatusIconUnverified = "[??]";
+inline constexpr const char* k_StatusIconMismatch = "[!!]";
+
 /// ASCII-only character case fold: maps [A-Z] → [a-z], all other bytes pass through unchanged.
 /// Safe for UTF-8 strings because non-ASCII bytes are always ≥ 0x80 and never in [A-Z].
 /// Intended to be used with std::ranges::transform to fold an entire string.
@@ -46,30 +61,30 @@ inline std::string format_size(std::int64_t bytes) {
 inline const char* status_label(core::RomStatusType status) {
   switch (status) {
     case core::RomStatusType::Verified:
-      return "[OK] Verified";
+      return k_StatusLabelVerified;
     case core::RomStatusType::Missing:
-      return "[--] Missing";
+      return k_StatusLabelMissing;
     case core::RomStatusType::Unverified:
-      return "? Unverified";
+      return k_StatusLabelUnverified;
     case core::RomStatusType::Mismatch:
-      return "! Mismatch";
+      return k_StatusLabelMismatch;
   }
-  return "? Unknown";
+  return k_StatusLabelUnknown;
 }
 
 /// Compact single-badge icon for a status — used in the games table Status column.
 inline const char* status_icon(core::RomStatusType status) {
   switch (status) {
     case core::RomStatusType::Verified:
-      return "[OK]";
+      return k_StatusIconVerified;
     case core::RomStatusType::Missing:
-      return "[--]";
+      return k_StatusIconMissing;
     case core::RomStatusType::Unverified:
-      return "[??]";
+      return k_StatusIconUnverified;
     case core::RomStatusType::Mismatch:
-      return "[!!]";
+      return k_StatusIconMismatch;
   }
-  return "[??]";
+  return k_StatusIconUnverified;
 }
 
 /// Returns a numeric sort order for ROM status — lower values appear first in sort.

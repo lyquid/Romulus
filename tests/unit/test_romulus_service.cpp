@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -15,7 +16,11 @@ const std::filesystem::path k_FixturesDir{ROMULUS_TEST_FIXTURES_DIR};
 class RomulusServiceTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    db_path_ = std::filesystem::temp_directory_path() / "romulus_service_unit_test.db";
+    // Use a unique DB filename per test to avoid collisions under parallel CTest runs.
+    const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    const std::string unique_name = std::string("romulus_svc_") + info->test_suite_name() +
+                                    "_" + info->name() + ".db";
+    db_path_ = std::filesystem::temp_directory_path() / unique_name;
     std::filesystem::remove(db_path_);
     std::filesystem::remove(db_path_.string() + "-wal");
     std::filesystem::remove(db_path_.string() + "-shm");
@@ -25,9 +30,44 @@ protected:
     std::filesystem::remove(db_path_);
     std::filesystem::remove(db_path_.string() + "-wal");
     std::filesystem::remove(db_path_.string() + "-shm");
+    // Unconditionally remove any temp files and directories created by tests.
+    for (const auto& p : temp_files_) {
+      std::filesystem::remove(p);
+    }
+    for (const auto& d : temp_dirs_) {
+      std::filesystem::remove_all(d);
+    }
+  }
+
+  /// Registers a temp file path for unconditional removal in TearDown.
+  std::filesystem::path make_temp_file(const std::string& suffix) {
+    const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    auto path = std::filesystem::temp_directory_path() /
+                (std::string("romulus_tmp_") + info->name() + "_" + suffix);
+    temp_files_.push_back(path);
+    return path;
+  }
+
+  /// Creates a unique temp directory and registers it for removal in TearDown.
+  std::filesystem::path make_temp_dir(const std::string& suffix) {
+    const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    auto dir = std::filesystem::temp_directory_path() /
+               (std::string("romulus_dir_") + info->name() + "_" + suffix);
+    std::filesystem::create_directories(dir);
+    temp_dirs_.push_back(dir);
+    return dir;
+  }
+
+  /// Returns a path guaranteed not to exist (verified with ASSERT_FALSE).
+  static std::filesystem::path guaranteed_nonexistent(const std::string& name) {
+    auto path = std::filesystem::temp_directory_path() / name;
+    std::filesystem::remove_all(path);
+    return path;
   }
 
   std::filesystem::path db_path_;
+  std::vector<std::filesystem::path> temp_files_;
+  std::vector<std::filesystem::path> temp_dirs_;
 };
 
 // ── Construction ──────────────────────────────────────────────
@@ -79,14 +119,18 @@ TEST_F(RomulusServiceTest, GetScanDirectoriesEmptyOnFreshDatabase) {
 // ── Import DAT ────────────────────────────────────────────────
 
 TEST_F(RomulusServiceTest, ImportDatReturnsErrorForMissingFile) {
+  // Construct a path under the temp dir that is guaranteed not to exist.
+  const auto nonexistent = guaranteed_nonexistent("romulus_import_missing_xyzzy.dat");
+  ASSERT_FALSE(std::filesystem::exists(nonexistent));
+
   romulus::service::RomulusService svc(db_path_);
-  auto result = svc.import_dat("/nonexistent/path/to.dat");
+  auto result = svc.import_dat(nonexistent);
   ASSERT_FALSE(result.has_value());
 }
 
 TEST_F(RomulusServiceTest, ImportDatReturnsErrorForMalformedXml) {
-  // Write an invalid XML file
-  auto bad_dat = std::filesystem::temp_directory_path() / "romulus_test_bad_service.dat";
+  // Unique per-test filename; registered for unconditional cleanup in TearDown.
+  const auto bad_dat = make_temp_file("bad.dat");
   {
     std::ofstream f(bad_dat);
     f << "<not-a-datafile><garbage/></not-a-datafile>";
@@ -95,8 +139,6 @@ TEST_F(RomulusServiceTest, ImportDatReturnsErrorForMalformedXml) {
   romulus::service::RomulusService svc(db_path_);
   auto result = svc.import_dat(bad_dat);
   ASSERT_FALSE(result.has_value());
-
-  std::filesystem::remove(bad_dat);
 }
 
 TEST_F(RomulusServiceTest, ImportDatSucceedsWithValidDat) {
@@ -139,21 +181,23 @@ TEST_F(RomulusServiceTest, ImportDatDeduplicatesBySha256) {
 // ── Scan ──────────────────────────────────────────────────────
 
 TEST_F(RomulusServiceTest, ScanDirectoryReturnsErrorForNonExistentDirectory) {
+  // Construct a path under the temp dir that is guaranteed not to exist.
+  const auto nonexistent = guaranteed_nonexistent("romulus_scan_missing_dir_xyzzy");
+  ASSERT_FALSE(std::filesystem::exists(nonexistent));
+
   romulus::service::RomulusService svc(db_path_);
-  auto result = svc.scan_directory("/nonexistent/directory/that/does/not/exist");
+  auto result = svc.scan_directory(nonexistent);
   ASSERT_FALSE(result.has_value());
 }
 
 TEST_F(RomulusServiceTest, ScanDirectorySucceedsOnEmptyDirectory) {
-  auto empty_dir = std::filesystem::temp_directory_path() / "romulus_scan_empty_unit";
-  std::filesystem::create_directories(empty_dir);
+  // Unique per-test directory; registered for unconditional cleanup in TearDown.
+  const auto empty_dir = make_temp_dir("empty");
 
   romulus::service::RomulusService svc(db_path_);
   auto result = svc.scan_directory(empty_dir);
   ASSERT_TRUE(result.has_value()) << result.error().message;
   EXPECT_EQ(result->files_scanned, 0);
-
-  std::filesystem::remove_all(empty_dir);
 }
 
 // ── Verify ────────────────────────────────────────────────────

@@ -15,6 +15,7 @@
 #endif
 
 #include <cstdint>
+#include <cstdio>
 #include <string>
 
 namespace romulus::gui {
@@ -61,12 +62,9 @@ inline constexpr ImVec4 k_ColorLogError{1.0F, 0.3F, 0.3F, 1.0F};   // red    —
 inline constexpr ImVec4 k_ColorLogDebug{0.6F, 0.6F, 0.6F, 1.0F};   // grey   — debug / trace
 inline constexpr ImVec4 k_ColorLogDefault{1.0F, 1.0F, 1.0F, 1.0F}; // white  — info
 
-// Status icon labels — ASCII symbols compatible with ImGui's default font.
-// The Unicode checkmarks (✓ U+2713, ✗ U+2717) are not in the built-in ProggyClean
-// font and show as '?' on most systems.  Use plain ASCII equivalents instead.
-inline constexpr auto* k_IconVerified = "[OK] Verified";
-inline constexpr auto* k_IconMissing = "[--] Missing";
-inline constexpr auto* k_SymbolMissing = "[--]"; // standalone, for summary badges
+// Standalone missing-badge icon (e.g., summary badges in the DAT tab).
+// Aliases the single source of truth in gui_logic.hpp.
+inline constexpr const char* k_SymbolMissing = k_StatusIconMissing;
 
 inline void glfw_error_callback(int error, const char* description) {
   std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
@@ -87,3 +85,4 @@ inline ImVec4 status_color(core::RomStatusType status) {
 }
 
 } // namespace romulus::gui
+
