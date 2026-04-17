@@ -15,6 +15,7 @@ set(UNIT_TEST_SOURCES
     unit/test_classifier.cpp
     unit/test_database.cpp
     unit/test_report_generator.cpp
+    unit/test_romulus_service.cpp
 )
 
 add_executable(romulus_unit_tests ${UNIT_TEST_SOURCES})
@@ -37,6 +38,30 @@ target_compile_definitions(romulus_unit_tests
 romulus_set_warnings(romulus_unit_tests)
 
 gtest_discover_tests(romulus_unit_tests)
+
+# ── GUI logic unit tests ───────────────────────────────────────
+# Tests pure utility functions from gui_logic.hpp that have no ImGui/GLFW dependency.
+add_executable(romulus_gui_logic_tests
+    unit/test_gui_logic.cpp
+)
+
+target_link_libraries(romulus_gui_logic_tests
+    PRIVATE
+        romulus::lib
+        GTest::gtest
+        GTest::gtest_main
+)
+
+target_include_directories(romulus_gui_logic_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/apps/gui
+)
+
+target_compile_features(romulus_gui_logic_tests PRIVATE cxx_std_23)
+
+romulus_set_warnings(romulus_gui_logic_tests)
+
+gtest_discover_tests(romulus_gui_logic_tests)
 
 # ── Integration tests ─────────────────────────────────────────
 set(INTEGRATION_TEST_SOURCES
