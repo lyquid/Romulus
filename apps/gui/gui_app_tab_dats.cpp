@@ -21,7 +21,9 @@ void GuiApp::render_dats_tab() {
 
   ImGui::SameLine();
 
-  // DAT selector dropdown — expands to fill available width, leaving just room for "Check DAT".
+  // DAT selector dropdown — expands to fill available width, leaving room for "Check DAT" and
+  // "Delete DAT" buttons on the right. Widths are computed from the current font/style so the
+  // combo never crowds or clips the buttons regardless of DPI or font size.
   {
     std::string preview = "(No DAT selected)";
     if (selected_dat_index_ >= 0 && selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
@@ -29,7 +31,11 @@ void GuiApp::render_dats_tab() {
       preview = dv.name + " v" + dv.version;
     }
 
-    ImGui::PushItemWidth(-110);
+    const float frame_px = ImGui::GetStyle().FramePadding.x;
+    const float spacing  = ImGui::GetStyle().ItemSpacing.x;
+    const float w_check  = ImGui::CalcTextSize("Check DAT").x  + frame_px * 2.0F;
+    const float w_delete = ImGui::CalcTextSize("Delete DAT").x + frame_px * 2.0F;
+    ImGui::PushItemWidth(-(w_check + w_delete + spacing * 2.0F));
     if (ImGui::BeginCombo("##dat_combo", preview.c_str())) {
       for (int i = 0; i < static_cast<int>(dat_versions_.size()); ++i) {
         const auto& dv = dat_versions_[static_cast<std::size_t>(i)];
