@@ -7,6 +7,20 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### 🧪 test: Add RomulusService unit tests and GUI logic tests
+
+- **Tests**: Added `tests/unit/test_romulus_service.cpp` with 22 unit tests covering the main
+  `RomulusService` facade behaviors: construction, import DAT (success, error, deduplication),
+  scan directory (success, error), verify, purge, delete DAT, and scan directory management.
+- **Tests**: Added `tests/unit/test_gui_logic.cpp` with 16 unit tests covering the pure GUI
+  utility functions (`ascii_lower`, `format_size`, `status_label`, `status_icon`,
+  `status_sort_order`) extracted into `apps/gui/gui_logic.hpp`.
+- **Refactor (GUI)**: Extracted pure, ImGui-independent utility functions from
+  `gui_app_shared.hpp` into a new `apps/gui/gui_logic.hpp` header so they can be unit-tested
+  without requiring an ImGui or GLFW context.
+- **CMake**: Added `romulus_gui_logic_tests` target in `tests/CMakeLists.txt` for the GUI logic
+  unit test executable.
+
 ### ✨ feat(cli,gui): Add delete-dat Command
 
 - **Database**: `Database::delete_dat_version(id)` removes a DAT version and its associated games,
