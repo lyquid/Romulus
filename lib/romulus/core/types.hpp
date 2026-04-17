@@ -327,6 +327,7 @@ struct ScanReport {
   std::int64_t archives_processed = 0;
   std::int64_t files_hashed = 0;
   std::int64_t files_skipped = 0; ///< Already scanned, unchanged
+  std::int64_t files_pruned = 0;  ///< DB records removed for files no longer present on disk
   std::int64_t matches_found = 0;
 };
 
@@ -336,6 +337,9 @@ struct ScanReport {
 struct ScanResult {
   ScanReport report;
   std::vector<ScannedROM> files; ///< ROMs discovered and hashed during this scan (excludes skipped)
+  /// All virtual paths found on disk during this scan (both hashed and skipped).
+  /// Used by the service layer to prune stale DB entries for files deleted since the last scan.
+  std::vector<std::string> all_virtual_paths;
 };
 
 // ── Scanned Directory ─────────────────────────────────────────

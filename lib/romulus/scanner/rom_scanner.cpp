@@ -160,6 +160,15 @@ Result<core::ScanResult> RomScanner::scan(
 
   ROMULUS_INFO("Total hash jobs: {} (including archive entries)", jobs.size());
 
+  // Collect all virtual paths present on disk before hashing.
+  // This snapshot is returned to the service layer so it can prune stale DB entries
+  // for files that were deleted from disk since the previous scan.
+  std::vector<std::string> all_virtual_paths;
+  all_virtual_paths.reserve(jobs.size());
+  for (const auto& job : jobs) {
+    all_virtual_paths.push_back(job.virtual_path);
+  }
+
   // Phase 3: Hash files in parallel
   auto num_threads = std::max(1u, std::thread::hardware_concurrency());
   ROMULUS_INFO("Hashing with {} threads", num_threads);
@@ -238,7 +247,7 @@ Result<core::ScanResult> RomScanner::scan(
                report.files_skipped,
                report.archives_processed);
 
-  return core::ScanResult{.report = report, .files = std::move(scanned_files)};
+  return core::ScanResult{.report = report, .files = std::move(scanned_files), .all_virtual_paths = std::move(all_virtual_paths)};
 }
 
 } // namespace romulus::scanner

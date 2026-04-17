@@ -194,6 +194,50 @@ Result<core::ScanReport> RomulusService::scan_directory(
     return std::unexpected(commit.error());
   }
 
+  // Prune stale DB entries for files in this directory that no longer exist on disk.
+  // Build the set of paths that must be kept:
+  //   1. All virtual paths actually found on disk during this scan (hashed + skipped).
+  //   2. All DB paths that belong to OTHER directories (preserve entries from other scans).
+  {
+    const auto dir_str = dir.string();
+
+    // Helper: returns true when the physical file portion of a virtual path is under dir.
+    // Virtual paths for archives use the "archive::entry" format; the prefix before "::" is
+    // the physical file path.
+    auto is_under_scan_dir = [&dir_str](std::string_view virtual_path) -> bool {
+      const auto sep_pos = virtual_path.find(core::k_ArchiveEntrySeparator);
+      const auto file_part = sep_pos != std::string_view::npos ? virtual_path.substr(0, sep_pos)
+                                                                : virtual_path;
+      if (file_part.size() <= dir_str.size()) {
+        return false;
+      }
+      if (!file_part.starts_with(dir_str)) {
+        return false;
+      }
+      // Ensure the match ends at a path separator to avoid "/roms" matching "/romsbackup/...".
+      const char next = file_part[dir_str.size()];
+      return next == '/' || next == '\\';
+    };
+
+    std::vector<std::string> existing_paths = result->all_virtual_paths;
+    existing_paths.reserve(existing_paths.size() + fingerprints->size());
+    for (const auto& [path, unused] : *fingerprints) {
+      if (!is_under_scan_dir(path)) {
+        existing_paths.emplace_back(path);
+      }
+    }
+
+    auto pruned = db_->remove_missing_files(existing_paths);
+    if (!pruned) {
+      ROMULUS_WARN("Failed to prune stale file records: {}", pruned.error().message);
+    } else {
+      result->report.files_pruned = *pruned;
+      if (*pruned > 0) {
+        ROMULUS_INFO("Pruned {} stale file record(s) for files no longer on disk", *pruned);
+      }
+    }
+  }
+
   return result->report;
 }
 

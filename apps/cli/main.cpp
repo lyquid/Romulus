@@ -242,10 +242,11 @@ int main(int argc, char** argv) {
         std::print(stderr, "Error: {}\n", result.error().message);
         return 1;
       }
-      std::print("Scan complete: {} files, {} hashed, {} skipped, {} archives\n",
+      std::print("Scan complete: {} files, {} hashed, {} skipped, {} pruned, {} archives\n",
                  result->files_scanned,
                  result->files_hashed,
                  result->files_skipped,
+                 result->files_pruned,
                  result->archives_processed);
     }
 

@@ -7,6 +7,24 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ✨ feat(scanner): Automatic stale file pruning on scan
+
+- **Service**: `RomulusService::scan_directory()` now automatically removes database entries for
+  files that no longer exist on disk. After persisting newly hashed files, the service calls
+  `Database::remove_missing_files()` scoped to the scanned directory: only entries whose physical
+  file path falls under the scanned directory are candidates for pruning, so entries from other
+  scan directories are preserved.
+- **Types**: `ScanReport` gains a `files_pruned` field (default 0) reporting how many stale DB
+  records were removed during the scan.
+- **Types**: `ScanResult` gains an `all_virtual_paths` field populated by the scanner with every
+  virtual path found on disk (both newly hashed and skipped/unchanged). The service layer uses
+  this to distinguish deleted files from files that were simply not re-hashed.
+- **CLI**: The `scan` command output now includes the pruned count:
+  `Scan complete: N files, N hashed, N skipped, N pruned, N archives`.
+- **Tests**: Two new integration tests: `ScanPrunesDeletedFiles` verifies that a file deleted from
+  disk is removed from the DB on the next scan; `ScanPreservesFilesFromOtherDirectories` verifies
+  that scanning one directory does not inadvertently prune entries from a different directory.
+
 ### 🧪 test: Add RomulusService unit tests and GUI logic tests
 
 - **Tests**: Added `tests/unit/test_romulus_service.cpp` with 22 unit tests covering the main
