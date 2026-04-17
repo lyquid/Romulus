@@ -72,6 +72,10 @@ public:
   /// Atomically deletes all data from the database (all tables).
   [[nodiscard]] Result<void> purge_database();
 
+  /// Deletes a specific DAT version (and its games/ROMs/matches) by ID.
+  /// Scanned files and global ROMs are preserved.
+  [[nodiscard]] Result<void> delete_dat(std::int64_t id);
+
   // ── Scanned Directories ──────────────────────────────────
 
   /// Registers a directory path for ROM scanning (persisted in DB).

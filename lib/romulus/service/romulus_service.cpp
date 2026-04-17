@@ -349,6 +349,15 @@ Result<void> RomulusService::purge_database() {
   return {};
 }
 
+Result<void> RomulusService::delete_dat(std::int64_t id) {
+  auto result = db_->delete_dat_version(id);
+  if (!result) {
+    return result;
+  }
+  ROMULUS_INFO("Deleted DAT version id={}", id);
+  return {};
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Scanned Directories
 // ═══════════════════════════════════════════════════════════════

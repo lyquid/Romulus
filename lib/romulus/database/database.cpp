@@ -648,6 +648,58 @@ Result<std::vector<core::DatVersion>> Database::get_all_dat_versions() {
   return versions;
 }
 
+Result<void> Database::delete_dat_version(std::int64_t id) {
+  // Deletion order must respect FK constraints (children before parents):
+  //   rom_matches  →  roms  →  games  →  dat_versions
+  // global_roms and files are scan-level data and are intentionally preserved.
+  auto txn = begin_transaction();
+  if (!txn) {
+    return std::unexpected(txn.error());
+  }
+
+  auto del_matches = prepare(
+      "DELETE FROM rom_matches WHERE rom_id IN "
+      "(SELECT r.id FROM roms r JOIN games g ON r.game_id = g.id WHERE g.dat_version_id = ?1)");
+  if (!del_matches) {
+    return std::unexpected(del_matches.error());
+  }
+  del_matches->bind_int64(1, id);
+  del_matches->execute();
+
+  auto del_roms = prepare(
+      "DELETE FROM roms WHERE game_id IN (SELECT id FROM games WHERE dat_version_id = ?1)");
+  if (!del_roms) {
+    return std::unexpected(del_roms.error());
+  }
+  del_roms->bind_int64(1, id);
+  del_roms->execute();
+
+  auto del_games = prepare("DELETE FROM games WHERE dat_version_id = ?1");
+  if (!del_games) {
+    return std::unexpected(del_games.error());
+  }
+  del_games->bind_int64(1, id);
+  del_games->execute();
+
+  auto del_dat = prepare("DELETE FROM dat_versions WHERE id = ?1");
+  if (!del_dat) {
+    return std::unexpected(del_dat.error());
+  }
+  del_dat->bind_int64(1, id);
+  del_dat->execute();
+
+  if (sqlite3_changes(db_) == 0) {
+    auto rb = txn->rollback();
+    if (!rb) {
+      return std::unexpected(rb.error());
+    }
+    return std::unexpected(
+        core::Error{core::ErrorCode::NotFound, "DAT version not found: id=" + std::to_string(id)});
+  }
+
+  return txn->commit();
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Games CRUD
 // ═══════════════════════════════════════════════════════════════

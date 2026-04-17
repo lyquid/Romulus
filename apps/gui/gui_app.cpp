@@ -285,6 +285,34 @@ void GuiApp::run() {
       ImGui::EndPopup();
     }
 
+    // Delete DAT confirmation popup
+    if (show_delete_dat_confirm_) {
+      ImGui::OpenPopup("Confirm Delete DAT");
+      show_delete_dat_confirm_ = false;
+    }
+    if (ImGui::BeginPopupModal("Confirm Delete DAT", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+      if (selected_dat_index_ >= 0 &&
+          selected_dat_index_ < static_cast<int>(dat_versions_.size())) {
+        const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
+        ImGui::Text("Delete DAT version:");
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(1.0F, 0.8F, 0.2F, 1.0F), "%s v%s", dv.name.c_str(),
+                           dv.version.c_str());
+        ImGui::Text("This will remove its games, ROMs, and match records.");
+        ImGui::Text("Scanned files are preserved. This action cannot be undone!");
+      }
+      ImGui::Separator();
+      if (ImGui::Button("Yes, Delete", ImVec2(120, 0))) {
+        action_delete_dat();
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+    }
+
     // Toast overlay (rendered last so it appears on top)
     render_toast();
 
@@ -557,6 +585,32 @@ void GuiApp::action_verify() {
   };
 }
 
+void GuiApp::action_delete_dat() {
+  if (is_busy() || selected_dat_index_ < 0 ||
+      selected_dat_index_ >= static_cast<int>(dat_versions_.size())) {
+    return;
+  }
+
+  const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
+  const auto dat_id = dv.id;
+  const auto dat_name = dv.name + " v" + dv.version;
+
+  status_message_ = "Deleting DAT... Please wait.";
+  pending_task_ = PendingTask{
+      .result = std::async(std::launch::async,
+                           [this, dat_id, dat_name]() -> std::string {
+                             auto result = svc_.delete_dat(dat_id);
+                             if (!result) {
+                               return "Delete failed: " + result.error().message;
+                             }
+                             return "Deleted DAT: " + dat_name;
+                           }),
+      .refresh_dat_versions = true,
+      .refresh_checklist = false,
+  };
+}
+
+
 void GuiApp::action_purge_database() {
   if (is_busy()) {
     return;
@@ -757,6 +811,14 @@ void GuiApp::refresh_dat_versions() {
     }
     if (selected_dat_index_ < 0 && !dat_versions_.empty()) {
       selected_dat_index_ = 0;
+    }
+    // Clear checklist if the previously selected DAT is no longer available.
+    if (selected_dat_index_ < 0 ||
+        dat_versions_[static_cast<std::size_t>(selected_dat_index_)].id != prev_selected_id) {
+      rom_checklist_.clear();
+      game_checklist_.clear();
+      selected_game_id_ = -1;
+      checklist_stats_ = {};
     }
   } else {
     dat_versions_.clear();

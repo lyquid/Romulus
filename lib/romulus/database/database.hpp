@@ -121,6 +121,7 @@ public:
   [[nodiscard]] Result<std::vector<core::DatVersion>> get_all_dat_versions();
   [[nodiscard]] Result<std::vector<core::RomInfo>> get_roms_for_dat_version(
       std::int64_t dat_version_id);
+  [[nodiscard]] Result<void> delete_dat_version(std::int64_t id);
 
   // ── Games ─────────────────────────────────────────────────
 
