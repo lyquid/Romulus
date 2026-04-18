@@ -327,6 +327,7 @@ struct ScanReport {
   std::int64_t archives_processed = 0;
   std::int64_t files_hashed = 0;
   std::int64_t files_skipped = 0; ///< Already scanned, unchanged
+  std::int64_t files_pruned = 0;  ///< DB records removed for files no longer present on disk
   std::int64_t matches_found = 0;
 };
 

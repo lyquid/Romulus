@@ -152,6 +152,12 @@ public:
   [[nodiscard]] Result<core::FingerprintMap> get_file_fingerprints();
   [[nodiscard]] Result<std::int64_t> remove_missing_files(
       const std::vector<std::string>& existing_paths);
+  /// Removes files table rows whose virtual path is in \p paths.
+  /// More efficient than remove_missing_files() when the exact set of rows to delete is
+  /// already known: deletes by the indexed \c path column in a single pass without loading
+  /// any blob columns.
+  [[nodiscard]] Result<std::int64_t> remove_files_by_virtual_paths(
+      const std::vector<std::string>& paths);
 
   // ── Global ROMs ──────────────────────────────────────────
 

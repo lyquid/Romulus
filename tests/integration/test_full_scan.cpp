@@ -2,9 +2,11 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <string>
 
 namespace {
 
@@ -13,10 +15,19 @@ const std::filesystem::path k_FixturesDir{ROMULUS_TEST_FIXTURES_DIR};
 class FullScanTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    db_path_ = std::filesystem::temp_directory_path() / "romulus_integration_test.db";
-    rom_dir_ = std::filesystem::temp_directory_path() / "romulus_test_roms";
+    // Use unique names per test to avoid collisions under parallel CTest runs.
+    const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    const std::string base =
+        std::string("romulus_int_") + info->test_suite_name() + "_" + info->name();
+    db_path_ = std::filesystem::temp_directory_path() / (base + ".db");
+    rom_dir_ = std::filesystem::temp_directory_path() / (base + "_roms");
+    other_dir_ = std::filesystem::temp_directory_path() / (base + "_other_roms");
+
     std::filesystem::remove(db_path_);
+    std::filesystem::remove(db_path_.string() + "-wal");
+    std::filesystem::remove(db_path_.string() + "-shm");
     std::filesystem::create_directories(rom_dir_);
+    // other_dir_ is created on demand by the test that needs it
 
     // Create some fake ROM files
     {
@@ -30,10 +41,12 @@ protected:
     std::filesystem::remove(db_path_.string() + "-wal");
     std::filesystem::remove(db_path_.string() + "-shm");
     std::filesystem::remove_all(rom_dir_);
+    std::filesystem::remove_all(other_dir_); // no-op if not created
   }
 
   std::filesystem::path db_path_;
   std::filesystem::path rom_dir_;
+  std::filesystem::path other_dir_; ///< Secondary scan directory; created on demand by individual tests
 };
 
 TEST_F(FullScanTest, ImportDatAndScanDirectory) {
@@ -255,6 +268,77 @@ TEST_F(FullScanTest, DeleteDatReturnsErrorForUnknownId) {
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(result.error().code, romulus::core::ErrorCode::NotFound);
   EXPECT_NE(result.error().message.find("9999"), std::string::npos);
+}
+
+TEST_F(FullScanTest, ScanPrunesDeletedFiles) {
+  romulus::service::RomulusService svc(db_path_);
+
+  // First scan — file is indexed in the database.
+  auto scan1 = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan1.has_value()) << scan1.error().message;
+  EXPECT_EQ(scan1->files_scanned, 1);
+  EXPECT_EQ(scan1->files_pruned, 0);
+
+  // Verify the file is in the DB.
+  auto files_before = svc.get_all_files();
+  ASSERT_TRUE(files_before.has_value());
+  ASSERT_EQ(files_before->size(), 1u);
+
+  // Delete the file from disk.
+  ASSERT_TRUE(std::filesystem::remove(rom_dir_ / "test.bin"));
+
+  // Rescan — deleted file should be pruned from the DB automatically.
+  auto scan2 = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan2.has_value()) << scan2.error().message;
+  EXPECT_EQ(scan2->files_scanned, 0);
+  EXPECT_EQ(scan2->files_pruned, 1);
+
+  // The DB should no longer contain the deleted file.
+  auto files_after = svc.get_all_files();
+  ASSERT_TRUE(files_after.has_value());
+  EXPECT_TRUE(files_after->empty());
+}
+
+TEST_F(FullScanTest, ScanPreservesFilesFromOtherDirectories) {
+  // Create a second directory with its own ROM file (cleaned up by TearDown via other_dir_).
+  std::filesystem::create_directories(other_dir_);
+  {
+    std::ofstream f(other_dir_ / "other.bin", std::ios::binary);
+    f << "Other ROM content";
+  }
+
+  romulus::service::RomulusService svc(db_path_);
+
+  // Scan both directories so both files are in the DB.
+  auto scan_main = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan_main.has_value()) << scan_main.error().message;
+  EXPECT_EQ(scan_main->files_scanned, 1);
+
+  auto scan_other = svc.scan_directory(other_dir_);
+  ASSERT_TRUE(scan_other.has_value()) << scan_other.error().message;
+  EXPECT_EQ(scan_other->files_scanned, 1);
+
+  // Two files in DB total.
+  auto files = svc.get_all_files();
+  ASSERT_TRUE(files.has_value());
+  EXPECT_EQ(files->size(), 2u);
+
+  // Delete the file from the main directory only.
+  ASSERT_TRUE(std::filesystem::remove(rom_dir_ / "test.bin"));
+
+  // Rescanning only the main directory prunes the deleted file but preserves the other dir entry.
+  auto scan_prune = svc.scan_directory(rom_dir_);
+  ASSERT_TRUE(scan_prune.has_value()) << scan_prune.error().message;
+  EXPECT_EQ(scan_prune->files_pruned, 1);
+
+  // The other directory's file must still be in the DB.
+  auto files_after = svc.get_all_files();
+  ASSERT_TRUE(files_after.has_value());
+  ASSERT_EQ(files_after->size(), 1u);
+  // get_all_files() does not guarantee a stable row order, so search rather than index front().
+  EXPECT_TRUE(std::ranges::any_of(*files_after, [](const auto& f) {
+    return f.path.find("other.bin") != std::string::npos;
+  }));
 }
 
 } // namespace

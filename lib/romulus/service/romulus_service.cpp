@@ -194,6 +194,70 @@ Result<core::ScanReport> RomulusService::scan_directory(
     return std::unexpected(commit.error());
   }
 
+  // Prune stale DB entries for files in this directory that no longer exist on disk.
+  // Strategy: walk the pre-loaded fingerprint map to find DB virtual paths that fall under
+  // the scan directory, then check whether the physical file on disk still exists.
+  // This is correct regardless of any extension filter passed to the scanner — we rely on
+  // the filesystem as the source of truth rather than the scanner's output, so entries for
+  // files with filtered-out extensions are never accidentally deleted.
+  {
+    // Normalise the scan dir once so the comparison works even when the caller passes a path
+    // with a trailing separator (e.g. "/roms/"), symlinks, or ".." components.
+    auto scan_dir = dir.lexically_normal();
+    // Strip any trailing empty filename components left by lexically_normal (e.g. "path/.")
+    while (scan_dir != scan_dir.root_path() && scan_dir.filename().empty()) {
+      scan_dir = scan_dir.parent_path();
+    }
+
+    // Component-wise prefix comparison — handles trailing separators and avoids the
+    // false match that a raw string prefix check gives (e.g. "/roms" matching "/romsbackup").
+    auto is_under_scan_dir = [&scan_dir](std::string_view virtual_path) -> bool {
+      const auto sep_pos = virtual_path.find(core::k_ArchiveEntrySeparator);
+      const auto file_part = sep_pos != std::string_view::npos ? virtual_path.substr(0, sep_pos)
+                                                                : virtual_path;
+      auto file_path = std::filesystem::path(file_part).lexically_normal();
+      while (file_path != file_path.root_path() && file_path.filename().empty()) {
+        file_path = file_path.parent_path();
+      }
+      auto scan_it = scan_dir.begin();
+      auto file_it = file_path.begin();
+      for (; scan_it != scan_dir.end() && file_it != file_path.end(); ++scan_it, ++file_it) {
+        if (*scan_it != *file_it) {
+          return false;
+        }
+      }
+      // A file is under the scan directory only if all scan_dir components matched AND
+      // file_path has at least one more component (i.e. it is not the scan dir itself).
+      return scan_it == scan_dir.end() && file_it != file_path.end();
+    };
+
+    // Build the delete list: DB entries under the scan dir whose physical file is gone.
+    // For archive entries ("archive.zip::entry.nes") we check the archive file itself;
+    // if the archive is deleted all its entries should be pruned.
+    std::vector<std::string> paths_to_delete;
+    for (const auto& [vpath, _] : *fingerprints) {
+      if (!is_under_scan_dir(vpath)) {
+        continue;
+      }
+      const auto sep_pos = vpath.find(core::k_ArchiveEntrySeparator);
+      const auto physical_part = sep_pos != std::string::npos ? std::string_view(vpath).substr(0, sep_pos)
+                                                               : std::string_view(vpath);
+      if (!std::filesystem::exists(physical_part)) {
+        paths_to_delete.emplace_back(vpath);
+      }
+    }
+
+    if (!paths_to_delete.empty()) {
+      auto pruned = db_->remove_files_by_virtual_paths(paths_to_delete);
+      if (!pruned) {
+        ROMULUS_WARN("Failed to prune stale file records: {}", pruned.error().message);
+      } else {
+        result->report.files_pruned = *pruned;
+        ROMULUS_INFO("Pruned {} stale file record(s) for files no longer on disk", *pruned);
+      }
+    }
+  }
+
   return result->report;
 }
 
