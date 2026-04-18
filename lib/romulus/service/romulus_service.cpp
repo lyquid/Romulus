@@ -262,18 +262,30 @@ Result<core::ScanReport> RomulusService::scan_directory(
 }
 
 Result<void> RomulusService::verify(std::optional<std::string> dat_name) {
-  // Step 1: Match files to ROMs
+  // Step 1: Match files to ROMs (global across all DATs).
   auto matches = engine::Matcher::match_all(*db_);
   if (!matches) {
     return std::unexpected(matches.error());
   }
 
-  // Step 2: Classify and log ROM statuses
+  // Resolve the optional DAT name to an ID — needed for both cache refresh and
+  // classify so we do it once here.
   auto dat_id = resolve_optional_dat_id(dat_name);
   if (!dat_id) {
     return std::unexpected(dat_id.error());
   }
 
+  // Step 2: Refresh the materialized status cache BEFORE classify_all() so that
+  // the get_collection_summary() call inside classify_all() always reads the
+  // freshly updated rom_matches — not a stale cache from a previous verify run.
+  // When a dat_version_id is available, only ROMs in that DAT are refreshed.
+  auto cache = db_->refresh_status_cache(*dat_id);
+  if (!cache) {
+    ROMULUS_WARN("Failed to refresh ROM status cache: {}", cache.error().message);
+    // Non-fatal: classify_all() falls back to the CTE computed path.
+  }
+
+  // Step 3: Classify and log ROM statuses (reads from the freshly populated cache).
   return engine::Classifier::classify_all(*db_, *dat_id);
 }
 
@@ -331,24 +343,10 @@ Result<std::vector<core::DatVersion>> RomulusService::list_dat_versions() {
 
 Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>> RomulusService::
     get_roms_with_status(std::int64_t dat_version_id) {
-  auto roms = db_->get_roms_for_dat_version(dat_version_id);
-  if (!roms) {
-    return std::unexpected(roms.error());
-  }
-
-  std::vector<std::pair<core::RomInfo, core::RomStatusType>> result;
-  result.reserve(roms->size());
-
-  for (auto& rom : *roms) {
-    auto status = db_->get_computed_rom_status(rom.id);
-    core::RomStatusType st = core::RomStatusType::Missing;
-    if (status) {
-      st = *status;
-    }
-    result.emplace_back(std::move(rom), st);
-  }
-
-  return result;
+  // Single batch query — reads from rom_status_cache when populated, otherwise
+  // inlines the status computation. Replaces the prior N+1 pattern that issued
+  // one get_computed_rom_status() call per ROM.
+  return db_->get_all_roms_with_status(dat_version_id);
 }
 
 Result<std::vector<core::MissingRom>> RomulusService::get_missing_roms(

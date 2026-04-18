@@ -204,6 +204,7 @@ The schema is built around that single question.
 | `files` | Every ROM **file found on disk** (virtual path, optional archive_path, optional entry_name, size, hashes, Unix scan timestamp). Points into `global_roms` via `sha1`. | *Reality* — what is actually sitting in your scan folders. Archive entries are first-class citizens. |
 | `global_roms` | **Content-addressable file identity** keyed by SHA-1. Multiple paths can map to the same content blob. | Deduplication — the same binary in two folders is one `global_rom`, two `files`. |
 | `rom_matches` | Which `global_rom` satisfies each `rom`, and *how* (`match_type` integer enum). | The verdict per ROM — populated by the matcher, queried by the classifier. |
+| `rom_status_cache` | **Precomputed per-ROM status** (0=Verified / 1=Missing / 2=Unverified / 3=Mismatch). Refreshed after every `verify` run. | Replaces the expensive CTE+JOIN on every summary or checklist query — SQLite's answer to a materialized view. |
 | `scanned_directories` | User-registered scan folders, persisted across sessions. | Remember where to look without re-adding every launch. |
 
 ### How They Connect
@@ -213,6 +214,9 @@ dat_versions ──< games ──< roms
                                │
                                └── rom_matches ──> global_roms <── files
                                     (match_type)   (SHA-1 PK)    (path on disk)
+                                         │
+                                         └──> rom_status_cache
+                                              (precomputed status)
 ```
 
 `rom_matches` is the **bridge**: for every `rom` (expected), it records which `global_rom` (actual) satisfies it, and *how* it was matched:
@@ -276,7 +280,7 @@ Inserts `rom_matches` rows with the `match_type` verdict.
 
 **Step 4 — CLASSIFY** 🏷️ *(romulus verify, step 2)*
 
-Reads `rom_matches` + `files` via CTE — no separate status table, no stale data:
+Reads `rom_matches` + `files` and assigns a status to each ROM:
 
 | Status | Condition |
 |---|---|
@@ -285,7 +289,11 @@ Reads `rom_matches` + `files` via CTE — no separate status table, no stale dat
 | 🔍 **Unverified** | Partial match (SHA-1/MD5/CRC32 only) + file is live |
 | ⚠️ **Mismatch** | Match was recorded but the file has since been deleted |
 
-> 🥷 *ROM status is never stored — it is computed live from `rom_matches` + `files`, like a ninja calculating the optimal jump. It can never go stale.*
+After classification, the computed statuses are written to `rom_status_cache` — a persistent
+precomputed table that acts as a **materialized view**. Subsequent summary and ROM-checklist
+queries read from this fast cache instead of re-running the expensive CTE+JOIN every time.
+
+> 💾 *First query after `verify` is free — the cache pays for itself immediately on the next report or GUI reload.*
 
 ---
 
@@ -301,12 +309,12 @@ romulus report missing  [--format text|csv|json]
 ### Verification Flow at a Glance
 
 ```
-Scan/Hash  →  Import DAT  →  Match  →  Classify  →  Report
-    │              │            │           │            │
-    ▼              ▼            ▼           ▼            ▼
-Files         dat_versions   SHA-1      Verified      Text
-Scan          games          MD5        Missing       CSV
-Skip          roms           CRC32      Unverified    JSON
+Scan/Hash  →  Import DAT  →  Match  →  Classify  →  Cache  →  Report
+    │              │            │           │           │          │
+    ▼              ▼            ▼           ▼           ▼          ▼
+Files         dat_versions   SHA-1      Verified   rom_status  Text
+Scan          games          MD5        Missing    _cache      CSV
+Skip          roms           CRC32      Unverified (fast read) JSON
 Arch.                        SHA-256    Mismatch
 
 👾  "It's dangerous to go alone! Take this pipeline."  👾

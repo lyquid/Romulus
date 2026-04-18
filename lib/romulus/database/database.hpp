@@ -178,9 +178,18 @@ public:
   [[nodiscard]] Result<std::vector<core::MatchResult>> get_matches_for_rom(std::int64_t rom_id);
   [[nodiscard]] Result<void> clear_matches();
 
-  // ── Status (computed dynamically from rom_matches + files) ───
+  // ── Status (cached + computed from rom_matches + files) ──────
 
-  /// Computes the status of a single ROM by inspecting rom_matches and files.
+  /// Recomputes ROM statuses and stores results in rom_status_cache.
+  /// When dat_version_id is provided, only ROMs belonging to that DAT are
+  /// refreshed (more efficient for per-DAT verify). When omitted, all ROMs are
+  /// refreshed. Call this BEFORE classify_all() inside verify() so that
+  /// get_collection_summary() always reads fresh data.
+  [[nodiscard]] Result<void> refresh_status_cache(
+      std::optional<std::int64_t> dat_version_id = {});
+
+  /// Computes the status of a single ROM. Reads from rom_status_cache when
+  /// populated; falls back to querying rom_matches + files on a cache miss.
   [[nodiscard]] Result<core::RomStatusType> get_computed_rom_status(std::int64_t rom_id);
   [[nodiscard]] Result<core::CollectionSummary> get_collection_summary(
       std::optional<std::int64_t> dat_version_id = {});
@@ -189,6 +198,13 @@ public:
   [[nodiscard]] Result<std::vector<core::DuplicateFile>> get_duplicate_files(
       std::optional<std::int64_t> dat_version_id = {});
   [[nodiscard]] Result<std::vector<core::FileInfo>> get_unverified_files();
+
+  /// Returns all ROMs for the given DAT version together with their status in a
+  /// single batch query. Reads from rom_status_cache when populated; inlines the
+  /// status computation otherwise. Prefer this over calling get_computed_rom_status()
+  /// in a loop (eliminates the N+1 query pattern).
+  [[nodiscard]] Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>>
+  get_all_roms_with_status(std::int64_t dat_version_id);
 
   // ── Utilities ────────────────────────────────────────────
 
