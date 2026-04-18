@@ -7,6 +7,36 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ⚡ perf(database): Materialized status cache for reporting
+
+- **Problem**: ROM status was computed on the fly from a CTE joining `roms`, `games`,
+  `rom_matches`, and `files` on every `get_collection_summary()` call. The
+  `get_roms_with_status()` service method had an N+1 query pattern — it called
+  `get_computed_rom_status()` individually for every ROM in a DAT.
+- **New table** `rom_status_cache`: a persistent precomputed status table
+  (`rom_id PK, status INTEGER, updated_at TEXT`) that acts as a SQLite materialized view.
+  Statuses: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch.
+- **`Database::refresh_status_cache()`**: populates/refreshes the entire cache in a single
+  `INSERT OR REPLACE … SELECT` statement — one pass over all ROMs, no per-ROM queries.
+  Called automatically by `RomulusService::verify()` after matching and classification.
+- **`Database::get_collection_summary()`**: now reads from the precomputed cache when it has
+  been populated (fast path), falling back to the original CTE for database instances that
+  have never been verified (e.g. direct unit-test access without a verify step).
+- **`Database::get_computed_rom_status()`**: now reads from the cache first (O(1) indexed
+  lookup); falls back to the per-ROM JOIN only on a cache miss.
+- **`Database::get_all_roms_with_status(dat_version_id)`**: new batch method that returns all
+  ROM rows with their precomputed status in a single query (replaces the N+1 pattern in the
+  service layer). When the cache is unpopulated, an inline `COALESCE(cache, CASE …)` ensures
+  correctness without requiring a prior `refresh_status_cache()` call.
+- **`RomulusService::get_roms_with_status()`**: delegates to the new
+  `Database::get_all_roms_with_status()` batch method — N queries → 1 query.
+- **Schema**: `k_SchemaVersion` bumped to 7; `rom_status_cache` added to the drop list so
+  schema upgrades recreate it cleanly.
+- **Tests**: three new `DatabaseTest` cases verify cache population, cache-backed status
+  reads, and the batch method with both cold (no cache) and warm (cached) paths.
+- **README**: `rom_status_cache` added to the schema table, diagram updated to show the new
+  table, and the Classify/flow sections updated to describe the materialized view optimization.
+
 ### ✨ feat(scanner): Automatic stale file pruning on scan
 
 - **Service**: `RomulusService::scan_directory()` now automatically removes database entries for

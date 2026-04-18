@@ -330,6 +330,15 @@ CREATE TABLE IF NOT EXISTS scanned_directories (
     added_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
+-- Materialized status cache: precomputed per-ROM status, refreshed after verify().
+-- Eliminates expensive on-the-fly CTE+JOIN computation for summary and checklist queries.
+-- Status codes: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch
+CREATE TABLE IF NOT EXISTS rom_status_cache (
+    rom_id     INTEGER PRIMARY KEY REFERENCES roms(id) ON DELETE CASCADE,
+    status     INTEGER NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 -- Indexes for fast hash lookups
 CREATE INDEX IF NOT EXISTS idx_games_dat_version ON games(dat_version_id);
 CREATE INDEX IF NOT EXISTS idx_roms_game ON roms(game_id);
@@ -348,7 +357,7 @@ CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 /// Schema version — increment whenever the schema changes in a backward-incompatible way.
 /// Stored in PRAGMA user_version. If the on-disk DB has a different version the database
 /// is wiped and rebuilt so queries never encounter stale column layouts.
-constexpr int k_SchemaVersion = 6;
+constexpr int k_SchemaVersion = 7;
 
 int match_type_to_int(core::MatchType type) {
   switch (type) {
@@ -460,6 +469,7 @@ DROP TABLE IF EXISTS roms;
 DROP TABLE IF EXISTS games;
 DROP TABLE IF EXISTS dat_versions;
 DROP TABLE IF EXISTS scanned_directories;
+DROP TABLE IF EXISTS rom_status_cache;
 DROP TABLE IF EXISTS systems;
 DROP TABLE IF EXISTS rom_status;
 )SQL";
@@ -1314,12 +1324,66 @@ Result<void> Database::clear_matches() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Status Cache (materialized precomputed ROM statuses)
+// ═══════════════════════════════════════════════════════════════
+
+Result<void> Database::refresh_status_cache() {
+  // Recompute every ROM's status in a single INSERT OR REPLACE pass.
+  // Status mapping: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch
+  //
+  // This populates rom_status_cache from rom_matches + files, replacing stale
+  // entries with current values. Subsequent reads (get_collection_summary,
+  // get_all_roms_with_status) can then hit the cache instead of re-running the
+  // full JOIN on every call.
+  constexpr std::string_view sql =
+      "INSERT OR REPLACE INTO rom_status_cache (rom_id, status, updated_at) "
+      "SELECT r.id, "
+      "  CASE "
+      "    WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1 "
+      "    WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
+      "         THEN 0 "
+      "    WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2 "
+      "    ELSE 3 "
+      "  END, "
+      "  datetime('now', 'localtime') "
+      "FROM roms r "
+      "LEFT JOIN rom_matches rm ON r.id = rm.rom_id "
+      "LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1 "
+      "GROUP BY r.id";
+
+  auto result = execute(sql);
+  if (result) {
+    ROMULUS_DEBUG("ROM status cache refreshed ({} entries).", sqlite3_changes(db_));
+  }
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Computed Status (from rom_matches + files — no separate status table)
 // ═══════════════════════════════════════════════════════════════
 
 Result<core::RomStatusType> Database::get_computed_rom_status(std::int64_t rom_id) {
-  // Query all matches for this ROM, left-joining to files to detect which ones
-  // have a physical file on disk.
+  // Fast path: read from the precomputed cache if it has been populated.
+  auto cache_stmt = prepare("SELECT status FROM rom_status_cache WHERE rom_id = ?1");
+  if (cache_stmt) {
+    cache_stmt->bind_int64(1, rom_id);
+    if (cache_stmt->step()) {
+      const auto status = static_cast<int>(cache_stmt->column_int64(0));
+      switch (status) {
+        case 0:
+          return core::RomStatusType::Verified;
+        case 1:
+          return core::RomStatusType::Missing;
+        case 2:
+          return core::RomStatusType::Unverified;
+        default:
+          return core::RomStatusType::Mismatch;
+      }
+    }
+  }
+
+  // Slow path (cache miss): query all matches for this ROM, left-joining to
+  // files to detect which ones have a physical file on disk.
   auto stmt = prepare("SELECT rm.match_type, (f.sha1 IS NOT NULL) AS has_file "
                       "FROM rom_matches rm "
                       "LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1 "
@@ -1361,7 +1425,50 @@ Result<core::RomStatusType> Database::get_computed_rom_status(std::int64_t rom_i
 
 Result<core::CollectionSummary> Database::get_collection_summary(
     std::optional<std::int64_t> dat_version_id) {
-  // Compute status dynamically using a CTE.
+  // Fast path: aggregate precomputed statuses from the cache when available.
+  // The cache is populated by refresh_status_cache() (called after verify()).
+  // COUNT(*) == 0 means the cache is empty — fall through to the CTE slow path.
+  auto cache_check = prepare("SELECT COUNT(*) FROM rom_status_cache");
+  if (cache_check && cache_check->step() && cache_check->column_int64(0) > 0) {
+    std::string sql =
+        "SELECT "
+        "  COALESCE((SELECT name FROM dat_versions WHERE id = ?1), 'All DATs'), "
+        "  COUNT(*), "
+        "  SUM(CASE WHEN rsc.status = 0 THEN 1 ELSE 0 END), "
+        "  SUM(CASE WHEN rsc.status = 1 THEN 1 ELSE 0 END), "
+        "  SUM(CASE WHEN rsc.status = 2 THEN 1 ELSE 0 END), "
+        "  SUM(CASE WHEN rsc.status = 3 THEN 1 ELSE 0 END) "
+        "FROM rom_status_cache rsc "
+        "JOIN roms r ON rsc.rom_id = r.id "
+        "JOIN games g ON r.game_id = g.id";
+
+    if (dat_version_id.has_value()) {
+      sql += " WHERE g.dat_version_id = ?1";
+    }
+
+    auto stmt = prepare(sql);
+    if (stmt) {
+      if (dat_version_id.has_value()) {
+        stmt->bind_int64(1, *dat_version_id);
+      } else {
+        stmt->bind_null(1);
+      }
+
+      core::CollectionSummary summary;
+      if (stmt->step()) {
+        summary.dat_name = stmt->column_text(0);
+        summary.total_roms = stmt->column_int64(1);
+        summary.verified = stmt->column_int64(2);
+        summary.missing = stmt->column_int64(3);
+        summary.unverified = stmt->column_int64(4);
+        summary.mismatch = stmt->column_int64(5);
+      }
+      return summary;
+    }
+  }
+
+  // Slow path: compute status dynamically using a CTE.
+  // Used when the cache has not yet been populated (e.g. first run, or direct DB access).
   // Status mapping: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch
   std::string sql =
       "WITH computed AS ("
@@ -1416,6 +1523,80 @@ Result<core::CollectionSummary> Database::get_collection_summary(
     summary.mismatch = stmt->column_int64(5);
   }
   return summary;
+}
+
+Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>>
+Database::get_all_roms_with_status(std::int64_t dat_version_id) {
+  // Fast path: join roms with the precomputed status cache in a single query.
+  // This replaces the N+1 pattern (one get_computed_rom_status() call per ROM)
+  // with a single set-based operation.
+  //
+  // When the cache is unpopulated, a CASE expression inlines the status logic so
+  // the query is still correct without requiring a prior refresh_status_cache() call.
+  const std::string sql =
+      "SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
+      "  r.crc32, r.md5, r.expected_sha1, r.sha256, r.region, "
+      "  COALESCE("
+      "    rsc.status,"
+      "    CASE "
+      "      WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1 "
+      "      WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
+      "           THEN 0 "
+      "      WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2 "
+      "      ELSE 3 "
+      "    END"
+      "  ) AS status "
+      "FROM roms r "
+      "JOIN games g ON r.game_id = g.id "
+      "LEFT JOIN rom_status_cache rsc ON r.id = rsc.rom_id "
+      "LEFT JOIN rom_matches rm ON r.id = rm.rom_id "
+      "LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1 "
+      "WHERE g.dat_version_id = ?1 "
+      "GROUP BY r.id "
+      "ORDER BY g.name, r.name";
+
+  auto stmt = prepare(sql);
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+
+  stmt->bind_int64(1, dat_version_id);
+
+  std::vector<std::pair<core::RomInfo, core::RomStatusType>> result;
+  while (stmt->step()) {
+    core::RomInfo rom{
+        .id = stmt->column_int64(0),
+        .game_id = stmt->column_int64(1),
+        .name = stmt->column_text(4),
+        .size = stmt->column_int64(5),
+        .crc32 = bytes_to_hex(stmt->column_blob(6)),
+        .md5 = bytes_to_hex(stmt->column_blob(7)),
+        .sha1 = bytes_to_hex(stmt->column_blob(8)),
+        .sha256 = bytes_to_hex(stmt->column_blob(9)),
+        .region = stmt->column_text(10),
+        .dat_version_id = stmt->column_int64(2),
+        .game_name = stmt->column_text(3),
+    };
+
+    const auto status_int = static_cast<int>(stmt->column_int64(11));
+    core::RomStatusType status = core::RomStatusType::Missing;
+    switch (status_int) {
+      case 0:
+        status = core::RomStatusType::Verified;
+        break;
+      case 2:
+        status = core::RomStatusType::Unverified;
+        break;
+      case 3:
+        status = core::RomStatusType::Mismatch;
+        break;
+      default:
+        status = core::RomStatusType::Missing;
+        break;
+    }
+    result.emplace_back(std::move(rom), status);
+  }
+  return result;
 }
 
 Result<std::vector<core::MissingRom>> Database::get_missing_roms(

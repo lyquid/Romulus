@@ -570,4 +570,159 @@ TEST_F(DatabaseTest, ScannedDirectoryFileCountMultipleDirectories) {
   EXPECT_EQ(gba_count, 1);
 }
 
+// ── Status Cache Tests ─────────────────────────────────────────────────────
+
+TEST_F(DatabaseTest, RefreshStatusCachePopulatesAllRoms) {
+  romulus::core::DatVersion dat{
+      .name = "NES", .version = "1.0", .source_url = {}, .dat_sha256 = "rsc1", .imported_at = {}};
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = db_->find_or_insert_game(*dat_id, "Mega Man");
+  ASSERT_TRUE(game_id.has_value());
+
+  const std::string sha1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  romulus::core::RomInfo rom{.id = 0,
+                             .game_id = *game_id,
+                             .name = "mm.nes",
+                             .size = 0,
+                             .crc32 = {},
+                             .md5 = {},
+                             .sha1 = sha1,
+                             .sha256 = {},
+                             .region = {}};
+  ASSERT_TRUE(db_->insert_rom(rom).has_value());
+
+  // Refresh with no matches → all ROMs are Missing in the cache.
+  ASSERT_TRUE(db_->refresh_status_cache().has_value());
+
+  // Collection summary should now use the cache and return correct counts.
+  auto summary = db_->get_collection_summary();
+  ASSERT_TRUE(summary.has_value());
+  EXPECT_EQ(summary->total_roms, 1);
+  EXPECT_EQ(summary->missing, 1);
+  EXPECT_EQ(summary->verified, 0);
+}
+
+TEST_F(DatabaseTest, RefreshStatusCacheReflectsVerifiedStatus) {
+  romulus::core::DatVersion dat{
+      .name = "SNES", .version = "1.0", .source_url = {}, .dat_sha256 = "rsc2", .imported_at = {}};
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = db_->find_or_insert_game(*dat_id, "Mario");
+  ASSERT_TRUE(game_id.has_value());
+
+  const std::string sha1 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  romulus::core::RomInfo rom{.id = 0,
+                             .game_id = *game_id,
+                             .name = "mario.sfc",
+                             .size = 0,
+                             .crc32 = {},
+                             .md5 = {},
+                             .sha1 = sha1,
+                             .sha256 = {},
+                             .region = {}};
+  auto rom_id = db_->insert_rom(rom);
+  ASSERT_TRUE(rom_id.has_value());
+
+  ASSERT_TRUE(db_->upsert_file(make_file("/roms/mario.sfc", sha1)).has_value());
+
+  romulus::core::MatchResult match{
+      .rom_id = *rom_id, .global_rom_sha1 = sha1, .match_type = romulus::core::MatchType::Exact};
+  ASSERT_TRUE(db_->insert_rom_match(match).has_value());
+
+  ASSERT_TRUE(db_->refresh_status_cache().has_value());
+
+  // Cache path: get_computed_rom_status should use cache and return Verified.
+  auto status = db_->get_computed_rom_status(*rom_id);
+  ASSERT_TRUE(status.has_value());
+  EXPECT_EQ(*status, romulus::core::RomStatusType::Verified);
+
+  // Summary should reflect the cached status.
+  auto summary = db_->get_collection_summary();
+  ASSERT_TRUE(summary.has_value());
+  EXPECT_EQ(summary->verified, 1);
+  EXPECT_EQ(summary->missing, 0);
+}
+
+TEST_F(DatabaseTest, GetAllRomsWithStatusReturnsBatchResults) {
+  romulus::core::DatVersion dat{
+      .name = "GB", .version = "1.0", .source_url = {}, .dat_sha256 = "rsc3", .imported_at = {}};
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = db_->find_or_insert_game(*dat_id, "Tetris");
+  ASSERT_TRUE(game_id.has_value());
+
+  const std::string sha1_v = "cccccccccccccccccccccccccccccccccccccccc";
+  const std::string sha1_m = "dddddddddddddddddddddddddddddddddddddddd";
+
+  romulus::core::RomInfo rom_v{.id = 0,
+                               .game_id = *game_id,
+                               .name = "verified.gb",
+                               .size = 0,
+                               .crc32 = {},
+                               .md5 = {},
+                               .sha1 = sha1_v,
+                               .sha256 = {},
+                               .region = {}};
+  auto rom_v_id = db_->insert_rom(rom_v);
+  ASSERT_TRUE(rom_v_id.has_value());
+
+  romulus::core::RomInfo rom_m{.id = 0,
+                               .game_id = *game_id,
+                               .name = "missing.gb",
+                               .size = 0,
+                               .crc32 = {},
+                               .md5 = {},
+                               .sha1 = sha1_m,
+                               .sha256 = {},
+                               .region = {}};
+  ASSERT_TRUE(db_->insert_rom(rom_m).has_value());
+
+  // Set up a verified match for rom_v.
+  ASSERT_TRUE(db_->upsert_file(make_file("/roms/verified.gb", sha1_v)).has_value());
+  romulus::core::MatchResult match{.rom_id = *rom_v_id,
+                                   .global_rom_sha1 = sha1_v,
+                                   .match_type = romulus::core::MatchType::Exact};
+  ASSERT_TRUE(db_->insert_rom_match(match).has_value());
+
+  // Batch query without cache — falls back to inline computation.
+  auto batch = db_->get_all_roms_with_status(*dat_id);
+  ASSERT_TRUE(batch.has_value());
+  ASSERT_EQ(batch->size(), 2u);
+
+  // Verify at least one Verified and one Missing are returned.
+  int verified_count = 0;
+  int missing_count = 0;
+  for (const auto& [r, s] : *batch) {
+    if (s == romulus::core::RomStatusType::Verified) {
+      ++verified_count;
+    } else if (s == romulus::core::RomStatusType::Missing) {
+      ++missing_count;
+    }
+  }
+  EXPECT_EQ(verified_count, 1);
+  EXPECT_EQ(missing_count, 1);
+
+  // Now populate the cache and confirm batch query still returns correct results.
+  ASSERT_TRUE(db_->refresh_status_cache().has_value());
+  auto batch_cached = db_->get_all_roms_with_status(*dat_id);
+  ASSERT_TRUE(batch_cached.has_value());
+  ASSERT_EQ(batch_cached->size(), 2u);
+
+  int vc = 0;
+  int mc = 0;
+  for (const auto& [r, s] : *batch_cached) {
+    if (s == romulus::core::RomStatusType::Verified) {
+      ++vc;
+    } else if (s == romulus::core::RomStatusType::Missing) {
+      ++mc;
+    }
+  }
+  EXPECT_EQ(vc, 1);
+  EXPECT_EQ(mc, 1);
+}
+
 } // namespace
