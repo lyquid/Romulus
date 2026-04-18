@@ -174,6 +174,21 @@ struct FileInfo {
   }
 };
 
+/// Lightweight file metadata used by the CRC32 tiebreaker in the matcher.
+/// Carries only the columns needed to resolve multi-CRC32 conflicts, avoiding the
+/// cost of loading full BLOB hash columns (md5, crc32, sha256) from the files table.
+struct FileTiebreakInfo {
+  std::string sha1;                      ///< Links to global_roms.sha1
+  std::string path;                      ///< Virtual path (unique storage key)
+  std::optional<std::string> entry_name; ///< Set when file lives inside an archive
+  std::int64_t last_write_time = 0;      ///< Filesystem mtime at scan time (Unix epoch seconds)
+
+  /// Returns true when this file was extracted from an archive entry.
+  [[nodiscard]] bool is_archive_entry() const noexcept {
+    return entry_name.has_value();
+  }
+};
+
 /// Lightweight fingerprint used for skip-checking during scans.
 /// Keyed by virtual path; used to decide whether a file needs re-hashing.
 /// A file is skipped only if its current filesystem size and last_write_time

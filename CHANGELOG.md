@@ -7,6 +7,34 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ✨ feat(engine): Match Priority Rule Engine and deterministic CRC32 tiebreaker
+
+- **Problem**: CRC32 matches with multiple candidates selected `front()` without any documented
+  policy. SHA256 was not included in the `Exact` determination even when DATs carry it.
+- **Priority order** (unchanged): SHA-1 → SHA-256 → MD5 → CRC32.
+- **Exact cross-validation expanded**: at Priority 1 (SHA-1 match), SHA-256 is now checked
+  alongside MD5 and CRC32. A SHA-1 hit where the DAT's SHA-256 disagrees with the scanned
+  file is correctly classified as `Sha1Only`, not `Exact`.
+- **SHA-256-led Exact**: at Priority 2 (SHA-256 match, used by enriched DATs that carry
+  SHA-256 without SHA-1), all remaining available hashes are cross-validated. When SHA-256
+  leads and every other available hash also agrees, the match is classified as `Exact`
+  instead of `Sha256Only`.
+- **CRC32 tiebreaker** (`pick_best_crc32_candidate`): replaces the silent `front()` pick
+  with a fully documented rule chain:
+  1. Bare (non-archive) file beats archive entry.
+  2. Shorter virtual path preferred.
+  3. Later `last_write_time` preferred.
+  4. Lexicographically smallest SHA-1 (deterministic fallback).
+  Phantom candidates (no file on disk) always lose to candidates with an existing file.
+- **Documentation**: Match Priority Policy section added to `README.md`; policy comment in
+  `pick_best_crc32_candidate()` mirrors the README table exactly, keeping code and docs in sync.
+- **Tests**: five new `MatcherTest` cases:
+  - `Sha1MatchDegradesToSha1OnlyWhenSha256Disagrees`
+  - `Sha1MatchIsExactWhenSha256AlsoAgrees`
+  - `Sha256LeadMatchIsExactWhenAllHashesAgree`
+  - `Sha256LeadMatchIsSha256OnlyWhenLowerHashDisagrees`
+  - `Crc32TiebreakerPrefersNonArchiveFile`
+
 ### ⚡ perf(database): Materialized status cache for reporting
 
 - **Problem**: ROM status was computed on the fly from a CTE joining `roms`, `games`,

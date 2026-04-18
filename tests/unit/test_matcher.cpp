@@ -8,20 +8,68 @@
 
 namespace {
 
+/// Returns a unique temp DB path for the currently-running test.
+/// Derived from the test suite name and test name so parallel CTest runs cannot collide.
+[[nodiscard]] std::filesystem::path make_unique_db_path(std::string_view suffix = "") {
+  const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+  std::string name =
+      std::string("romulus_") + info->test_suite_name() + "_" + info->name();
+  if (!suffix.empty()) {
+    name += "_";
+    name += suffix;
+  }
+  name += ".db";
+  return std::filesystem::temp_directory_path() / name;
+}
+
+/// Removes a SQLite database file and its WAL/SHM side-car files.
+void remove_db_files(const std::filesystem::path& path) {
+  std::filesystem::remove(path);
+  std::filesystem::remove(path.string() + "-wal");
+  std::filesystem::remove(path.string() + "-shm");
+}
+
+/// RAII helper that opens a temporary SQLite database and guarantees cleanup on
+/// destruction — even when a test exits early via an ASSERT_* macro.
+/// The WAL and SHM side-car files are removed before opening to avoid stale state
+/// from a previous (possibly crashed) run.
+struct TempDb {
+  std::filesystem::path path;
+  std::optional<romulus::database::Database> db;
+
+  explicit TempDb(std::filesystem::path p) : path(std::move(p)) {
+    remove_db_files(path); // clear stale WAL/SHM before opening
+    db.emplace(path);
+  }
+
+  ~TempDb() {
+    db.reset(); // close the connection before removing files
+    remove_db_files(path);
+  }
+
+  TempDb(const TempDb&) = delete;
+  TempDb& operator=(const TempDb&) = delete;
+
+  romulus::database::Database& operator*() {
+    return *db;
+  }
+  romulus::database::Database* operator->() {
+    return &*db;
+  }
+};
+
 class MatcherTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    db_path_ = std::filesystem::temp_directory_path() / "romulus_matcher_test.db";
-    std::filesystem::remove(db_path_);
+    db_path_ = make_unique_db_path();
+    remove_db_files(db_path_); // clear stale WAL/SHM before opening
     db_ = std::make_unique<romulus::database::Database>(db_path_);
     seed_data();
   }
 
   void TearDown() override {
     db_.reset();
-    std::filesystem::remove(db_path_);
-    std::filesystem::remove(db_path_.string() + "-wal");
-    std::filesystem::remove(db_path_.string() + "-shm");
+    remove_db_files(db_path_);
   }
 
   void seed_data() {
@@ -214,6 +262,277 @@ TEST_F(MatcherTest, MatchesMd5OnlyWhenOnlyMd5HashIsAvailable) {
   ASSERT_NE(md5_match, nullptr) << "Expected md5-only ROM match result";
   EXPECT_EQ(md5_match->match_type, romulus::core::MatchType::Md5Only);
   EXPECT_EQ(md5_match->global_rom_sha1, md5_only_global_sha1_);
+}
+
+// ── SHA256 cross-validation in the Exact determination ────────────────────────
+
+/// When a DAT ROM declares a SHA256 that disagrees with the scanned file's SHA256,
+/// the SHA1 match should be downgraded from Exact to Sha1Only.
+TEST_F(MatcherTest, Sha1MatchDegradesToSha1OnlyWhenSha256Disagrees) {
+  TempDb tdb(make_unique_db_path());
+
+  romulus::core::DatVersion dat{
+      .name = "Sha256ExactTest", .version = "1.0", .source_url = {}, .dat_sha256 = "x1",
+      .imported_at = {}};
+  auto dat_id = tdb->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = tdb->find_or_insert_game(*dat_id, "G");
+  ASSERT_TRUE(game_id.has_value());
+
+  // DAT ROM: SHA1 matches file, but SHA256 in DAT disagrees with file's SHA256.
+  const std::string sha1 = "aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000";
+  const std::string dat_sha256 = "dddd0000dddd0000dddd0000dddd0000dddd0000dddd0000dddd0000dddd0000";
+  const std::string file_sha256 = "eeee1111eeee1111eeee1111eeee1111eeee1111eeee1111eeee1111eeee1111";
+
+  romulus::core::RomInfo rom{.game_id = *game_id,
+                             .name = "mismatch_sha256.bin",
+                             .size = 512,
+                             .crc32 = "aabb1122",
+                             .md5 = "aabb1122aabb1122aabb1122aabb1122",
+                             .sha1 = sha1,
+                             .sha256 = dat_sha256, // DAT declares this SHA256
+                             .region = {}};
+  auto rom_id = tdb->insert_rom(rom);
+  ASSERT_TRUE(rom_id.has_value());
+
+  // GlobalRom/File: SHA1 matches but SHA256 is different from what the DAT says.
+  romulus::core::FileInfo file{
+      .path = "/roms/mismatch_sha256.bin",
+      .archive_path = std::nullopt,
+      .entry_name = std::nullopt,
+      .size = 512,
+      .crc32 = "aabb1122",
+      .md5 = "aabb1122aabb1122aabb1122aabb1122",
+      .sha1 = sha1,
+      .sha256 = file_sha256, // file has a different SHA256 than the DAT expects
+  };
+  ASSERT_TRUE(tdb->upsert_file(file).has_value());
+
+  auto results = romulus::engine::Matcher::match_all(*tdb);
+  ASSERT_TRUE(results.has_value()) << results.error().message;
+
+  ASSERT_EQ(results->size(), 1u);
+  // SHA1 matched but DAT SHA256 ≠ file SHA256 → should be Sha1Only, not Exact
+  EXPECT_EQ((*results)[0].match_type, romulus::core::MatchType::Sha1Only);
+}
+
+/// When a DAT ROM declares a SHA256 that agrees with the scanned file's SHA256,
+/// and SHA1 also matches, the result must be Exact.
+TEST_F(MatcherTest, Sha1MatchIsExactWhenSha256AlsoAgrees) {
+  TempDb tdb(make_unique_db_path());
+
+  romulus::core::DatVersion dat{
+      .name = "Sha256ExactTest2", .version = "1.0", .source_url = {}, .dat_sha256 = "x2",
+      .imported_at = {}};
+  auto dat_id = tdb->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = tdb->find_or_insert_game(*dat_id, "G");
+  ASSERT_TRUE(game_id.has_value());
+
+  const std::string sha1 = "bbbb1111bbbb1111bbbb1111bbbb1111bbbb1111";
+  const std::string sha256 = "cccc2222cccc2222cccc2222cccc2222cccc2222cccc2222cccc2222cccc2222";
+
+  romulus::core::RomInfo rom{.game_id = *game_id,
+                             .name = "full_match.bin",
+                             .size = 256,
+                             .crc32 = "bbcc1122",
+                             .md5 = "bbcc1122bbcc1122bbcc1122bbcc1122",
+                             .sha1 = sha1,
+                             .sha256 = sha256,
+                             .region = {}};
+  ASSERT_TRUE(tdb->insert_rom(rom).has_value());
+
+  romulus::core::FileInfo file{
+      .path = "/roms/full_match.bin",
+      .archive_path = std::nullopt,
+      .entry_name = std::nullopt,
+      .size = 256,
+      .crc32 = "bbcc1122",
+      .md5 = "bbcc1122bbcc1122bbcc1122bbcc1122",
+      .sha1 = sha1,
+      .sha256 = sha256, // matches DAT SHA256
+  };
+  ASSERT_TRUE(tdb->upsert_file(file).has_value());
+
+  auto results = romulus::engine::Matcher::match_all(*tdb);
+  ASSERT_TRUE(results.has_value()) << results.error().message;
+
+  ASSERT_EQ(results->size(), 1u);
+  EXPECT_EQ((*results)[0].match_type, romulus::core::MatchType::Exact);
+}
+
+// ── SHA256-led match cross-validation ─────────────────────────────────────────
+
+/// When a DAT ROM has no SHA1 but has a SHA256 that matches a GlobalRom, and all other
+/// available hashes (MD5, CRC32) also agree, the match must be classified as Exact.
+TEST_F(MatcherTest, Sha256LeadMatchIsExactWhenAllHashesAgree) {
+  TempDb tdb(make_unique_db_path());
+
+  romulus::core::DatVersion dat{
+      .name = "Sha256LeadExact", .version = "1.0", .source_url = {}, .dat_sha256 = "z1",
+      .imported_at = {}};
+  auto dat_id = tdb->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = tdb->find_or_insert_game(*dat_id, "G");
+  ASSERT_TRUE(game_id.has_value());
+
+  // DAT ROM: no SHA1, but has SHA256 + MD5 + CRC32 (enriched DAT entry)
+  const std::string sha256 = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+  const std::string sha1 = "1234567890abcdef1234567890abcdef12345678";
+
+  romulus::core::RomInfo rom{.game_id = *game_id,
+                             .name = "sha256_lead.bin",
+                             .size = 256,
+                             .crc32 = "12345678",
+                             .md5 = "1234567890abcdef1234567890abcdef",
+                             .sha1 = {},     // DAT has no SHA1
+                             .sha256 = sha256,
+                             .region = {}};
+  ASSERT_TRUE(tdb->insert_rom(rom).has_value());
+
+  // File has all hashes, including SHA256 matching the DAT
+  romulus::core::FileInfo file{
+      .path = "/roms/sha256_lead.bin",
+      .archive_path = std::nullopt,
+      .entry_name = std::nullopt,
+      .size = 256,
+      .crc32 = "12345678",
+      .md5 = "1234567890abcdef1234567890abcdef",
+      .sha1 = sha1,
+      .sha256 = sha256,
+  };
+  ASSERT_TRUE(tdb->upsert_file(file).has_value());
+
+  auto results = romulus::engine::Matcher::match_all(*tdb);
+  ASSERT_TRUE(results.has_value()) << results.error().message;
+
+  ASSERT_EQ(results->size(), 1u);
+  // SHA256 led the match, and CRC32+MD5 also agree → Exact
+  EXPECT_EQ((*results)[0].match_type, romulus::core::MatchType::Exact);
+}
+
+/// When a DAT ROM has no SHA1 but has a SHA256 that matches, and a lower hash (CRC32)
+/// disagrees, the match must remain Sha256Only — not Exact.
+TEST_F(MatcherTest, Sha256LeadMatchIsSha256OnlyWhenLowerHashDisagrees) {
+  TempDb tdb(make_unique_db_path());
+
+  romulus::core::DatVersion dat{
+      .name = "Sha256LeadPartial", .version = "1.0", .source_url = {}, .dat_sha256 = "z2",
+      .imported_at = {}};
+  auto dat_id = tdb->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = tdb->find_or_insert_game(*dat_id, "G");
+  ASSERT_TRUE(game_id.has_value());
+
+  const std::string sha256 = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
+  const std::string sha1 = "abcdef1234567890abcdef1234567890abcdef12";
+
+  // DAT ROM: no SHA1, SHA256 matches file, but CRC32 in DAT disagrees with file CRC32
+  romulus::core::RomInfo rom{.game_id = *game_id,
+                             .name = "sha256_partial.bin",
+                             .size = 128,
+                             .crc32 = "aabbccdd", // DAT CRC32 differs from file CRC32
+                             .md5 = {},
+                             .sha1 = {},
+                             .sha256 = sha256,
+                             .region = {}};
+  ASSERT_TRUE(tdb->insert_rom(rom).has_value());
+
+  romulus::core::FileInfo file{
+      .path = "/roms/sha256_partial.bin",
+      .archive_path = std::nullopt,
+      .entry_name = std::nullopt,
+      .size = 128,
+      .crc32 = "11223344", // different CRC32 from what the DAT declares
+      .md5 = {},
+      .sha1 = sha1,
+      .sha256 = sha256, // SHA256 matches DAT
+  };
+  ASSERT_TRUE(tdb->upsert_file(file).has_value());
+
+  auto results = romulus::engine::Matcher::match_all(*tdb);
+  ASSERT_TRUE(results.has_value()) << results.error().message;
+
+  ASSERT_EQ(results->size(), 1u);
+  // SHA256 matched but CRC32 disagrees → Sha256Only, not Exact
+  EXPECT_EQ((*results)[0].match_type, romulus::core::MatchType::Sha256Only);
+}
+
+/// When two CRC32 candidates have no SHA256 cross-match, prefer the one backed by a
+/// bare (non-archive) file on disk over one backed only by an archive entry.
+TEST_F(MatcherTest, Crc32TiebreakerPrefersNonArchiveFile) {
+  TempDb tdb(make_unique_db_path());
+
+  romulus::core::DatVersion dat{
+      .name = "CRC32BareTBTest", .version = "1.0", .source_url = {}, .dat_sha256 = "y2",
+      .imported_at = {}};
+  auto dat_id = tdb->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = tdb->find_or_insert_game(*dat_id, "G");
+  ASSERT_TRUE(game_id.has_value());
+
+  const std::string shared_crc32 = "cafebabe";
+  const std::string sha1_archive = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
+  const std::string sha1_bare = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
+
+  // DAT ROM: only CRC32, no SHA256.
+  romulus::core::RomInfo rom{.game_id = *game_id,
+                             .name = "bare_wins.bin",
+                             .size = 64,
+                             .crc32 = shared_crc32,
+                             .md5 = {},
+                             .sha1 = {},
+                             .sha256 = {},
+                             .region = {}};
+  ASSERT_TRUE(tdb->insert_rom(rom).has_value());
+
+  // global_rom_archive: backed only by an archive entry
+  romulus::core::GlobalRom global_rom_archive{
+      .sha1 = sha1_archive, .sha256 = {}, .md5 = {}, .crc32 = shared_crc32, .size = 64};
+  // global_rom_bare: backed by a bare file
+  romulus::core::GlobalRom global_rom_bare{
+      .sha1 = sha1_bare, .sha256 = {}, .md5 = {}, .crc32 = shared_crc32, .size = 64};
+  ASSERT_TRUE(tdb->upsert_global_rom(global_rom_archive).has_value());
+  ASSERT_TRUE(tdb->upsert_global_rom(global_rom_bare).has_value());
+
+  // File for archive candidate: entry_name is set → archive entry
+  romulus::core::FileInfo archive_file{
+      .path = "/roms/collection.zip::bare_wins.bin",
+      .archive_path = "/roms/collection.zip",
+      .entry_name = "bare_wins.bin",
+      .size = 64,
+      .crc32 = shared_crc32,
+      .md5 = {},
+      .sha1 = sha1_archive,
+      .sha256 = {},
+  };
+  ASSERT_TRUE(tdb->upsert_file(archive_file).has_value());
+
+  // File for bare candidate: no entry_name → bare file
+  romulus::core::FileInfo bare_file{
+      .path = "/roms/bare_wins.bin",
+      .archive_path = std::nullopt,
+      .entry_name = std::nullopt,
+      .size = 64,
+      .crc32 = shared_crc32,
+      .md5 = {},
+      .sha1 = sha1_bare,
+      .sha256 = {},
+  };
+  ASSERT_TRUE(tdb->upsert_file(bare_file).has_value());
+
+  auto results = romulus::engine::Matcher::match_all(*tdb);
+  ASSERT_TRUE(results.has_value()) << results.error().message;
+
+  ASSERT_EQ(results->size(), 1u);
+  EXPECT_EQ((*results)[0].match_type, romulus::core::MatchType::Crc32Only);
+  // Bare file should win over the archive entry.
+  EXPECT_EQ((*results)[0].global_rom_sha1, sha1_bare);
 }
 
 } // namespace

@@ -146,6 +146,9 @@ public:
   [[nodiscard]] Result<std::int64_t> upsert_file(const core::FileInfo& file);
   [[nodiscard]] Result<std::optional<core::FileInfo>> find_file_by_path(std::string_view path);
   [[nodiscard]] Result<std::vector<core::FileInfo>> get_all_files();
+  /// Returns lightweight file metadata (sha1, path, entry_name, last_write_time) for all
+  /// files. Used by the matcher's CRC32 tiebreaker to avoid loading full BLOB hash columns.
+  [[nodiscard]] Result<std::vector<core::FileTiebreakInfo>> get_file_tiebreak_info();
   /// Returns a map of virtual path → FileFingerprint (size + last_write_time).
   /// Used by the service layer to build the skip-check predicate: a file is skipped
   /// only when its current size and last_write_time both match the stored values.

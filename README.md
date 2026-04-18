@@ -223,12 +223,56 @@ dat_versions ──< games ──< roms
 
 | `match_type` | Value | Meaning |
 |---|---|---|
-| `Exact` | 0 | CRC32 + MD5 + SHA1 all agree — gold standard |
-| `Sha256Only` | 1 | Only SHA-256 matches (enriched DAT entry) |
-| `Sha1Only` | 2 | Only SHA-1 matches |
-| `Md5Only` | 3 | Only MD5 matches |
-| `Crc32Only` | 4 | Only CRC32 matches |
+| `Exact` | 0 | All available hashes agree (SHA-1 / SHA-256 / MD5 / CRC32 — each check skipped when either side lacks the hash) |
+| `Sha256Only` | 1 | SHA-256 matched; other hashes disagreed or were absent |
+| `Sha1Only` | 2 | SHA-1 matched; other hashes disagreed or were absent |
+| `Md5Only` | 3 | MD5 matched |
+| `Crc32Only` | 4 | CRC32 matched (weakest) |
 | `NoMatch` | 5 | No match found |
+
+---
+
+## 🎯 ~ MATCH PRIORITY POLICY ~
+
+> *"Know thy hashes, and let none confound thee." — Gandalf, again*
+
+### Tier Order (highest to lowest)
+
+Every DAT ROM is matched against the scanned `global_roms` table using the following priority:
+
+| Priority | Hash | Notes |
+|---|---|---|
+| 1 | **SHA-1** | Industry standard for No-Intro / Redump DATs. Fastest reliable match. |
+| 2 | **SHA-256** | Used when the DAT provides SHA-256 but no SHA-1 (enriched DATs). |
+| 3 | **MD5** | Weaker fallback for legacy or partial DAT entries. |
+| 4 | **CRC32** | Weakest — collisions are rare but possible. Multiple candidates use the tiebreaker below. |
+
+The first tier that finds a matching `global_rom` wins and no lower tier is attempted.
+
+### Exact vs Partial Classification
+
+A match is classified as **`Exact`** when *every* hash declared by the DAT ROM agrees with the matched `global_rom` (hashes absent from either side are skipped):
+
+- SHA-1 **and** SHA-256 **and** MD5 **and** CRC32 all agree → `Exact`
+- Only SHA-1 agreed (SHA-256 or lower hash disagreed) → `Sha1Only`
+- SHA-256 led the match but a lower hash disagreed → `Sha256Only`
+
+This means enriched DATs that carry SHA-256 get full cross-validation — a SHA-1 match with a mismatched SHA-256 is flagged as `Sha1Only`, not `Exact`.
+
+### Within-Tier Tiebreaker (CRC32 only)
+
+CRC32 is the only tier where multiple `global_roms` can share the same hash value (collisions). When that happens, the **best candidate** is selected using this ordered rule chain:
+
+| Rank | Rule | Rationale |
+|---|---|---|
+| 1 | **Bare (non-archive) file** preferred over archive entry | Bare files are unambiguous — no zip/7z extraction needed |
+| 2 | **Shortest virtual path** among candidates at same rank | Shorter paths are typically closer to the root scan folder |
+| 3 | **Latest `last_write_time`** if paths are same length | Most recently modified file is the most "current" copy |
+| 4 | **Lexicographically smallest SHA-1** | Deterministic fallback — always produces the same answer |
+
+Phantom candidates (no file currently on disk) always lose to candidates with an existing file.
+
+> 🔒 *Policy source of truth: [`lib/romulus/engine/matcher.cpp`](lib/romulus/engine/matcher.cpp) — `pick_best_crc32_candidate()`. This table mirrors that function exactly.*
 
 ---
 
@@ -273,6 +317,9 @@ Compares every `rom` against every `global_rom` in priority order:
 ```
 SHA-1  →  SHA-256  →  MD5  →  CRC32
 ```
+
+Each tier cross-validates all available hashes to determine `Exact` vs a partial match type.
+When CRC32 yields multiple candidates, the tiebreaker selects the best one (see *Match Priority Policy* above).
 
 Inserts `rom_matches` rows with the `match_type` verdict.
 

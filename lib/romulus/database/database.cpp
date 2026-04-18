@@ -1117,8 +1117,25 @@ Result<std::vector<core::FileInfo>> Database::get_all_files() {
   return files;
 }
 
-Result<core::FingerprintMap> Database::get_file_fingerprints() {
-  auto stmt = prepare("SELECT path, size, last_write_time FROM files");
+Result<std::vector<core::FileTiebreakInfo>> Database::get_file_tiebreak_info() {
+  auto stmt = prepare("SELECT sha1, path, entry_name, last_write_time FROM files");
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+
+  std::vector<core::FileTiebreakInfo> files;
+  while (stmt->step()) {
+    files.push_back({
+        .sha1 = bytes_to_hex(stmt->column_blob(0)),
+        .path = stmt->column_text(1),
+        .entry_name = stmt->column_optional_text(2),
+        .last_write_time = stmt->column_int64(3),
+    });
+  }
+  return files;
+}
+
+Result<core::FingerprintMap> Database::get_file_fingerprints() {  auto stmt = prepare("SELECT path, size, last_write_time FROM files");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
