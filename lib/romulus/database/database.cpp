@@ -1126,6 +1126,30 @@ Result<std::int64_t> Database::remove_missing_files(
   return removed;
 }
 
+Result<std::int64_t> Database::remove_files_by_virtual_paths(
+    const std::vector<std::string>& paths) {
+  if (paths.empty()) {
+    return 0;
+  }
+  // 'path' is the UNIQUE / primary lookup key for the files table (see schema: UNIQUE(path)).
+  // DELETE by path is an indexed O(1) operation per row — far cheaper than the keep-list
+  // approach used by remove_missing_files() which loads all rows including hash blobs.
+  auto stmt = prepare("DELETE FROM files WHERE path = ?1");
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+  std::int64_t removed = 0;
+  for (const auto& path : paths) {
+    stmt->bind_text(1, path);
+    stmt->execute();
+    if (sqlite3_changes(db_) > 0) {
+      ++removed;
+    }
+    stmt->reset();
+  }
+  return removed;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Global ROMs CRUD
 // ═══════════════════════════════════════════════════════════════

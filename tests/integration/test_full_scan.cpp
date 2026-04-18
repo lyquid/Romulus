@@ -2,9 +2,11 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <string>
 
 namespace {
 
@@ -13,10 +15,17 @@ const std::filesystem::path k_FixturesDir{ROMULUS_TEST_FIXTURES_DIR};
 class FullScanTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    db_path_ = std::filesystem::temp_directory_path() / "romulus_integration_test.db";
-    rom_dir_ = std::filesystem::temp_directory_path() / "romulus_test_roms";
-    other_dir_ = std::filesystem::temp_directory_path() / "romulus_test_other_roms";
+    // Use unique names per test to avoid collisions under parallel CTest runs.
+    const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    const std::string base =
+        std::string("romulus_int_") + info->test_suite_name() + "_" + info->name();
+    db_path_ = std::filesystem::temp_directory_path() / (base + ".db");
+    rom_dir_ = std::filesystem::temp_directory_path() / (base + "_roms");
+    other_dir_ = std::filesystem::temp_directory_path() / (base + "_other_roms");
+
     std::filesystem::remove(db_path_);
+    std::filesystem::remove(db_path_.string() + "-wal");
+    std::filesystem::remove(db_path_.string() + "-shm");
     std::filesystem::create_directories(rom_dir_);
     // other_dir_ is created on demand by the test that needs it
 
@@ -326,7 +335,10 @@ TEST_F(FullScanTest, ScanPreservesFilesFromOtherDirectories) {
   auto files_after = svc.get_all_files();
   ASSERT_TRUE(files_after.has_value());
   ASSERT_EQ(files_after->size(), 1u);
-  EXPECT_NE(files_after->front().path.find("other.bin"), std::string::npos);
+  // get_all_files() does not guarantee a stable row order, so search rather than index front().
+  EXPECT_TRUE(std::ranges::any_of(*files_after, [](const auto& f) {
+    return f.path.find("other.bin") != std::string::npos;
+  }));
 }
 
 } // namespace
