@@ -25,7 +25,7 @@ namespace {
 [[nodiscard]] const core::GlobalRom* pick_best_crc32_candidate(
     const std::vector<const core::GlobalRom*>& candidates,
     const std::unordered_map<std::string_view,
-                             std::vector<const core::FileInfo*>,
+                             std::vector<const core::FileTiebreakInfo*>,
                              core::StringViewHash,
                              std::equal_to<>>& files_by_sha1) {
   if (candidates.empty()) {
@@ -143,8 +143,9 @@ Result<std::vector<core::MatchResult>> Matcher::match_all(database::Database& db
     return std::unexpected(global_roms.error());
   }
 
-  // Load files to enable CRC32 tiebreaking (see pick_best_crc32_candidate).
-  auto files = db.get_all_files();
+  // Load lean file metadata (sha1, path, entry_name, last_write_time) for CRC32 tiebreaking.
+  // Using get_file_tiebreak_info() avoids loading full BLOB hash columns from the files table.
+  auto files = db.get_file_tiebreak_info();
   if (!files) {
     return std::unexpected(files.error());
   }
@@ -188,7 +189,7 @@ Result<std::vector<core::MatchResult>> Matcher::match_all(database::Database& db
 
   // Index scanned files by SHA1 for CRC32 tiebreaking.
   std::unordered_map<std::string_view,
-                     std::vector<const core::FileInfo*>,
+                     std::vector<const core::FileTiebreakInfo*>,
                      core::StringViewHash,
                      std::equal_to<>>
       files_by_sha1;
