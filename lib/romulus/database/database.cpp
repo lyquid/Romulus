@@ -359,6 +359,19 @@ CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 /// is wiped and rebuilt so queries never encounter stale column layouts.
 constexpr int k_SchemaVersion = 7;
 
+/// Shared SQL CASE fragment that maps rom_matches + files columns to a status integer.
+/// Status codes: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch.
+/// match_type=0 is MatchType::Exact (see match_type_to_int).
+/// Referenced in refresh_status_cache, get_collection_summary, and get_all_roms_with_status
+/// to ensure the status logic is defined exactly once.
+constexpr std::string_view k_StatusCaseSql =
+    "CASE "
+    "  WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1 "
+    "  WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 0 "
+    "  WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2 "
+    "  ELSE 3 "
+    "END";
+
 int match_type_to_int(core::MatchType type) {
   switch (type) {
     case core::MatchType::Exact:
@@ -391,6 +404,22 @@ core::MatchType int_to_match_type(int value) {
       return core::MatchType::Crc32Only;
     default:
       return core::MatchType::NoMatch;
+  }
+}
+
+/// Converts a status integer from rom_status_cache (or the status CASE expression)
+/// to the corresponding RomStatusType enum value.
+/// Status codes match k_StatusCaseSql: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch.
+core::RomStatusType int_to_rom_status(int value) {
+  switch (value) {
+    case 0:
+      return core::RomStatusType::Verified;
+    case 2:
+      return core::RomStatusType::Unverified;
+    case 3:
+      return core::RomStatusType::Mismatch;
+    default:
+      return core::RomStatusType::Missing;
   }
 }
 
@@ -1329,23 +1358,18 @@ Result<void> Database::clear_matches() {
 
 Result<void> Database::refresh_status_cache() {
   // Recompute every ROM's status in a single INSERT OR REPLACE pass.
-  // Status mapping: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch
+  // Uses the shared k_StatusCaseSql fragment so the logic stays in sync with
+  // get_collection_summary() and get_all_roms_with_status().
   //
   // This populates rom_status_cache from rom_matches + files, replacing stale
   // entries with current values. Subsequent reads (get_collection_summary,
   // get_all_roms_with_status) can then hit the cache instead of re-running the
   // full JOIN on every call.
-  constexpr std::string_view sql =
-      "INSERT OR REPLACE INTO rom_status_cache (rom_id, status, updated_at) "
-      "SELECT r.id, "
-      "  CASE "
-      "    WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1 "
-      "    WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
-      "         THEN 0 "
-      "    WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2 "
-      "    ELSE 3 "
-      "  END, "
-      "  datetime('now', 'localtime') "
+  const std::string sql =
+      std::string("INSERT OR REPLACE INTO rom_status_cache (rom_id, status, updated_at) "
+                  "SELECT r.id, ") +
+      std::string(k_StatusCaseSql) +
+      ", datetime('now', 'localtime') "
       "FROM roms r "
       "LEFT JOIN rom_matches rm ON r.id = rm.rom_id "
       "LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1 "
@@ -1368,17 +1392,7 @@ Result<core::RomStatusType> Database::get_computed_rom_status(std::int64_t rom_i
   if (cache_stmt) {
     cache_stmt->bind_int64(1, rom_id);
     if (cache_stmt->step()) {
-      const auto status = static_cast<int>(cache_stmt->column_int64(0));
-      switch (status) {
-        case 0:
-          return core::RomStatusType::Verified;
-        case 1:
-          return core::RomStatusType::Missing;
-        case 2:
-          return core::RomStatusType::Unverified;
-        default:
-          return core::RomStatusType::Mismatch;
-      }
+      return int_to_rom_status(static_cast<int>(cache_stmt->column_int64(0)));
     }
   }
 
@@ -1469,19 +1483,12 @@ Result<core::CollectionSummary> Database::get_collection_summary(
 
   // Slow path: compute status dynamically using a CTE.
   // Used when the cache has not yet been populated (e.g. first run, or direct DB access).
-  // Status mapping: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch
+  // Uses k_StatusCaseSql for the status computation (same logic as refresh_status_cache).
   std::string sql =
-      "WITH computed AS ("
-      "  SELECT r.id AS rom_id,"
-      "    CASE"
-      "      WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1" // 1=Missing: no match entry
-      "      WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
-      "           THEN 0" // 0=Verified: exact match (type=0) with file on disk
-      "      WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2" // 2=Unverified:
-                                                                                  // partial match +
-                                                                                  // file present
-      "      ELSE 3" // 3=Mismatch: match exists but file deleted
-      "    END AS status"
+      std::string("WITH computed AS ("
+                  "  SELECT r.id AS rom_id, ") +
+      std::string(k_StatusCaseSql) +
+      " AS status"
       "  FROM roms r"
       "  JOIN games g ON r.game_id = g.id"
       "  LEFT JOIN rom_matches rm ON r.id = rm.rom_id"
@@ -1531,21 +1538,14 @@ Database::get_all_roms_with_status(std::int64_t dat_version_id) {
   // This replaces the N+1 pattern (one get_computed_rom_status() call per ROM)
   // with a single set-based operation.
   //
-  // When the cache is unpopulated, a CASE expression inlines the status logic so
+  // When the cache is unpopulated, k_StatusCaseSql inlines the status logic so
   // the query is still correct without requiring a prior refresh_status_cache() call.
   const std::string sql =
-      "SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
-      "  r.crc32, r.md5, r.expected_sha1, r.sha256, r.region, "
-      "  COALESCE("
-      "    rsc.status,"
-      "    CASE "
-      "      WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1 "
-      "      WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
-      "           THEN 0 "
-      "      WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2 "
-      "      ELSE 3 "
-      "    END"
-      "  ) AS status "
+      std::string("SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
+                  "  r.crc32, r.md5, r.expected_sha1, r.sha256, r.region, "
+                  "  COALESCE(rsc.status, ") +
+      std::string(k_StatusCaseSql) +
+      ") AS status "
       "FROM roms r "
       "JOIN games g ON r.game_id = g.id "
       "LEFT JOIN rom_status_cache rsc ON r.id = rsc.rom_id "
@@ -1579,22 +1579,7 @@ Database::get_all_roms_with_status(std::int64_t dat_version_id) {
     };
 
     const auto status_int = static_cast<int>(stmt->column_int64(11));
-    core::RomStatusType status = core::RomStatusType::Missing;
-    switch (status_int) {
-      case 0:
-        status = core::RomStatusType::Verified;
-        break;
-      case 2:
-        status = core::RomStatusType::Unverified;
-        break;
-      case 3:
-        status = core::RomStatusType::Mismatch;
-        break;
-      default:
-        status = core::RomStatusType::Missing;
-        break;
-    }
-    result.emplace_back(std::move(rom), status);
+    result.emplace_back(std::move(rom), int_to_rom_status(status_int));
   }
   return result;
 }
