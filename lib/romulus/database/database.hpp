@@ -180,10 +180,13 @@ public:
 
   // ── Status (cached + computed from rom_matches + files) ──────
 
-  /// Recomputes the status of every ROM in a single pass and stores results in
-  /// rom_status_cache. Call this after verify() to prime the cache for fast
-  /// subsequent reads by get_collection_summary() and get_all_roms_with_status().
-  [[nodiscard]] Result<void> refresh_status_cache();
+  /// Recomputes ROM statuses and stores results in rom_status_cache.
+  /// When dat_version_id is provided, only ROMs belonging to that DAT are
+  /// refreshed (more efficient for per-DAT verify). When omitted, all ROMs are
+  /// refreshed. Call this BEFORE classify_all() inside verify() so that
+  /// get_collection_summary() always reads fresh data.
+  [[nodiscard]] Result<void> refresh_status_cache(
+      std::optional<std::int64_t> dat_version_id = {});
 
   /// Computes the status of a single ROM. Reads from rom_status_cache when
   /// populated; falls back to querying rom_matches + files on a cache miss.

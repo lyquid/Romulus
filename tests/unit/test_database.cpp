@@ -725,4 +725,53 @@ TEST_F(DatabaseTest, GetAllRomsWithStatusReturnsBatchResults) {
   EXPECT_EQ(mc, 1);
 }
 
+TEST_F(DatabaseTest, RefreshStatusCacheReflectsDataChangeAfterStaleCachePopulated) {
+  // Regression test: populate cache → mutate data → re-refresh → verify stale
+  // values are NOT returned (i.e. the cache is not stuck on the first refresh).
+  romulus::core::DatVersion dat{
+      .name = "MD", .version = "1.0", .source_url = {}, .dat_sha256 = "rsc4", .imported_at = {}};
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = db_->find_or_insert_game(*dat_id, "Sonic");
+  ASSERT_TRUE(game_id.has_value());
+
+  const std::string sha1 = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+  romulus::core::RomInfo rom{.id = 0,
+                             .game_id = *game_id,
+                             .name = "sonic.md",
+                             .size = 0,
+                             .crc32 = {},
+                             .md5 = {},
+                             .sha1 = sha1,
+                             .sha256 = {},
+                             .region = {}};
+  auto rom_id = db_->insert_rom(rom);
+  ASSERT_TRUE(rom_id.has_value());
+
+  // Phase 1: no match — ROM is Missing. Populate cache.
+  ASSERT_TRUE(db_->refresh_status_cache().has_value());
+  auto s1 = db_->get_computed_rom_status(*rom_id);
+  ASSERT_TRUE(s1.has_value());
+  EXPECT_EQ(*s1, romulus::core::RomStatusType::Missing);
+
+  // Phase 2: add a file + exact match (ROM becomes Verified).
+  ASSERT_TRUE(db_->upsert_file(make_file("/roms/sonic.md", sha1)).has_value());
+  romulus::core::MatchResult match{
+      .rom_id = *rom_id, .global_rom_sha1 = sha1, .match_type = romulus::core::MatchType::Exact};
+  ASSERT_TRUE(db_->insert_rom_match(match).has_value());
+
+  // Re-refresh — cache must now reflect Verified, not the stale Missing.
+  ASSERT_TRUE(db_->refresh_status_cache().has_value());
+  auto s2 = db_->get_computed_rom_status(*rom_id);
+  ASSERT_TRUE(s2.has_value());
+  EXPECT_EQ(*s2, romulus::core::RomStatusType::Verified);
+
+  // Summary must also reflect the updated cache.
+  auto summary = db_->get_collection_summary();
+  ASSERT_TRUE(summary.has_value());
+  EXPECT_EQ(summary->verified, 1);
+  EXPECT_EQ(summary->missing, 0);
+}
+
 } // namespace

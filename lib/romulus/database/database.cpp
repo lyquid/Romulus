@@ -1356,30 +1356,39 @@ Result<void> Database::clear_matches() {
 // Status Cache (materialized precomputed ROM statuses)
 // ═══════════════════════════════════════════════════════════════
 
-Result<void> Database::refresh_status_cache() {
-  // Recompute every ROM's status in a single INSERT OR REPLACE pass.
-  // Uses the shared k_StatusCaseSql fragment so the logic stays in sync with
-  // get_collection_summary() and get_all_roms_with_status().
+Result<void> Database::refresh_status_cache(std::optional<std::int64_t> dat_version_id) {
+  // Recompute ROM statuses in a single INSERT OR REPLACE pass.
+  // Always joins games so the optional dat_version_id filter can be applied.
+  // Uses k_StatusCaseSql so the logic stays in sync with get_collection_summary()
+  // and get_all_roms_with_status().
   //
-  // This populates rom_status_cache from rom_matches + files, replacing stale
-  // entries with current values. Subsequent reads (get_collection_summary,
-  // get_all_roms_with_status) can then hit the cache instead of re-running the
-  // full JOIN on every call.
-  const std::string sql =
+  // When dat_version_id is provided, only ROMs in that DAT are refreshed —
+  // useful when verify() is scoped to a single DAT in a multi-DAT database.
+  std::string sql =
       std::string("INSERT OR REPLACE INTO rom_status_cache (rom_id, status, updated_at) "
                   "SELECT r.id, ") +
       std::string(k_StatusCaseSql) +
       ", datetime('now', 'localtime') "
       "FROM roms r "
+      "JOIN games g ON r.game_id = g.id "
       "LEFT JOIN rom_matches rm ON r.id = rm.rom_id "
-      "LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1 "
-      "GROUP BY r.id";
+      "LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1";
 
-  auto result = execute(sql);
-  if (result) {
-    ROMULUS_DEBUG("ROM status cache refreshed ({} entries).", sqlite3_changes(db_));
+  if (dat_version_id.has_value()) {
+    sql += " WHERE g.dat_version_id = ?1";
   }
-  return result;
+  sql += " GROUP BY r.id";
+
+  auto stmt = prepare(sql);
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+  if (dat_version_id.has_value()) {
+    stmt->bind_int64(1, *dat_version_id);
+  }
+  stmt->execute();
+  ROMULUS_DEBUG("ROM status cache refreshed ({} entries).", sqlite3_changes(db_));
+  return {};
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1439,50 +1448,73 @@ Result<core::RomStatusType> Database::get_computed_rom_status(std::int64_t rom_i
 
 Result<core::CollectionSummary> Database::get_collection_summary(
     std::optional<std::int64_t> dat_version_id) {
-  // Fast path: aggregate precomputed statuses from the cache when available.
-  // The cache is populated by refresh_status_cache() (called after verify()).
-  // COUNT(*) == 0 means the cache is empty — fall through to the CTE slow path.
-  auto cache_check = prepare("SELECT COUNT(*) FROM rom_status_cache");
-  if (cache_check && cache_check->step() && cache_check->column_int64(0) > 0) {
-    std::string sql =
-        "SELECT "
-        "  COALESCE((SELECT name FROM dat_versions WHERE id = ?1), 'All DATs'), "
-        "  COUNT(*), "
-        "  SUM(CASE WHEN rsc.status = 0 THEN 1 ELSE 0 END), "
-        "  SUM(CASE WHEN rsc.status = 1 THEN 1 ELSE 0 END), "
-        "  SUM(CASE WHEN rsc.status = 2 THEN 1 ELSE 0 END), "
-        "  SUM(CASE WHEN rsc.status = 3 THEN 1 ELSE 0 END) "
-        "FROM rom_status_cache rsc "
-        "JOIN roms r ON rsc.rom_id = r.id "
-        "JOIN games g ON r.game_id = g.id";
+  // Fast path: if every ROM in scope has a cached status row, aggregate directly
+  // from the cache — no rom_matches/files joins, no GROUP BY.
+  //
+  // Coverage check: compare the count of ROMs in scope against the count of cache
+  // rows for those ROMs. Using a single coverage query is cheaper than
+  // COUNT(*) FROM rom_status_cache (which scans the whole cache) and avoids the
+  // silent exclusion bug that occurs when the cache is partially populated.
+  {
+    const std::string coverage_sql =
+        std::string("SELECT COUNT(r.id), COUNT(rsc.rom_id) "
+                    "FROM roms r "
+                    "JOIN games g ON r.game_id = g.id "
+                    "LEFT JOIN rom_status_cache rsc ON r.id = rsc.rom_id") +
+        (dat_version_id.has_value() ? " WHERE g.dat_version_id = ?1" : "");
 
-    if (dat_version_id.has_value()) {
-      sql += " WHERE g.dat_version_id = ?1";
-    }
-
-    auto stmt = prepare(sql);
-    if (stmt) {
+    auto cov = prepare(coverage_sql);
+    if (cov) {
       if (dat_version_id.has_value()) {
-        stmt->bind_int64(1, *dat_version_id);
-      } else {
-        stmt->bind_null(1);
+        cov->bind_int64(1, *dat_version_id);
       }
+      if (cov->step()) {
+        const auto total = cov->column_int64(0);
+        const auto cached = cov->column_int64(1);
+        if (total > 0 && total == cached) {
+          // Full cache coverage — use the cheap cache-only aggregate query.
+          std::string sql =
+              "SELECT "
+              "  COALESCE((SELECT name FROM dat_versions WHERE id = ?1), 'All DATs'), "
+              "  COUNT(*), "
+              "  SUM(CASE WHEN rsc.status = 0 THEN 1 ELSE 0 END), "
+              "  SUM(CASE WHEN rsc.status = 1 THEN 1 ELSE 0 END), "
+              "  SUM(CASE WHEN rsc.status = 2 THEN 1 ELSE 0 END), "
+              "  SUM(CASE WHEN rsc.status = 3 THEN 1 ELSE 0 END) "
+              "FROM roms r "
+              "JOIN games g ON r.game_id = g.id "
+              "JOIN rom_status_cache rsc ON r.id = rsc.rom_id";
 
-      core::CollectionSummary summary;
-      if (stmt->step()) {
-        summary.dat_name = stmt->column_text(0);
-        summary.total_roms = stmt->column_int64(1);
-        summary.verified = stmt->column_int64(2);
-        summary.missing = stmt->column_int64(3);
-        summary.unverified = stmt->column_int64(4);
-        summary.mismatch = stmt->column_int64(5);
+          if (dat_version_id.has_value()) {
+            sql += " WHERE g.dat_version_id = ?1";
+          }
+
+          auto stmt = prepare(sql);
+          if (stmt) {
+            if (dat_version_id.has_value()) {
+              stmt->bind_int64(1, *dat_version_id);
+            } else {
+              stmt->bind_null(1);
+            }
+
+            core::CollectionSummary summary;
+            if (stmt->step()) {
+              summary.dat_name = stmt->column_text(0);
+              summary.total_roms = stmt->column_int64(1);
+              summary.verified = stmt->column_int64(2);
+              summary.missing = stmt->column_int64(3);
+              summary.unverified = stmt->column_int64(4);
+              summary.mismatch = stmt->column_int64(5);
+            }
+            return summary;
+          }
+        }
       }
-      return summary;
     }
   }
 
   // Slow path: compute status dynamically using a CTE.
-  // Used when the cache has not yet been populated (e.g. first run, or direct DB access).
+  // Used when the cache is absent, empty, or only partially covers the scope.
   // Uses k_StatusCaseSql for the status computation (same logic as refresh_status_cache).
   std::string sql =
       std::string("WITH computed AS ("
@@ -1534,26 +1566,51 @@ Result<core::CollectionSummary> Database::get_collection_summary(
 
 Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>>
 Database::get_all_roms_with_status(std::int64_t dat_version_id) {
-  // Fast path: join roms with the precomputed status cache in a single query.
-  // This replaces the N+1 pattern (one get_computed_rom_status() call per ROM)
-  // with a single set-based operation.
-  //
-  // When the cache is unpopulated, k_StatusCaseSql inlines the status logic so
-  // the query is still correct without requiring a prior refresh_status_cache() call.
-  const std::string sql =
-      std::string("SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
-                  "  r.crc32, r.md5, r.expected_sha1, r.sha256, r.region, "
-                  "  COALESCE(rsc.status, ") +
-      std::string(k_StatusCaseSql) +
-      ") AS status "
+  // Coverage check: if every ROM for this DAT has a cached status row, use the
+  // simple cache-only query (no rom_matches/files joins, no GROUP BY aggregate).
+  // Otherwise fall through to the COALESCE computed query, which inlines
+  // k_StatusCaseSql so the result is correct even on a cold or partial cache.
+  constexpr std::string_view k_CoverageSql =
+      "SELECT COUNT(r.id), COUNT(rsc.rom_id) "
       "FROM roms r "
       "JOIN games g ON r.game_id = g.id "
       "LEFT JOIN rom_status_cache rsc ON r.id = rsc.rom_id "
-      "LEFT JOIN rom_matches rm ON r.id = rm.rom_id "
-      "LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1 "
-      "WHERE g.dat_version_id = ?1 "
-      "GROUP BY r.id "
-      "ORDER BY g.name, r.name";
+      "WHERE g.dat_version_id = ?1";
+
+  bool has_complete_cache = false;
+  auto cov = prepare(k_CoverageSql);
+  if (cov) {
+    cov->bind_int64(1, dat_version_id);
+    if (cov->step()) {
+      const auto rom_count = cov->column_int64(0);
+      const auto cached_count = cov->column_int64(1);
+      has_complete_cache = (rom_count > 0 && rom_count == cached_count);
+    }
+  }
+
+  const std::string sql =
+      has_complete_cache
+          ? "SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
+            "  r.crc32, r.md5, r.expected_sha1, r.sha256, r.region, rsc.status "
+            "FROM roms r "
+            "JOIN games g ON r.game_id = g.id "
+            "JOIN rom_status_cache rsc ON r.id = rsc.rom_id "
+            "WHERE g.dat_version_id = ?1 "
+            "ORDER BY g.name, r.name"
+          : std::string(
+                "SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
+                "  r.crc32, r.md5, r.expected_sha1, r.sha256, r.region, "
+                "  COALESCE(rsc.status, ") +
+                std::string(k_StatusCaseSql) +
+                ") AS status "
+                "FROM roms r "
+                "JOIN games g ON r.game_id = g.id "
+                "LEFT JOIN rom_status_cache rsc ON r.id = rsc.rom_id "
+                "LEFT JOIN rom_matches rm ON r.id = rm.rom_id "
+                "LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1 "
+                "WHERE g.dat_version_id = ?1 "
+                "GROUP BY r.id "
+                "ORDER BY g.name, r.name";
 
   auto stmt = prepare(sql);
   if (!stmt) {

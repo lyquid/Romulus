@@ -262,33 +262,31 @@ Result<core::ScanReport> RomulusService::scan_directory(
 }
 
 Result<void> RomulusService::verify(std::optional<std::string> dat_name) {
-  // Step 1: Match files to ROMs
+  // Step 1: Match files to ROMs (global across all DATs).
   auto matches = engine::Matcher::match_all(*db_);
   if (!matches) {
     return std::unexpected(matches.error());
   }
 
-  // Step 2: Classify and log ROM statuses
+  // Resolve the optional DAT name to an ID — needed for both cache refresh and
+  // classify so we do it once here.
   auto dat_id = resolve_optional_dat_id(dat_name);
   if (!dat_id) {
     return std::unexpected(dat_id.error());
   }
 
-  auto classify = engine::Classifier::classify_all(*db_, *dat_id);
-  if (!classify) {
-    return std::unexpected(classify.error());
-  }
-
-  // Step 3: Refresh the materialized status cache so subsequent summary and
-  // checklist queries can read precomputed values instead of re-running the
-  // full JOIN every time.
-  auto cache = db_->refresh_status_cache();
+  // Step 2: Refresh the materialized status cache BEFORE classify_all() so that
+  // the get_collection_summary() call inside classify_all() always reads the
+  // freshly updated rom_matches — not a stale cache from a previous verify run.
+  // When a dat_version_id is available, only ROMs in that DAT are refreshed.
+  auto cache = db_->refresh_status_cache(*dat_id);
   if (!cache) {
     ROMULUS_WARN("Failed to refresh ROM status cache: {}", cache.error().message);
-    // Non-fatal: queries fall back to on-the-fly computation.
+    // Non-fatal: classify_all() falls back to the CTE computed path.
   }
 
-  return {};
+  // Step 3: Classify and log ROM statuses (reads from the freshly populated cache).
+  return engine::Classifier::classify_all(*db_, *dat_id);
 }
 
 Result<void> RomulusService::full_sync(const std::filesystem::path& dat_path,
