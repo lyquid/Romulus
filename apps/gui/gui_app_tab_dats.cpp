@@ -177,7 +177,8 @@ void GuiApp::render_dats_tab() {
   if (cnt_hash_conflict > 0) {
     ImGui::SameLine(0.0F, 14.0F);
     ImGui::TextColored(k_ColorHashConflict,
-                       "[!] %lld hash conflict",
+                       "%s %lld hash conflict",
+                       k_StatusIconHashConflict,
                        static_cast<long long>(cnt_hash_conflict));
   }
   if (cnt_mismatch > 0) {

@@ -20,8 +20,8 @@ namespace romulus::gui {
 inline constexpr const char* k_StatusLabelVerified = "[OK] Verified";
 inline constexpr const char* k_StatusLabelMissing = "[--] Missing";
 inline constexpr const char* k_StatusLabelCrcMatch = "[~] CRC Match";
-inline constexpr const char* k_StatusLabelMd5Match = "[~] MD5 Match";
-inline constexpr const char* k_StatusLabelHashConflict = "[!] Hash Conflict";
+inline constexpr const char* k_StatusLabelMd5Match = "[~~] MD5 Match";
+inline constexpr const char* k_StatusLabelHashConflict = "[?!] Hash Conflict";
 inline constexpr const char* k_StatusLabelMismatch = "! Mismatch";
 inline constexpr const char* k_StatusLabelUnknown = "? Unknown";
 
@@ -31,6 +31,7 @@ inline constexpr const char* k_StatusIconCrcMatch = "[~]";
 inline constexpr const char* k_StatusIconMd5Match = "[~~]";
 inline constexpr const char* k_StatusIconHashConflict = "[?!]";
 inline constexpr const char* k_StatusIconMismatch = "[!!]";
+inline constexpr const char* k_StatusIconUnknown = "[??]";
 
 /// ASCII-only character case fold: maps [A-Z] → [a-z], all other bytes pass through unchanged.
 /// Safe for UTF-8 strings because non-ASCII bytes are always ≥ 0x80 and never in [A-Z].
@@ -96,7 +97,7 @@ inline const char* status_icon(core::RomStatusType status) {
     case core::RomStatusType::Mismatch:
       return k_StatusIconMismatch;
   }
-  return k_StatusIconCrcMatch;
+  return k_StatusIconUnknown;
 }
 
 /// Returns a numeric sort order for ROM status — lower values appear first in sort.

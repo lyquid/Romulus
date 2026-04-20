@@ -358,13 +358,15 @@ romulus report missing  [--format text|csv|json]
 ### Verification Flow at a Glance
 
 ```
-Scan/Hash  →  Import DAT  →  Match  →  Classify  →  Cache  →  Report
-    │              │            │           │           │          │
-    ▼              ▼            ▼           ▼           ▼          ▼
-Files         dat_versions   SHA-1      Verified   rom_status  Text
-Scan          games          MD5        Missing    _cache      CSV
-Skip          roms           CRC32      Unverified (fast read) JSON
-Arch.                        SHA-256    Mismatch
+Scan/Hash  →  Import DAT  →  Match  →  Classify     →  Cache  →  Report
+    │              │            │           │              │          │
+    ▼              ▼            ▼           ▼              ▼          ▼
+Files         dat_versions   SHA-1      Verified      rom_status  Text
+Scan          games          MD5        Missing       _cache      CSV
+Skip          roms           CRC32      CrcMatch      (fast read) JSON
+Arch.                        SHA-256    Md5Match
+                                        HashConflict
+                                        Mismatch
 
 👾  "It's dangerous to go alone! Take this pipeline."  👾
 ```

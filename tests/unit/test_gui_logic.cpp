@@ -67,22 +67,17 @@ TEST(GuiLogic, FormatSizeDisplaysGigabytes) {
 
 TEST(GuiLogic, StatusLabelReturnsDistinctStringsForEachStatus) {
   using romulus::core::RomStatusType;
-  const auto* verified = romulus::gui::status_label(RomStatusType::Verified);
-  const auto* missing = romulus::gui::status_label(RomStatusType::Missing);
-  const auto* crc_match = romulus::gui::status_label(RomStatusType::CrcMatch);
-  const auto* md5_match = romulus::gui::status_label(RomStatusType::Md5Match);
-  const auto* hash_conflict = romulus::gui::status_label(RomStatusType::HashConflict);
-  const auto* mismatch = romulus::gui::status_label(RomStatusType::Mismatch);
-
-  EXPECT_NE(std::string_view{verified}, std::string_view{missing});
-  EXPECT_NE(std::string_view{verified}, std::string_view{crc_match});
-  EXPECT_NE(std::string_view{verified}, std::string_view{md5_match});
-  EXPECT_NE(std::string_view{verified}, std::string_view{hash_conflict});
-  EXPECT_NE(std::string_view{verified}, std::string_view{mismatch});
-  EXPECT_NE(std::string_view{missing}, std::string_view{crc_match});
-  EXPECT_NE(std::string_view{missing}, std::string_view{mismatch});
-  EXPECT_NE(std::string_view{crc_match}, std::string_view{md5_match});
-  EXPECT_NE(std::string_view{crc_match}, std::string_view{mismatch});
+  constexpr RomStatusType all_statuses[] = {
+      RomStatusType::Verified,     RomStatusType::Missing,      RomStatusType::CrcMatch,
+      RomStatusType::Md5Match,     RomStatusType::HashConflict, RomStatusType::Mismatch,
+  };
+  for (std::size_t i = 0; i < std::size(all_statuses); ++i) {
+    for (std::size_t j = i + 1; j < std::size(all_statuses); ++j) {
+      EXPECT_NE(std::string_view{romulus::gui::status_label(all_statuses[i])},
+                std::string_view{romulus::gui::status_label(all_statuses[j])})
+          << "Labels at index " << i << " and " << j << " are the same";
+    }
+  }
 }
 
 TEST(GuiLogic, StatusLabelReturnsNonEmptyStrings) {
@@ -99,24 +94,17 @@ TEST(GuiLogic, StatusLabelReturnsNonEmptyStrings) {
 
 TEST(GuiLogic, StatusIconReturnsDistinctStringsForAllStatuses) {
   using romulus::core::RomStatusType;
-  const auto* verified = romulus::gui::status_icon(RomStatusType::Verified);
-  const auto* missing = romulus::gui::status_icon(RomStatusType::Missing);
-  const auto* crc_match = romulus::gui::status_icon(RomStatusType::CrcMatch);
-  const auto* md5_match = romulus::gui::status_icon(RomStatusType::Md5Match);
-  const auto* hash_conflict = romulus::gui::status_icon(RomStatusType::HashConflict);
-  const auto* mismatch = romulus::gui::status_icon(RomStatusType::Mismatch);
-
-  EXPECT_NE(std::string_view{verified}, std::string_view{missing});
-  EXPECT_NE(std::string_view{verified}, std::string_view{crc_match});
-  EXPECT_NE(std::string_view{verified}, std::string_view{md5_match});
-  EXPECT_NE(std::string_view{verified}, std::string_view{hash_conflict});
-  EXPECT_NE(std::string_view{verified}, std::string_view{mismatch});
-  EXPECT_NE(std::string_view{missing}, std::string_view{crc_match});
-  EXPECT_NE(std::string_view{missing}, std::string_view{mismatch});
-  EXPECT_NE(std::string_view{crc_match}, std::string_view{md5_match});
-  EXPECT_NE(std::string_view{crc_match}, std::string_view{hash_conflict});
-  EXPECT_NE(std::string_view{md5_match}, std::string_view{hash_conflict});
-  EXPECT_NE(std::string_view{hash_conflict}, std::string_view{mismatch});
+  constexpr RomStatusType all_statuses[] = {
+      RomStatusType::Verified,     RomStatusType::Missing,      RomStatusType::CrcMatch,
+      RomStatusType::Md5Match,     RomStatusType::HashConflict, RomStatusType::Mismatch,
+  };
+  for (std::size_t i = 0; i < std::size(all_statuses); ++i) {
+    for (std::size_t j = i + 1; j < std::size(all_statuses); ++j) {
+      EXPECT_NE(std::string_view{romulus::gui::status_icon(all_statuses[i])},
+                std::string_view{romulus::gui::status_icon(all_statuses[j])})
+          << "Icons at index " << i << " and " << j << " are the same";
+    }
+  }
 }
 
 TEST(GuiLogic, StatusIconReturnsNonEmptyStrings) {
@@ -137,9 +125,11 @@ TEST(GuiLogic, StatusSortOrderMissingBeforeMismatch) {
             romulus::gui::status_sort_order(RomStatusType::Mismatch));
 }
 
-TEST(GuiLogic, StatusSortOrderMismatchBeforeCrcMatch) {
+TEST(GuiLogic, StatusSortOrderMismatchBeforeHashConflictBeforeCrcMatch) {
   using romulus::core::RomStatusType;
   EXPECT_LT(romulus::gui::status_sort_order(RomStatusType::Mismatch),
+            romulus::gui::status_sort_order(RomStatusType::HashConflict));
+  EXPECT_LT(romulus::gui::status_sort_order(RomStatusType::HashConflict),
             romulus::gui::status_sort_order(RomStatusType::CrcMatch));
 }
 

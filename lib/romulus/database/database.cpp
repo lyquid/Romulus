@@ -1451,6 +1451,17 @@ Result<core::RomStatusType> Database::get_computed_rom_status(std::int64_t rom_i
   std::string first_matched_sha1;
   bool has_conflict = false;
 
+  // Tracks whether multiple distinct global ROMs are matched with live files present.
+  // Sets has_conflict when a second distinct sha1 is encountered.
+  auto track_conflict = [&](const std::string& sha1) {
+    if (!first_matched_sha1.empty() && sha1 != first_matched_sha1) {
+      has_conflict = true;
+    }
+    if (first_matched_sha1.empty()) {
+      first_matched_sha1 = sha1;
+    }
+  };
+
   while (stmt->step()) {
     has_any_match = true;
     const bool file_exists = stmt->column_int64(1) != 0;
@@ -1460,23 +1471,10 @@ Result<core::RomStatusType> Database::get_computed_rom_status(std::int64_t rom_i
         has_exact = true;
       } else if (mt == core::MatchType::Md5Only || mt == core::MatchType::Sha1Only ||
                  mt == core::MatchType::Sha256Only) {
-        // Track whether multiple distinct global ROMs are matched with files present.
-        const auto sha1 = bytes_to_hex(stmt->column_blob(2));
-        if (!first_matched_sha1.empty() && sha1 != first_matched_sha1) {
-          has_conflict = true;
-        }
-        if (first_matched_sha1.empty()) {
-          first_matched_sha1 = sha1;
-        }
+        track_conflict(bytes_to_hex(stmt->column_blob(2)));
         has_md5_match = true;
       } else if (mt == core::MatchType::Crc32Only) {
-        const auto sha1 = bytes_to_hex(stmt->column_blob(2));
-        if (!first_matched_sha1.empty() && sha1 != first_matched_sha1) {
-          has_conflict = true;
-        }
-        if (first_matched_sha1.empty()) {
-          first_matched_sha1 = sha1;
-        }
+        track_conflict(bytes_to_hex(stmt->column_blob(2)));
         has_crc_match = true;
       }
     }

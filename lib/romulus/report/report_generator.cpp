@@ -123,7 +123,8 @@ Result<std::string> ReportGenerator::summary_csv(database::Database& db,
   }
 
   std::ostringstream out;
-  out << "dat,total_roms,verified,missing,crc_match,md5_match,hash_conflict,mismatch,verified_pct\n";
+  out << "dat,total_roms,verified,missing,crc_match,md5_match,"
+         "hash_conflict,mismatch,verified_pct\n";
   out << csv_escape(summary->dat_name) << "," << summary->total_roms << "," << summary->verified
       << "," << summary->missing << "," << summary->crc_match << "," << summary->md5_match << ","
       << summary->hash_conflict << "," << summary->mismatch << "," << std::fixed
