@@ -97,17 +97,26 @@ TEST(GuiLogic, StatusLabelReturnsNonEmptyStrings) {
 
 // ── status_icon ──────────────────────────────────────────────
 
-TEST(GuiLogic, StatusIconReturnsDistinctStringsForAllPartialStatuses) {
+TEST(GuiLogic, StatusIconReturnsDistinctStringsForAllStatuses) {
   using romulus::core::RomStatusType;
   const auto* verified = romulus::gui::status_icon(RomStatusType::Verified);
   const auto* missing = romulus::gui::status_icon(RomStatusType::Missing);
   const auto* crc_match = romulus::gui::status_icon(RomStatusType::CrcMatch);
   const auto* md5_match = romulus::gui::status_icon(RomStatusType::Md5Match);
+  const auto* hash_conflict = romulus::gui::status_icon(RomStatusType::HashConflict);
+  const auto* mismatch = romulus::gui::status_icon(RomStatusType::Mismatch);
 
   EXPECT_NE(std::string_view{verified}, std::string_view{missing});
   EXPECT_NE(std::string_view{verified}, std::string_view{crc_match});
   EXPECT_NE(std::string_view{verified}, std::string_view{md5_match});
+  EXPECT_NE(std::string_view{verified}, std::string_view{hash_conflict});
+  EXPECT_NE(std::string_view{verified}, std::string_view{mismatch});
   EXPECT_NE(std::string_view{missing}, std::string_view{crc_match});
+  EXPECT_NE(std::string_view{missing}, std::string_view{mismatch});
+  EXPECT_NE(std::string_view{crc_match}, std::string_view{md5_match});
+  EXPECT_NE(std::string_view{crc_match}, std::string_view{hash_conflict});
+  EXPECT_NE(std::string_view{md5_match}, std::string_view{hash_conflict});
+  EXPECT_NE(std::string_view{hash_conflict}, std::string_view{mismatch});
 }
 
 TEST(GuiLogic, StatusIconReturnsNonEmptyStrings) {

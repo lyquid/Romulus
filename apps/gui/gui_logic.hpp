@@ -29,7 +29,7 @@ inline constexpr const char* k_StatusIconVerified = "[OK]";
 inline constexpr const char* k_StatusIconMissing = "[--]";
 inline constexpr const char* k_StatusIconCrcMatch = "[~]";
 inline constexpr const char* k_StatusIconMd5Match = "[~~]";
-inline constexpr const char* k_StatusIconHashConflict = "[!!]";
+inline constexpr const char* k_StatusIconHashConflict = "[?!]";
 inline constexpr const char* k_StatusIconMismatch = "[!!]";
 
 /// ASCII-only character case fold: maps [A-Z] → [a-z], all other bytes pass through unchanged.
