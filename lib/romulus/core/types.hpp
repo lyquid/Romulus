@@ -237,10 +237,12 @@ struct MatchResult {
 
 /// Status of a ROM in the collection.
 enum class RomStatusType {
-  Verified,   ///< Exact match exists in scanned files
-  Missing,    ///< No matching file found
-  Unverified, ///< Partial match only
-  Mismatch,   ///< File exists but hashes don't fully match
+  Verified,     ///< Exact match exists in scanned files
+  Missing,      ///< No matching file found
+  CrcMatch,     ///< CRC32-only partial match — weak confidence
+  Md5Match,     ///< MD5 / SHA-1 / SHA-256 partial match — medium confidence
+  HashConflict, ///< Multiple conflicting global ROMs matched the same DAT entry
+  Mismatch,     ///< Match was recorded but the file has since been deleted
 };
 
 // ── Archive ──────────────────────────────────────────────────
@@ -310,7 +312,9 @@ struct CollectionSummary {
   std::int64_t total_roms = 0;
   std::int64_t verified = 0;
   std::int64_t missing = 0;
-  std::int64_t unverified = 0;
+  std::int64_t crc_match = 0;
+  std::int64_t md5_match = 0;
+  std::int64_t hash_conflict = 0;
   std::int64_t mismatch = 0;
 
   [[nodiscard]] double verified_percent() const {

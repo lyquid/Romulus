@@ -19,13 +19,17 @@ namespace romulus::gui {
 
 inline constexpr const char* k_StatusLabelVerified = "[OK] Verified";
 inline constexpr const char* k_StatusLabelMissing = "[--] Missing";
-inline constexpr const char* k_StatusLabelUnverified = "? Unverified";
+inline constexpr const char* k_StatusLabelCrcMatch = "[~] CRC Match";
+inline constexpr const char* k_StatusLabelMd5Match = "[~] MD5 Match";
+inline constexpr const char* k_StatusLabelHashConflict = "[!] Hash Conflict";
 inline constexpr const char* k_StatusLabelMismatch = "! Mismatch";
 inline constexpr const char* k_StatusLabelUnknown = "? Unknown";
 
 inline constexpr const char* k_StatusIconVerified = "[OK]";
 inline constexpr const char* k_StatusIconMissing = "[--]";
-inline constexpr const char* k_StatusIconUnverified = "[??]";
+inline constexpr const char* k_StatusIconCrcMatch = "[~]";
+inline constexpr const char* k_StatusIconMd5Match = "[~~]";
+inline constexpr const char* k_StatusIconHashConflict = "[!!]";
 inline constexpr const char* k_StatusIconMismatch = "[!!]";
 
 /// ASCII-only character case fold: maps [A-Z] → [a-z], all other bytes pass through unchanged.
@@ -64,8 +68,12 @@ inline const char* status_label(core::RomStatusType status) {
       return k_StatusLabelVerified;
     case core::RomStatusType::Missing:
       return k_StatusLabelMissing;
-    case core::RomStatusType::Unverified:
-      return k_StatusLabelUnverified;
+    case core::RomStatusType::CrcMatch:
+      return k_StatusLabelCrcMatch;
+    case core::RomStatusType::Md5Match:
+      return k_StatusLabelMd5Match;
+    case core::RomStatusType::HashConflict:
+      return k_StatusLabelHashConflict;
     case core::RomStatusType::Mismatch:
       return k_StatusLabelMismatch;
   }
@@ -79,28 +87,36 @@ inline const char* status_icon(core::RomStatusType status) {
       return k_StatusIconVerified;
     case core::RomStatusType::Missing:
       return k_StatusIconMissing;
-    case core::RomStatusType::Unverified:
-      return k_StatusIconUnverified;
+    case core::RomStatusType::CrcMatch:
+      return k_StatusIconCrcMatch;
+    case core::RomStatusType::Md5Match:
+      return k_StatusIconMd5Match;
+    case core::RomStatusType::HashConflict:
+      return k_StatusIconHashConflict;
     case core::RomStatusType::Mismatch:
       return k_StatusIconMismatch;
   }
-  return k_StatusIconUnverified;
+  return k_StatusIconCrcMatch;
 }
 
 /// Returns a numeric sort order for ROM status — lower values appear first in sort.
-/// Order: Missing < Mismatch < Unverified < Verified.
+/// Order: Missing < Mismatch < HashConflict < CrcMatch < Md5Match < Verified.
 inline int status_sort_order(core::RomStatusType status) {
   switch (status) {
     case core::RomStatusType::Missing:
       return 0;
     case core::RomStatusType::Mismatch:
       return 1;
-    case core::RomStatusType::Unverified:
+    case core::RomStatusType::HashConflict:
       return 2;
-    case core::RomStatusType::Verified:
+    case core::RomStatusType::CrcMatch:
       return 3;
+    case core::RomStatusType::Md5Match:
+      return 4;
+    case core::RomStatusType::Verified:
+      return 5;
   }
-  return 4;
+  return 6;
 }
 
 } // namespace romulus::gui

@@ -144,7 +144,9 @@ void GuiApp::render_dats_tab() {
   const std::int64_t total = checklist_stats_.total;
   const std::int64_t cnt_verified = checklist_stats_.verified;
   const std::int64_t cnt_missing = checklist_stats_.missing;
-  const std::int64_t cnt_unverified = checklist_stats_.unverified;
+  const std::int64_t cnt_crc_match = checklist_stats_.crc_match;
+  const std::int64_t cnt_md5_match = checklist_stats_.md5_match;
+  const std::int64_t cnt_hash_conflict = checklist_stats_.hash_conflict;
   const std::int64_t cnt_mismatch = checklist_stats_.mismatch;
   const std::int64_t games_total = checklist_stats_.games_total;
   const double pct =
@@ -162,10 +164,21 @@ void GuiApp::render_dats_tab() {
     ImGui::TextColored(
         k_ColorMissing, "%s %lld missing", k_SymbolMissing, static_cast<long long>(cnt_missing));
   }
-  if (cnt_unverified > 0) {
+  if (cnt_crc_match > 0) {
     ImGui::SameLine(0.0F, 14.0F);
     ImGui::TextColored(
-        k_ColorUnverified, "[??] %lld unverified", static_cast<long long>(cnt_unverified));
+        k_ColorCrcMatch, "[~] %lld CRC match", static_cast<long long>(cnt_crc_match));
+  }
+  if (cnt_md5_match > 0) {
+    ImGui::SameLine(0.0F, 14.0F);
+    ImGui::TextColored(
+        k_ColorMd5Match, "[~~] %lld MD5 match", static_cast<long long>(cnt_md5_match));
+  }
+  if (cnt_hash_conflict > 0) {
+    ImGui::SameLine(0.0F, 14.0F);
+    ImGui::TextColored(k_ColorHashConflict,
+                       "[!] %lld hash conflict",
+                       static_cast<long long>(cnt_hash_conflict));
   }
   if (cnt_mismatch > 0) {
     ImGui::SameLine(0.0F, 14.0F);
@@ -202,7 +215,7 @@ void GuiApp::render_dats_tab() {
     }
     ImGui::SameLine();
     constexpr const char* k_StatusFilterItems[] = {
-        "All", "Verified", "Missing", "Unverified", "Mismatch"};
+        "All", "Verified", "Missing", "CRC Match", "MD5 Match", "Hash Conflict", "Mismatch"};
     ImGui::SetNextItemWidth(k_StatusComboW);
     ImGui::Combo("##game_status_filter",
                  &game_status_filter_,

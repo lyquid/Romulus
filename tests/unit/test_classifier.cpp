@@ -97,7 +97,7 @@ TEST_F(ClassifierTest, ClassifiesVerifiedAndMissing) {
   EXPECT_EQ(summary->missing, 1);
 }
 
-TEST_F(ClassifierTest, ClassifiesUnverifiedWithPartialMatch) {
+TEST_F(ClassifierTest, ClassifiesCrcMatchWithPartialMatch) {
   auto dat_id = create_dat();
 
   auto game_id = db_->find_or_insert_game(dat_id, "Game");
@@ -136,8 +136,8 @@ TEST_F(ClassifierTest, ClassifiesUnverifiedWithPartialMatch) {
   auto summary = db_->get_collection_summary();
   ASSERT_TRUE(summary.has_value());
   EXPECT_EQ(summary->total_roms, 1);
-  // CRC32-only match with matching file on disk → Unverified
-  EXPECT_EQ(summary->unverified, 1);
+  // CRC32-only match with matching file on disk → CrcMatch
+  EXPECT_EQ(summary->crc_match, 1);
   EXPECT_EQ(summary->verified, 0);
   EXPECT_EQ(summary->missing, 0);
 }
