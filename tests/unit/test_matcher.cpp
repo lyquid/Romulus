@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <system_error>
 
 namespace {
 
@@ -23,10 +24,13 @@ namespace {
 }
 
 /// Removes a SQLite database file and its WAL/SHM side-car files.
+/// Uses the error_code overload so that locked or missing files are silently skipped
+/// (avoids throwing on Windows when a file is still in use by another process).
 void remove_db_files(const std::filesystem::path& path) {
-  std::filesystem::remove(path);
-  std::filesystem::remove(path.string() + "-wal");
-  std::filesystem::remove(path.string() + "-shm");
+  std::error_code ec;
+  std::filesystem::remove(path, ec);
+  std::filesystem::remove(std::filesystem::path{path.string() + "-wal"}, ec);
+  std::filesystem::remove(std::filesystem::path{path.string() + "-shm"}, ec);
 }
 
 /// RAII helper that opens a temporary SQLite database and guarantees cleanup on
@@ -269,7 +273,7 @@ TEST_F(MatcherTest, MatchesMd5OnlyWhenOnlyMd5HashIsAvailable) {
 /// When a DAT ROM declares a SHA256 that disagrees with the scanned file's SHA256,
 /// the SHA1 match should be downgraded from Exact to Sha1Only.
 TEST_F(MatcherTest, Sha1MatchDegradesToSha1OnlyWhenSha256Disagrees) {
-  TempDb tdb(make_unique_db_path());
+  TempDb tdb(make_unique_db_path("tdb"));
 
   romulus::core::DatVersion dat{
       .name = "Sha256ExactTest", .version = "1.0", .source_url = {}, .dat_sha256 = "x1",
@@ -320,7 +324,7 @@ TEST_F(MatcherTest, Sha1MatchDegradesToSha1OnlyWhenSha256Disagrees) {
 /// When a DAT ROM declares a SHA256 that agrees with the scanned file's SHA256,
 /// and SHA1 also matches, the result must be Exact.
 TEST_F(MatcherTest, Sha1MatchIsExactWhenSha256AlsoAgrees) {
-  TempDb tdb(make_unique_db_path());
+  TempDb tdb(make_unique_db_path("tdb"));
 
   romulus::core::DatVersion dat{
       .name = "Sha256ExactTest2", .version = "1.0", .source_url = {}, .dat_sha256 = "x2",
@@ -368,7 +372,7 @@ TEST_F(MatcherTest, Sha1MatchIsExactWhenSha256AlsoAgrees) {
 /// When a DAT ROM has no SHA1 but has a SHA256 that matches a GlobalRom, and all other
 /// available hashes (MD5, CRC32) also agree, the match must be classified as Exact.
 TEST_F(MatcherTest, Sha256LeadMatchIsExactWhenAllHashesAgree) {
-  TempDb tdb(make_unique_db_path());
+  TempDb tdb(make_unique_db_path("tdb"));
 
   romulus::core::DatVersion dat{
       .name = "Sha256LeadExact", .version = "1.0", .source_url = {}, .dat_sha256 = "z1",
@@ -417,7 +421,7 @@ TEST_F(MatcherTest, Sha256LeadMatchIsExactWhenAllHashesAgree) {
 /// When a DAT ROM has no SHA1 but has a SHA256 that matches, and a lower hash (CRC32)
 /// disagrees, the match must remain Sha256Only — not Exact.
 TEST_F(MatcherTest, Sha256LeadMatchIsSha256OnlyWhenLowerHashDisagrees) {
-  TempDb tdb(make_unique_db_path());
+  TempDb tdb(make_unique_db_path("tdb"));
 
   romulus::core::DatVersion dat{
       .name = "Sha256LeadPartial", .version = "1.0", .source_url = {}, .dat_sha256 = "z2",
@@ -465,7 +469,7 @@ TEST_F(MatcherTest, Sha256LeadMatchIsSha256OnlyWhenLowerHashDisagrees) {
 /// When two CRC32 candidates have no SHA256 cross-match, prefer the one backed by a
 /// bare (non-archive) file on disk over one backed only by an archive entry.
 TEST_F(MatcherTest, Crc32TiebreakerPrefersNonArchiveFile) {
-  TempDb tdb(make_unique_db_path());
+  TempDb tdb(make_unique_db_path("tdb"));
 
   romulus::core::DatVersion dat{
       .name = "CRC32BareTBTest", .version = "1.0", .source_url = {}, .dat_sha256 = "y2",
