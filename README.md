@@ -329,12 +329,14 @@ Inserts `rom_matches` rows with the `match_type` verdict.
 
 Reads `rom_matches` + `files` and assigns a status to each ROM:
 
-| Status | Condition |
-|---|---|
-| ✅ **Verified** | Exact match and file exists on disk |
-| ❓ **Missing** | No match entry at all |
-| 🔍 **Unverified** | Partial match (SHA-1/MD5/CRC32 only) + file is live |
-| ⚠️ **Mismatch** | Match was recorded but the file has since been deleted |
+| Status | Icon | Condition |
+|---|---|---|
+| **Verified** | ✅ | Exact match (all available hashes agree) and file exists on disk |
+| **Missing** | ❓ | No match entry at all — file was never found |
+| **CRC Match** | 🔍 | CRC32-only match + file is live — weak confidence |
+| **MD5 Match** | 🔍 | MD5 / SHA-1 / SHA-256 partial match + file is live — medium confidence |
+| **Hash Conflict** | ⚠️ | Multiple different global ROMs match the same DAT entry via different hash tiers |
+| **Mismatch** | ⚠️ | Match was recorded but the file has since been deleted |
 
 After classification, the computed statuses are written to `rom_status_cache` — a persistent
 precomputed table that acts as a **materialized view**. Subsequent summary and ROM-checklist
@@ -356,13 +358,15 @@ romulus report missing  [--format text|csv|json]
 ### Verification Flow at a Glance
 
 ```
-Scan/Hash  →  Import DAT  →  Match  →  Classify  →  Cache  →  Report
-    │              │            │           │           │          │
-    ▼              ▼            ▼           ▼           ▼          ▼
-Files         dat_versions   SHA-1      Verified   rom_status  Text
-Scan          games          MD5        Missing    _cache      CSV
-Skip          roms           CRC32      Unverified (fast read) JSON
-Arch.                        SHA-256    Mismatch
+Scan/Hash  →  Import DAT  →  Match  →  Classify     →  Cache  →  Report
+    │              │            │           │              │          │
+    ▼              ▼            ▼           ▼              ▼          ▼
+Files         dat_versions   SHA-1      Verified      rom_status  Text
+Scan          games          MD5        Missing       _cache      CSV
+Skip          roms           CRC32      CrcMatch      (fast read) JSON
+Arch.                        SHA-256    Md5Match
+                                        HashConflict
+                                        Mismatch
 
 👾  "It's dangerous to go alone! Take this pipeline."  👾
 ```

@@ -7,6 +7,29 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ✨ feat(engine): Split `Unverified` status into `CrcMatch`, `Md5Match`, `HashConflict`
+
+The old catch-all `Unverified` ROM status was too vague for practical use. It has been replaced
+by three distinct values that communicate confidence level and anomaly type:
+
+- **`CrcMatch`** (🔍 Weak) — Only CRC32 matched. The file exists on disk but stronger hashes
+  disagree. Low confidence — CRC32 collisions are plausible.
+- **`Md5Match`** (🔍 Medium) — MD5, SHA-1, or SHA-256 matched (but not an exact cross-validated
+  hit). Higher confidence than CRC-only, but the full hash agreement required for `Verified` was
+  not reached.
+- **`HashConflict`** (⚠️) — Multiple different global ROMs match the same DAT entry via
+  different hash tiers (e.g. one file matches via CRC32, another via MD5, pointing to different
+  identities). Indicates possible hash collision or data corruption.
+
+**Changes**:
+- `core::RomStatusType`: `Unverified` removed; `CrcMatch`, `Md5Match`, `HashConflict` added.
+- `core::CollectionSummary`: `unverified` field replaced by `crc_match`, `md5_match`,
+  `hash_conflict`.
+- `k_StatusCaseSql` updated with new status codes (schema version bumped to 8).
+- GUI: labels, icons, colours, filter dropdown, and summary bar updated for all new statuses.
+- Reports (text / CSV / JSON): new fields in summary output.
+- `README.md`: Status→Meaning table updated.
+
 ### ✨ feat(engine): Match Priority Rule Engine and deterministic CRC32 tiebreaker
 
 - **Problem**: CRC32 matches with multiple candidates selected `front()` without any documented

@@ -332,7 +332,7 @@ CREATE TABLE IF NOT EXISTS scanned_directories (
 
 -- Materialized status cache: precomputed per-ROM status, refreshed after verify().
 -- Eliminates expensive on-the-fly CTE+JOIN computation for summary and checklist queries.
--- Status codes: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch
+-- Status codes: 0=Verified, 1=Missing, 2=CrcMatch, 3=Md5Match, 4=HashConflict, 5=Mismatch
 CREATE TABLE IF NOT EXISTS rom_status_cache (
     rom_id     INTEGER PRIMARY KEY REFERENCES roms(id) ON DELETE CASCADE,
     status     INTEGER NOT NULL,
@@ -357,10 +357,10 @@ CREATE INDEX IF NOT EXISTS idx_rom_matches_sha1 ON rom_matches(global_rom_sha1);
 /// Schema version — increment whenever the schema changes in a backward-incompatible way.
 /// Stored in PRAGMA user_version. If the on-disk DB has a different version the database
 /// is wiped and rebuilt so queries never encounter stale column layouts.
-constexpr int k_SchemaVersion = 7;
+constexpr int k_SchemaVersion = 8;
 
 /// Shared SQL CASE fragment that maps rom_matches + files columns to a status integer.
-/// Status codes: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch.
+/// Status codes: 0=Verified, 1=Missing, 2=CrcMatch, 3=Md5Match, 4=HashConflict, 5=Mismatch.
 /// match_type=0 is MatchType::Exact (see match_type_to_int).
 /// Referenced in refresh_status_cache, get_collection_summary, and get_all_roms_with_status
 /// to ensure the status logic is defined exactly once.
@@ -368,8 +368,12 @@ constexpr std::string_view k_StatusCaseSql =
     "CASE "
     "  WHEN COUNT(rm.global_rom_sha1) = 0 THEN 1 "
     "  WHEN MAX(CASE WHEN rm.match_type = 0 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 0 "
-    "  WHEN MAX(CASE WHEN f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2 "
-    "  ELSE 3 "
+    "  WHEN COUNT(DISTINCT CASE WHEN f.sha1 IS NOT NULL THEN rm.global_rom_sha1 ELSE NULL END) > 1"
+    "    THEN 4 "
+    "  WHEN MAX(CASE WHEN rm.match_type IN (1,2,3) AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1"
+    "    THEN 3 "
+    "  WHEN MAX(CASE WHEN rm.match_type = 4 AND f.sha1 IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN 2 "
+    "  ELSE 5 "
     "END";
 
 int match_type_to_int(core::MatchType type) {
@@ -409,14 +413,19 @@ core::MatchType int_to_match_type(int value) {
 
 /// Converts a status integer from rom_status_cache (or the status CASE expression)
 /// to the corresponding RomStatusType enum value.
-/// Status codes match k_StatusCaseSql: 0=Verified, 1=Missing, 2=Unverified, 3=Mismatch.
+/// Status codes match k_StatusCaseSql: 0=Verified, 1=Missing, 2=CrcMatch, 3=Md5Match,
+/// 4=HashConflict, 5=Mismatch.
 core::RomStatusType int_to_rom_status(int value) {
   switch (value) {
     case 0:
       return core::RomStatusType::Verified;
     case 2:
-      return core::RomStatusType::Unverified;
+      return core::RomStatusType::CrcMatch;
     case 3:
+      return core::RomStatusType::Md5Match;
+    case 4:
+      return core::RomStatusType::HashConflict;
+    case 5:
       return core::RomStatusType::Mismatch;
     default:
       return core::RomStatusType::Missing;
@@ -1424,7 +1433,8 @@ Result<core::RomStatusType> Database::get_computed_rom_status(std::int64_t rom_i
 
   // Slow path (cache miss): query all matches for this ROM, left-joining to
   // files to detect which ones have a physical file on disk.
-  auto stmt = prepare("SELECT rm.match_type, (f.sha1 IS NOT NULL) AS has_file "
+  auto stmt = prepare("SELECT rm.match_type, (f.sha1 IS NOT NULL) AS has_file, "
+                      "  rm.global_rom_sha1 "
                       "FROM rom_matches rm "
                       "LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1 "
                       "WHERE rm.rom_id = ?1");
@@ -1436,7 +1446,21 @@ Result<core::RomStatusType> Database::get_computed_rom_status(std::int64_t rom_i
 
   bool has_any_match = false;
   bool has_exact = false;
-  bool has_partial = false;
+  bool has_md5_match = false;  // MD5 / SHA1 / SHA256 partial match
+  bool has_crc_match = false;  // CRC32-only match
+  std::string first_matched_sha1;
+  bool has_conflict = false;
+
+  // Tracks whether multiple distinct global ROMs are matched with live files present.
+  // Sets has_conflict when a second distinct sha1 is encountered.
+  auto track_conflict = [&](const std::string& sha1) {
+    if (!first_matched_sha1.empty() && sha1 != first_matched_sha1) {
+      has_conflict = true;
+    }
+    if (first_matched_sha1.empty()) {
+      first_matched_sha1 = sha1;
+    }
+  };
 
   while (stmt->step()) {
     has_any_match = true;
@@ -1445,8 +1469,13 @@ Result<core::RomStatusType> Database::get_computed_rom_status(std::int64_t rom_i
       const auto mt = int_to_match_type(static_cast<int>(stmt->column_int64(0)));
       if (mt == core::MatchType::Exact) {
         has_exact = true;
-      } else if (mt != core::MatchType::NoMatch) {
-        has_partial = true;
+      } else if (mt == core::MatchType::Md5Only || mt == core::MatchType::Sha1Only ||
+                 mt == core::MatchType::Sha256Only) {
+        track_conflict(bytes_to_hex(stmt->column_blob(2)));
+        has_md5_match = true;
+      } else if (mt == core::MatchType::Crc32Only) {
+        track_conflict(bytes_to_hex(stmt->column_blob(2)));
+        has_crc_match = true;
       }
     }
   }
@@ -1457,8 +1486,14 @@ Result<core::RomStatusType> Database::get_computed_rom_status(std::int64_t rom_i
   if (has_exact) {
     return core::RomStatusType::Verified;
   }
-  if (has_partial) {
-    return core::RomStatusType::Unverified;
+  if (has_conflict) {
+    return core::RomStatusType::HashConflict;
+  }
+  if (has_md5_match) {
+    return core::RomStatusType::Md5Match;
+  }
+  if (has_crc_match) {
+    return core::RomStatusType::CrcMatch;
   }
   return core::RomStatusType::Mismatch;
 }
@@ -1497,7 +1532,9 @@ Result<core::CollectionSummary> Database::get_collection_summary(
               "  SUM(CASE WHEN rsc.status = 0 THEN 1 ELSE 0 END), "
               "  SUM(CASE WHEN rsc.status = 1 THEN 1 ELSE 0 END), "
               "  SUM(CASE WHEN rsc.status = 2 THEN 1 ELSE 0 END), "
-              "  SUM(CASE WHEN rsc.status = 3 THEN 1 ELSE 0 END) "
+              "  SUM(CASE WHEN rsc.status = 3 THEN 1 ELSE 0 END), "
+              "  SUM(CASE WHEN rsc.status = 4 THEN 1 ELSE 0 END), "
+              "  SUM(CASE WHEN rsc.status = 5 THEN 1 ELSE 0 END) "
               "FROM roms r "
               "JOIN games g ON r.game_id = g.id "
               "JOIN rom_status_cache rsc ON r.id = rsc.rom_id";
@@ -1520,8 +1557,10 @@ Result<core::CollectionSummary> Database::get_collection_summary(
               summary.total_roms = stmt->column_int64(1);
               summary.verified = stmt->column_int64(2);
               summary.missing = stmt->column_int64(3);
-              summary.unverified = stmt->column_int64(4);
-              summary.mismatch = stmt->column_int64(5);
+              summary.crc_match = stmt->column_int64(4);
+              summary.md5_match = stmt->column_int64(5);
+              summary.hash_conflict = stmt->column_int64(6);
+              summary.mismatch = stmt->column_int64(7);
             }
             return summary;
           }
@@ -1554,8 +1593,10 @@ Result<core::CollectionSummary> Database::get_collection_summary(
          "  COUNT(*),"
          "  SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END)," // 0=Verified
          "  SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END)," // 1=Missing
-         "  SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END)," // 2=Unverified
-         "  SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END)"  // 3=Mismatch
+         "  SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END)," // 2=CrcMatch
+         "  SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END)," // 3=Md5Match
+         "  SUM(CASE WHEN status = 4 THEN 1 ELSE 0 END)," // 4=HashConflict
+         "  SUM(CASE WHEN status = 5 THEN 1 ELSE 0 END)"  // 5=Mismatch
          " FROM computed";
 
   auto stmt = prepare(sql);
@@ -1575,8 +1616,10 @@ Result<core::CollectionSummary> Database::get_collection_summary(
     summary.total_roms = stmt->column_int64(1);
     summary.verified = stmt->column_int64(2);
     summary.missing = stmt->column_int64(3);
-    summary.unverified = stmt->column_int64(4);
-    summary.mismatch = stmt->column_int64(5);
+    summary.crc_match = stmt->column_int64(4);
+    summary.md5_match = stmt->column_int64(5);
+    summary.hash_conflict = stmt->column_int64(6);
+    summary.mismatch = stmt->column_int64(7);
   }
   return summary;
 }

@@ -51,10 +51,12 @@ inline constexpr int k_GameColStatus = 0;
 inline constexpr int k_GameColName = 1;
 
 // Status colours
-inline constexpr ImVec4 k_ColorVerified{0.2F, 0.9F, 0.3F, 1.0F};   // green
-inline constexpr ImVec4 k_ColorMissing{1.0F, 0.3F, 0.3F, 1.0F};    // red
-inline constexpr ImVec4 k_ColorUnverified{1.0F, 0.9F, 0.2F, 1.0F}; // yellow
-inline constexpr ImVec4 k_ColorMismatch{1.0F, 0.5F, 0.0F, 1.0F};   // orange
+inline constexpr ImVec4 k_ColorVerified{0.2F, 0.9F, 0.3F, 1.0F};      // green
+inline constexpr ImVec4 k_ColorMissing{1.0F, 0.3F, 0.3F, 1.0F};       // red
+inline constexpr ImVec4 k_ColorCrcMatch{1.0F, 0.9F, 0.2F, 1.0F};      // yellow
+inline constexpr ImVec4 k_ColorMd5Match{0.9F, 0.7F, 0.1F, 1.0F};      // amber
+inline constexpr ImVec4 k_ColorHashConflict{1.0F, 0.4F, 0.0F, 1.0F};  // orange-red
+inline constexpr ImVec4 k_ColorMismatch{1.0F, 0.5F, 0.0F, 1.0F};      // orange
 
 // Log panel colour scheme (RGBA)
 inline constexpr ImVec4 k_ColorLogWarn{1.0F, 0.75F, 0.1F, 1.0F};   // amber  — warnings
@@ -76,8 +78,12 @@ inline ImVec4 status_color(core::RomStatusType status) {
       return k_ColorVerified;
     case core::RomStatusType::Missing:
       return k_ColorMissing;
-    case core::RomStatusType::Unverified:
-      return k_ColorUnverified;
+    case core::RomStatusType::CrcMatch:
+      return k_ColorCrcMatch;
+    case core::RomStatusType::Md5Match:
+      return k_ColorMd5Match;
+    case core::RomStatusType::HashConflict:
+      return k_ColorHashConflict;
     case core::RomStatusType::Mismatch:
       return k_ColorMismatch;
   }

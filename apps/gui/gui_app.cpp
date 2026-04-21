@@ -696,8 +696,14 @@ void GuiApp::check_pending_task() {
             case core::RomStatusType::Missing:
               ++checklist_stats_.missing;
               break;
-            case core::RomStatusType::Unverified:
-              ++checklist_stats_.unverified;
+            case core::RomStatusType::CrcMatch:
+              ++checklist_stats_.crc_match;
+              break;
+            case core::RomStatusType::Md5Match:
+              ++checklist_stats_.md5_match;
+              break;
+            case core::RomStatusType::HashConflict:
+              ++checklist_stats_.hash_conflict;
               break;
             case core::RomStatusType::Mismatch:
               ++checklist_stats_.mismatch;
@@ -716,16 +722,19 @@ void GuiApp::check_pending_task() {
             game.status = st;
           } else {
             ++game.rom_count;
-            // Aggregate status priority: Mismatch > Unverified > Missing > Verified.
-            // A single Mismatch contaminates the whole game (bad hash found).
-            // Any mix of statuses (e.g. some Verified + some Missing) means the game
-            // is only partially complete, which we report as Unverified.
+            // Aggregate status priority: Mismatch > HashConflict > CrcMatch > Md5Match >
+            // Missing > Verified. A single Mismatch or HashConflict contaminates the whole
+            // game. Any mix of statuses (e.g. some Verified + some Missing) means the game
+            // is only partially complete, which we report as CrcMatch (weakest confidence).
             if (st == core::RomStatusType::Mismatch ||
                 game.status == core::RomStatusType::Mismatch) {
               game.status = core::RomStatusType::Mismatch;
+            } else if (st == core::RomStatusType::HashConflict ||
+                       game.status == core::RomStatusType::HashConflict) {
+              game.status = core::RomStatusType::HashConflict;
             } else if (st != game.status) {
-              // Mixed statuses (e.g. Verified + Missing) => partial, treated as Unverified.
-              game.status = core::RomStatusType::Unverified;
+              // Mixed statuses (e.g. Verified + Missing) => partial, treated as CrcMatch.
+              game.status = core::RomStatusType::CrcMatch;
             }
           }
         }
