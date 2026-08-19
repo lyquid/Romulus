@@ -483,6 +483,167 @@ TEST_F(DatabaseTest, ComputedRomStatusVerifiedWhenExactMatchAndFileExists) {
   EXPECT_EQ(*status, romulus::core::RomStatusType::Verified);
 }
 
+TEST_F(DatabaseTest, ComputedRomStatusCrcMatchWhenCrc32OnlyMatchAndFileExists) {
+  romulus::core::DatVersion dat{
+      .name = "Sys", .version = "1.0", .source_url = {}, .dat_sha256 = "c3", .imported_at = {}};
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = db_->find_or_insert_game(*dat_id, "G");
+  ASSERT_TRUE(game_id.has_value());
+
+  const std::string sha1 = "1111111111111111111111111111111111111111";
+  romulus::core::RomInfo rom{.id = 0,
+                             .game_id = *game_id,
+                             .name = "r.bin",
+                             .size = 0,
+                             .crc32 = {},
+                             .md5 = {},
+                             .sha1 = sha1,
+                             .sha256 = {},
+                             .region = {}};
+  auto rom_id = db_->insert_rom(rom);
+  ASSERT_TRUE(rom_id.has_value());
+
+  romulus::core::FileInfo file{.id = 0,
+                               .path = "/roms/r.bin",
+                               .archive_path = std::nullopt,
+                               .entry_name = std::nullopt,
+                               .size = 100,
+                               .crc32 = {},
+                               .md5 = {},
+                               .sha1 = sha1,
+                               .sha256 = {}};
+  ASSERT_TRUE(db_->upsert_file(file).has_value());
+
+  romulus::core::MatchResult match{.rom_id = *rom_id,
+                                   .global_rom_sha1 = sha1,
+                                   .match_type = romulus::core::MatchType::Crc32Only};
+  ASSERT_TRUE(db_->insert_rom_match(match).has_value());
+
+  auto status = db_->get_computed_rom_status(*rom_id);
+  ASSERT_TRUE(status.has_value());
+  EXPECT_EQ(*status, romulus::core::RomStatusType::CrcMatch);
+}
+
+TEST_F(DatabaseTest, ComputedRomStatusMd5MatchWhenPartialMatchAndFileExists) {
+  romulus::core::DatVersion dat{
+      .name = "Sys", .version = "1.0", .source_url = {}, .dat_sha256 = "c4", .imported_at = {}};
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = db_->find_or_insert_game(*dat_id, "G");
+  ASSERT_TRUE(game_id.has_value());
+
+  const std::string sha1 = "2222222222222222222222222222222222222222";
+  romulus::core::RomInfo rom{.id = 0,
+                             .game_id = *game_id,
+                             .name = "r.bin",
+                             .size = 0,
+                             .crc32 = {},
+                             .md5 = {},
+                             .sha1 = sha1,
+                             .sha256 = {},
+                             .region = {}};
+  auto rom_id = db_->insert_rom(rom);
+  ASSERT_TRUE(rom_id.has_value());
+
+  romulus::core::FileInfo file{.id = 0,
+                               .path = "/roms/r.bin",
+                               .archive_path = std::nullopt,
+                               .entry_name = std::nullopt,
+                               .size = 100,
+                               .crc32 = {},
+                               .md5 = {},
+                               .sha1 = sha1,
+                               .sha256 = {}};
+  ASSERT_TRUE(db_->upsert_file(file).has_value());
+
+  romulus::core::MatchResult match{
+      .rom_id = *rom_id, .global_rom_sha1 = sha1, .match_type = romulus::core::MatchType::Md5Only};
+  ASSERT_TRUE(db_->insert_rom_match(match).has_value());
+
+  auto status = db_->get_computed_rom_status(*rom_id);
+  ASSERT_TRUE(status.has_value());
+  EXPECT_EQ(*status, romulus::core::RomStatusType::Md5Match);
+}
+
+TEST_F(DatabaseTest, ComputedRomStatusHashConflictWhenTwoDistinctGlobalRomsMatchSameRom) {
+  romulus::core::DatVersion dat{
+      .name = "Sys", .version = "1.0", .source_url = {}, .dat_sha256 = "c5", .imported_at = {}};
+  auto dat_id = db_->insert_dat_version(dat);
+  ASSERT_TRUE(dat_id.has_value());
+
+  auto game_id = db_->find_or_insert_game(*dat_id, "G");
+  ASSERT_TRUE(game_id.has_value());
+
+  const std::string sha1_a = "3333333333333333333333333333333333333333";
+  const std::string sha1_b = "4444444444444444444444444444444444444444";
+  romulus::core::RomInfo rom{.id = 0,
+                             .game_id = *game_id,
+                             .name = "r.bin",
+                             .size = 0,
+                             .crc32 = {},
+                             .md5 = {},
+                             .sha1 = sha1_a,
+                             .sha256 = {},
+                             .region = {}};
+  auto rom_id = db_->insert_rom(rom);
+  ASSERT_TRUE(rom_id.has_value());
+
+  // Two distinct global ROMs, each with a live file, both matched to the same rom_id via
+  // different (non-exact) hash tiers — simulates two different physical files each claiming
+  // to satisfy the same DAT entry.
+  romulus::core::FileInfo file_a{.id = 0,
+                                 .path = "/roms/a.bin",
+                                 .archive_path = std::nullopt,
+                                 .entry_name = std::nullopt,
+                                 .size = 100,
+                                 .crc32 = {},
+                                 .md5 = {},
+                                 .sha1 = sha1_a,
+                                 .sha256 = {}};
+  ASSERT_TRUE(db_->upsert_file(file_a).has_value());
+  romulus::core::FileInfo file_b{.id = 0,
+                                 .path = "/roms/b.bin",
+                                 .archive_path = std::nullopt,
+                                 .entry_name = std::nullopt,
+                                 .size = 100,
+                                 .crc32 = {},
+                                 .md5 = {},
+                                 .sha1 = sha1_b,
+                                 .sha256 = {}};
+  ASSERT_TRUE(db_->upsert_file(file_b).has_value());
+
+  romulus::core::MatchResult match_a{.rom_id = *rom_id,
+                                     .global_rom_sha1 = sha1_a,
+                                     .match_type = romulus::core::MatchType::Crc32Only};
+  ASSERT_TRUE(db_->insert_rom_match(match_a).has_value());
+  romulus::core::MatchResult match_b{.rom_id = *rom_id,
+                                     .global_rom_sha1 = sha1_b,
+                                     .match_type = romulus::core::MatchType::Md5Only};
+  ASSERT_TRUE(db_->insert_rom_match(match_b).has_value());
+
+  // Slow path (no cache populated yet).
+  auto status = db_->get_computed_rom_status(*rom_id);
+  ASSERT_TRUE(status.has_value());
+  EXPECT_EQ(*status, romulus::core::RomStatusType::HashConflict);
+
+  // Fast path: refresh_status_cache uses the same k_StatusCaseSql CASE expression — must
+  // agree with the slow-path C++ computation above.
+  ASSERT_TRUE(db_->refresh_status_cache().has_value());
+  auto cached_status = db_->get_computed_rom_status(*rom_id);
+  ASSERT_TRUE(cached_status.has_value());
+  EXPECT_EQ(*cached_status, romulus::core::RomStatusType::HashConflict);
+
+  auto summary = db_->get_collection_summary();
+  ASSERT_TRUE(summary.has_value());
+  EXPECT_EQ(summary->hash_conflict, 1);
+  EXPECT_EQ(summary->verified, 0);
+  EXPECT_EQ(summary->crc_match, 0);
+  EXPECT_EQ(summary->md5_match, 0);
+}
+
 // Helper to build a minimal FileInfo with unique hashes under a given path.
 static romulus::core::FileInfo make_file(const std::string& path,
                                          const std::string& sha1_hex) {

@@ -155,4 +155,33 @@ TEST(GuiLogic, StatusSortOrderAllStatusesAreNonNegative) {
   EXPECT_GE(romulus::gui::status_sort_order(RomStatusType::Mismatch), 0);
 }
 
+// ── status_aggregate_rank ────────────────────────────────────
+
+TEST(GuiLogic, StatusAggregateRankOrdering) {
+  using romulus::core::RomStatusType;
+  using romulus::gui::status_aggregate_rank;
+  // Verified < Missing < Md5Match < CrcMatch < HashConflict < Mismatch.
+  EXPECT_LT(status_aggregate_rank(RomStatusType::Verified),
+            status_aggregate_rank(RomStatusType::Missing));
+  EXPECT_LT(status_aggregate_rank(RomStatusType::Missing),
+            status_aggregate_rank(RomStatusType::Md5Match));
+  EXPECT_LT(status_aggregate_rank(RomStatusType::Md5Match),
+            status_aggregate_rank(RomStatusType::CrcMatch));
+  EXPECT_LT(status_aggregate_rank(RomStatusType::CrcMatch),
+            status_aggregate_rank(RomStatusType::HashConflict));
+  EXPECT_LT(status_aggregate_rank(RomStatusType::HashConflict),
+            status_aggregate_rank(RomStatusType::Mismatch));
+}
+
+TEST(GuiLogic, StatusAggregateRankMissingBeatsVerifiedForPartialGame) {
+  // Regression: a game with one Verified ROM and one Missing ROM must aggregate to
+  // Missing (partial/incomplete), not to a hash-match tier that implies false evidence.
+  using romulus::core::RomStatusType;
+  using romulus::gui::status_aggregate_rank;
+  EXPECT_GT(status_aggregate_rank(RomStatusType::Missing),
+            status_aggregate_rank(RomStatusType::Verified));
+  EXPECT_LT(status_aggregate_rank(RomStatusType::Missing),
+            status_aggregate_rank(RomStatusType::CrcMatch));
+}
+
 } // namespace

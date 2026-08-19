@@ -166,13 +166,17 @@ void GuiApp::render_dats_tab() {
   }
   if (cnt_crc_match > 0) {
     ImGui::SameLine(0.0F, 14.0F);
-    ImGui::TextColored(
-        k_ColorCrcMatch, "[~] %lld CRC match", static_cast<long long>(cnt_crc_match));
+    ImGui::TextColored(k_ColorCrcMatch,
+                       "%s %lld CRC match",
+                       k_StatusIconCrcMatch,
+                       static_cast<long long>(cnt_crc_match));
   }
   if (cnt_md5_match > 0) {
     ImGui::SameLine(0.0F, 14.0F);
-    ImGui::TextColored(
-        k_ColorMd5Match, "[~~] %lld MD5 match", static_cast<long long>(cnt_md5_match));
+    ImGui::TextColored(k_ColorMd5Match,
+                       "%s %lld MD5 match",
+                       k_StatusIconMd5Match,
+                       static_cast<long long>(cnt_md5_match));
   }
   if (cnt_hash_conflict > 0) {
     ImGui::SameLine(0.0F, 14.0F);
@@ -183,7 +187,10 @@ void GuiApp::render_dats_tab() {
   }
   if (cnt_mismatch > 0) {
     ImGui::SameLine(0.0F, 14.0F);
-    ImGui::TextColored(k_ColorMismatch, "[!!] %lld mismatch", static_cast<long long>(cnt_mismatch));
+    ImGui::TextColored(k_ColorMismatch,
+                       "%s %lld mismatch",
+                       k_StatusIconMismatch,
+                       static_cast<long long>(cnt_mismatch));
   }
 
   ImGui::Spacing();

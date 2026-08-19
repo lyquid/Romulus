@@ -722,19 +722,12 @@ void GuiApp::check_pending_task() {
             game.status = st;
           } else {
             ++game.rom_count;
-            // Aggregate status priority: Mismatch > HashConflict > CrcMatch > Md5Match >
-            // Missing > Verified. A single Mismatch or HashConflict contaminates the whole
-            // game. Any mix of statuses (e.g. some Verified + some Missing) means the game
-            // is only partially complete, which we report as CrcMatch (weakest confidence).
-            if (st == core::RomStatusType::Mismatch ||
-                game.status == core::RomStatusType::Mismatch) {
-              game.status = core::RomStatusType::Mismatch;
-            } else if (st == core::RomStatusType::HashConflict ||
-                       game.status == core::RomStatusType::HashConflict) {
-              game.status = core::RomStatusType::HashConflict;
-            } else if (st != game.status) {
-              // Mixed statuses (e.g. Verified + Missing) => partial, treated as CrcMatch.
-              game.status = core::RomStatusType::CrcMatch;
+            // Aggregate status: the game's status becomes that of its worst-off ROM, per
+            // status_aggregate_rank (Verified < Missing < Md5Match < CrcMatch < HashConflict
+            // < Mismatch), so e.g. a Verified + Missing mix correctly aggregates to Missing
+            // rather than falsely implying a hash match was found.
+            if (status_aggregate_rank(st) > status_aggregate_rank(game.status)) {
+              game.status = st;
             }
           }
         }

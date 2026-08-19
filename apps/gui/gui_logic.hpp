@@ -120,4 +120,25 @@ inline int status_sort_order(core::RomStatusType status) {
   return 6;
 }
 
+/// Returns an aggregation priority used to combine multiple ROMs' statuses into a single
+/// game-level status: the game's status becomes that of its worst-off ROM.
+/// Order (best to worst): Verified < Missing < Md5Match < CrcMatch < HashConflict < Mismatch.
+inline int status_aggregate_rank(core::RomStatusType status) {
+  switch (status) {
+    case core::RomStatusType::Verified:
+      return 0;
+    case core::RomStatusType::Missing:
+      return 1;
+    case core::RomStatusType::Md5Match:
+      return 2;
+    case core::RomStatusType::CrcMatch:
+      return 3;
+    case core::RomStatusType::HashConflict:
+      return 4;
+    case core::RomStatusType::Mismatch:
+      return 5;
+  }
+  return -1;
+}
+
 } // namespace romulus::gui

@@ -145,7 +145,7 @@ sudo apt install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-d
 - Four-tab layout: **DATs** (ROM checklist + DAT controls), **Folders** (scan directory management), **DB** (read-only database explorer), **Log** (application log)
 - DAT import, folder scanning, verification, and database purge
 - ROM checklist table with Status, ROM Name, Size, and SHA1 columns
-- Filter bar: free-text name filter + status dropdown (All / Verified / Missing / Unverified / Mismatch)
+- Filter bar: free-text name filter + status dropdown (All / Verified / Missing / CRC Match / MD5 Match / Hash Conflict / Mismatch)
 - Status breakdown summary: color-coded counts with completion percentage
 - Active DAT shown in a full-width highlighted banner (name, version, import date)
 - **DB tab**: "Read DB" loads all tables; select a table to see a Schema panel (column type + PK/NN/UQ/FK badges) and a full read-only sortable grid with a free-text filter bar and ^ / v navigation arrows; right-click any cell to copy
@@ -204,7 +204,7 @@ The schema is built around that single question.
 | `files` | Every ROM **file found on disk** (virtual path, optional archive_path, optional entry_name, size, hashes, Unix scan timestamp). Points into `global_roms` via `sha1`. | *Reality* — what is actually sitting in your scan folders. Archive entries are first-class citizens. |
 | `global_roms` | **Content-addressable file identity** keyed by SHA-1. Multiple paths can map to the same content blob. | Deduplication — the same binary in two folders is one `global_rom`, two `files`. |
 | `rom_matches` | Which `global_rom` satisfies each `rom`, and *how* (`match_type` integer enum). | The verdict per ROM — populated by the matcher, queried by the classifier. |
-| `rom_status_cache` | **Precomputed per-ROM status** (0=Verified / 1=Missing / 2=Unverified / 3=Mismatch). Refreshed after every `verify` run. | Replaces the expensive CTE+JOIN on every summary or checklist query — SQLite's answer to a materialized view. |
+| `rom_status_cache` | **Precomputed per-ROM status** (0=Verified / 1=Missing / 2=CrcMatch / 3=Md5Match / 4=HashConflict / 5=Mismatch). Refreshed after every `verify` run. | Replaces the expensive CTE+JOIN on every summary or checklist query — SQLite's answer to a materialized view. |
 | `scanned_directories` | User-registered scan folders, persisted across sessions. | Remember where to look without re-adding every launch. |
 
 ### How They Connect
@@ -333,9 +333,9 @@ Reads `rom_matches` + `files` and assigns a status to each ROM:
 |---|---|---|
 | **Verified** | ✅ | Exact match (all available hashes agree) and file exists on disk |
 | **Missing** | ❓ | No match entry at all — file was never found |
-| **CRC Match** | 🔍 | CRC32-only match + file is live — weak confidence |
-| **MD5 Match** | 🔍 | MD5 / SHA-1 / SHA-256 partial match + file is live — medium confidence |
-| **Hash Conflict** | ⚠️ | Multiple different global ROMs match the same DAT entry via different hash tiers |
+| **CRC Match** | 🟡 | CRC32-only match + file is live — weak confidence |
+| **MD5 Match** | 🟠 | MD5 / SHA-1 / SHA-256 partial match + file is live — medium confidence |
+| **Hash Conflict** | 🔶 | Multiple different global ROMs match the same DAT entry via different hash tiers |
 | **Mismatch** | ⚠️ | Match was recorded but the file has since been deleted |
 
 After classification, the computed statuses are written to `rom_status_cache` — a persistent
