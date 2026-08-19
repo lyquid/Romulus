@@ -696,8 +696,14 @@ void GuiApp::check_pending_task() {
             case core::RomStatusType::Missing:
               ++checklist_stats_.missing;
               break;
-            case core::RomStatusType::Unverified:
-              ++checklist_stats_.unverified;
+            case core::RomStatusType::CrcMatch:
+              ++checklist_stats_.crc_match;
+              break;
+            case core::RomStatusType::Md5Match:
+              ++checklist_stats_.md5_match;
+              break;
+            case core::RomStatusType::HashConflict:
+              ++checklist_stats_.hash_conflict;
               break;
             case core::RomStatusType::Mismatch:
               ++checklist_stats_.mismatch;
@@ -716,16 +722,12 @@ void GuiApp::check_pending_task() {
             game.status = st;
           } else {
             ++game.rom_count;
-            // Aggregate status priority: Mismatch > Unverified > Missing > Verified.
-            // A single Mismatch contaminates the whole game (bad hash found).
-            // Any mix of statuses (e.g. some Verified + some Missing) means the game
-            // is only partially complete, which we report as Unverified.
-            if (st == core::RomStatusType::Mismatch ||
-                game.status == core::RomStatusType::Mismatch) {
-              game.status = core::RomStatusType::Mismatch;
-            } else if (st != game.status) {
-              // Mixed statuses (e.g. Verified + Missing) => partial, treated as Unverified.
-              game.status = core::RomStatusType::Unverified;
+            // Aggregate status: the game's status becomes that of its worst-off ROM, per
+            // status_aggregate_rank (Verified < Missing < Md5Match < CrcMatch < HashConflict
+            // < Mismatch), so e.g. a Verified + Missing mix correctly aggregates to Missing
+            // rather than falsely implying a hash match was found.
+            if (status_aggregate_rank(st) > status_aggregate_rank(game.status)) {
+              game.status = st;
             }
           }
         }

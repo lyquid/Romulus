@@ -97,7 +97,7 @@ TEST_F(ClassifierTest, ClassifiesVerifiedAndMissing) {
   EXPECT_EQ(summary->missing, 1);
 }
 
-TEST_F(ClassifierTest, ClassifiesUnverifiedWithPartialMatch) {
+TEST_F(ClassifierTest, ClassifiesCrcMatchWithPartialMatch) {
   auto dat_id = create_dat();
 
   auto game_id = db_->find_or_insert_game(dat_id, "Game");
@@ -136,8 +136,55 @@ TEST_F(ClassifierTest, ClassifiesUnverifiedWithPartialMatch) {
   auto summary = db_->get_collection_summary();
   ASSERT_TRUE(summary.has_value());
   EXPECT_EQ(summary->total_roms, 1);
-  // CRC32-only match with matching file on disk → Unverified
-  EXPECT_EQ(summary->unverified, 1);
+  // CRC32-only match with matching file on disk → CrcMatch
+  EXPECT_EQ(summary->crc_match, 1);
+  EXPECT_EQ(summary->verified, 0);
+  EXPECT_EQ(summary->missing, 0);
+}
+
+TEST_F(ClassifierTest, ClassifiesMd5MatchWithSha1OnlyMatch) {
+  auto dat_id = create_dat();
+
+  auto game_id = db_->find_or_insert_game(dat_id, "Game");
+  ASSERT_TRUE(game_id.has_value());
+
+  // ROM defined in DAT with specific hashes.
+  romulus::core::RomInfo rom{.game_id = *game_id,
+                             .name = "partial.bin",
+                             .size = 100,
+                             .crc32 = "aabb0011",
+                             .md5 = "aabb0011aabb0011aabb0011aabb0011",
+                             .sha1 = "aabb0011aabb0011aabb0011aabb0011aabb0011",
+                             .sha256 = {},
+                             .region = {}};
+  ASSERT_TRUE(db_->insert_rom(rom).has_value());
+
+  // File with the SAME SHA1 but DIFFERENT CRC32/MD5 — will be a SHA1-only match, which
+  // k_StatusCaseSql maps to the Md5Match tier (match_type IN {Sha256Only, Sha1Only, Md5Only}).
+  romulus::core::FileInfo file{
+      .path = "/roms/partial.bin",
+      .archive_path = std::nullopt,
+      .entry_name = std::nullopt,
+      .size = 100,
+      .crc32 = "cc000000",
+      .md5 = "cc000000cc000000cc000000cc000000",
+      .sha1 = "aabb0011aabb0011aabb0011aabb0011aabb0011",
+      .sha256 = "cc000000cc000000cc000000cc000000cc000000cc000000cc000000cc000000",
+  };
+  ASSERT_TRUE(db_->upsert_file(file).has_value());
+
+  auto match_result = romulus::engine::Matcher::match_all(*db_);
+  ASSERT_TRUE(match_result.has_value());
+
+  auto result = romulus::engine::Classifier::classify_all(*db_);
+  ASSERT_TRUE(result.has_value());
+
+  auto summary = db_->get_collection_summary();
+  ASSERT_TRUE(summary.has_value());
+  EXPECT_EQ(summary->total_roms, 1);
+  // SHA1-only match with matching file on disk → Md5Match
+  EXPECT_EQ(summary->md5_match, 1);
+  EXPECT_EQ(summary->crc_match, 0);
   EXPECT_EQ(summary->verified, 0);
   EXPECT_EQ(summary->missing, 0);
 }

@@ -126,7 +126,9 @@ private:
     std::int64_t total = 0;
     std::int64_t verified = 0;
     std::int64_t missing = 0;
-    std::int64_t unverified = 0;
+    std::int64_t crc_match = 0;
+    std::int64_t md5_match = 0;
+    std::int64_t hash_conflict = 0;
     std::int64_t mismatch = 0;
     std::int64_t games_total = 0; ///< Total number of unique games
   };

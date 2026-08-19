@@ -15,11 +15,15 @@ auto Classifier::classify_all(database::Database& db,
   }
 
   ROMULUS_INFO("Collection summary computed for {} ROM(s).", summary->total_roms);
-  ROMULUS_INFO("Classification complete: {} verified, {} missing, {} unverified, {} mismatch",
-               summary->verified,
-               summary->missing,
-               summary->unverified,
-               summary->mismatch);
+  ROMULUS_INFO(
+      "Classification complete: {} verified, {} missing, {} crc_match, {} md5_match, "
+      "{} hash_conflict, {} mismatch",
+      summary->verified,
+      summary->missing,
+      summary->crc_match,
+      summary->md5_match,
+      summary->hash_conflict,
+      summary->mismatch);
 
   return {};
 }

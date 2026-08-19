@@ -106,7 +106,9 @@ Result<std::string> ReportGenerator::summary_text(database::Database& db,
              std::to_string(static_cast<int>(summary->verified_percent())) + "%)"
       << " ║\n";
   out << "║ Missing:    " << std::setw(36) << summary->missing << " ║\n";
-  out << "║ Unverified: " << std::setw(36) << summary->unverified << " ║\n";
+  out << "║ CRC Match:  " << std::setw(36) << summary->crc_match << " ║\n";
+  out << "║ MD5 Match:  " << std::setw(36) << summary->md5_match << " ║\n";
+  out << "║ Conflict:   " << std::setw(36) << summary->hash_conflict << " ║\n";
   out << "║ Mismatch:   " << std::setw(36) << summary->mismatch << " ║\n";
   out << "╚══════════════════════════════════════════════════╝\n";
 
@@ -121,10 +123,12 @@ Result<std::string> ReportGenerator::summary_csv(database::Database& db,
   }
 
   std::ostringstream out;
-  out << "dat,total_roms,verified,missing,unverified,mismatch,verified_pct\n";
+  out << "dat,total_roms,verified,missing,crc_match,md5_match,"
+         "hash_conflict,mismatch,verified_pct\n";
   out << csv_escape(summary->dat_name) << "," << summary->total_roms << "," << summary->verified
-      << "," << summary->missing << "," << summary->unverified << "," << summary->mismatch << ","
-      << std::fixed << std::setprecision(1) << summary->verified_percent() << "\n";
+      << "," << summary->missing << "," << summary->crc_match << "," << summary->md5_match << ","
+      << summary->hash_conflict << "," << summary->mismatch << "," << std::fixed
+      << std::setprecision(1) << summary->verified_percent() << "\n";
 
   return out.str();
 }
@@ -141,7 +145,9 @@ Result<std::string> ReportGenerator::summary_json(database::Database& db,
   j["total_roms"] = summary->total_roms;
   j["verified"] = summary->verified;
   j["missing"] = summary->missing;
-  j["unverified"] = summary->unverified;
+  j["crc_match"] = summary->crc_match;
+  j["md5_match"] = summary->md5_match;
+  j["hash_conflict"] = summary->hash_conflict;
   j["mismatch"] = summary->mismatch;
   j["verified_percent"] = summary->verified_percent();
 
