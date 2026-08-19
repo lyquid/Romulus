@@ -402,10 +402,12 @@ void GuiApp::render_dats_tab() {
       constexpr float k_ColWSha1 = 200.0F;
       constexpr float k_ColWMd5 = 180.0F;
       constexpr float k_ColWCrc32 = 90.0F;
-      constexpr float k_RomTableInnerW =
-          k_ColWStatus + k_ColWRomName + k_ColWSize + k_ColWSha1 + k_ColWMd5 + k_ColWCrc32 +
-          20.0F; // +20 px padding so the last column border is never clipped
-      constexpr int k_RomColumnCount = 6;
+      constexpr float k_ColWLocation = 260.0F;
+      constexpr float k_RomTableInnerW = k_ColWStatus + k_ColWRomName + k_ColWSize + k_ColWSha1 +
+                                         k_ColWMd5 + k_ColWCrc32 + k_ColWLocation +
+                                         20.0F; // +20 px padding so the last column border is
+                                                // never clipped
+      constexpr int k_RomColumnCount = 7;
       if (ImGui::BeginTable("rom_detail_table",
                             k_RomColumnCount,
                             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
@@ -421,6 +423,7 @@ void GuiApp::render_dats_tab() {
         ImGui::TableSetupColumn("SHA1", ImGuiTableColumnFlags_None, k_ColWSha1);
         ImGui::TableSetupColumn("MD5", ImGuiTableColumnFlags_None, k_ColWMd5);
         ImGui::TableSetupColumn("CRC32", ImGuiTableColumnFlags_None, k_ColWCrc32);
+        ImGui::TableSetupColumn("Location", ImGuiTableColumnFlags_None, k_ColWLocation);
         ImGui::TableHeadersRow();
 
         if (auto* sort_specs = ImGui::TableGetSortSpecs()) {
@@ -519,6 +522,20 @@ void GuiApp::render_dats_tab() {
             show_toast("CRC32 copied to clipboard");
           }
 
+          ImGui::TableSetColumnIndex(k_ColLocation);
+          if (entry.matched_file_path.empty()) {
+            ImGui::TextDisabled("--");
+          } else {
+            ImGui::TextUnformatted(entry.matched_file_path.c_str());
+            if (ImGui::IsItemHovered()) {
+              ImGui::SetTooltip("Right-click to copy file location");
+            }
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+              ImGui::SetClipboardText(entry.matched_file_path.c_str());
+              show_toast("File location copied to clipboard");
+            }
+          }
+
           ImGui::PopID();
         }
         ImGui::EndTable();
@@ -556,6 +573,9 @@ void GuiApp::apply_checklist_sort() {
                          return asc ? a.md5 < b.md5 : b.md5 < a.md5;
                        case k_ColCrc32:
                          return asc ? a.crc32 < b.crc32 : b.crc32 < a.crc32;
+                       case k_ColLocation:
+                         return asc ? a.matched_file_path < b.matched_file_path
+                                    : b.matched_file_path < a.matched_file_path;
                        default:
                          return false;
                      }

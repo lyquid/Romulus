@@ -670,6 +670,17 @@ void GuiApp::check_pending_task() {
         checklist_stats_ = {};
         ++rom_checklist_generation_; // Invalidate the per-game ROM index cache.
 
+        // Single batch query resolving which physical file backs each matched ROM (bare file
+        // > shortest path > latest mtime > lexicographic fallback — see README § Match
+        // Priority Policy). ROMs absent from the map have no match or no live file.
+        // Non-fatal on failure: the checklist still loads from `roms`, just without
+        // Location data — this mirrors how other supplementary lookups in this file degrade.
+        auto matched_paths = svc_.get_matched_file_paths(dv.id);
+        if (!matched_paths) {
+          ROMULUS_WARN("Failed to resolve matched file locations: {}",
+                       matched_paths.error().message);
+        }
+
         // Accumulate per-game data keyed by game_id; iteration order is not significant.
         std::unordered_map<std::int64_t, GameChecklistEntry> game_map;
 
@@ -677,6 +688,12 @@ void GuiApp::check_pending_task() {
           // Build ROM checklist entry
           std::string name_lower = rom.name;
           std::ranges::transform(name_lower, name_lower.begin(), ascii_lower);
+          std::string matched_file_path;
+          if (matched_paths) {
+            if (const auto it = matched_paths->find(rom.id); it != matched_paths->end()) {
+              matched_file_path = it->second;
+            }
+          }
           rom_checklist_.push_back({
               .game_id = rom.game_id,
               .name = rom.name,
@@ -686,6 +703,7 @@ void GuiApp::check_pending_task() {
               .md5 = rom.md5,
               .crc32 = rom.crc32,
               .status = st,
+              .matched_file_path = std::move(matched_file_path),
           });
 
           // Update ROM-level stats

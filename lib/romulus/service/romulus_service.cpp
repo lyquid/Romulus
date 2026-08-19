@@ -349,6 +349,11 @@ Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>> RomulusServic
   return db_->get_all_roms_with_status(dat_version_id);
 }
 
+Result<core::MatchedFilePathMap> RomulusService::get_matched_file_paths(
+    std::int64_t dat_version_id) {
+  return db_->get_matched_file_paths(dat_version_id);
+}
+
 Result<std::vector<core::MissingRom>> RomulusService::get_missing_roms(
     std::optional<std::string> dat_name) {
   auto dat_id = resolve_optional_dat_id(dat_name);

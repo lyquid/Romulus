@@ -1812,6 +1812,50 @@ Result<std::vector<core::FileInfo>> Database::get_unverified_files() {
   return unverified;
 }
 
+Result<core::MatchedFilePathMap> Database::get_matched_file_paths(
+    std::optional<std::int64_t> dat_version_id) {
+  // Greatest-n-per-group: rank every candidate file for a rom_id using the same tiebreaker
+  // policy documented for CRC32 collisions in README § Match Priority Policy (bare file >
+  // shortest path > latest mtime > lexicographically smallest path as a deterministic
+  // fallback), then keep only the rank-1 row per rom_id. A rom_id can have more than one
+  // candidate either because several files share the winning content (duplicate copies) or,
+  // in the rare HashConflict case, because more than one rom_matches row exists for it —
+  // both are handled uniformly since neither is restricted to a single global_rom_sha1 here.
+  std::string sql =
+      "WITH ranked AS ("
+      "  SELECT rm.rom_id AS rom_id, f.path AS path,"
+      "    ROW_NUMBER() OVER ("
+      "      PARTITION BY rm.rom_id"
+      "      ORDER BY (f.entry_name IS NOT NULL) ASC,"
+      "               LENGTH(f.path) ASC,"
+      "               f.last_write_time DESC,"
+      "               f.path ASC"
+      "    ) AS rn"
+      "  FROM rom_matches rm"
+      "  JOIN roms r ON r.id = rm.rom_id"
+      "  JOIN games g ON g.id = r.game_id"
+      "  JOIN files f ON f.sha1 = rm.global_rom_sha1";
+  if (dat_version_id.has_value()) {
+    sql += "  WHERE g.dat_version_id = ?1";
+  }
+  sql += ") "
+         "SELECT rom_id, path FROM ranked WHERE rn = 1";
+
+  auto stmt = prepare(sql);
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+  if (dat_version_id.has_value()) {
+    stmt->bind_int64(1, *dat_version_id);
+  }
+
+  core::MatchedFilePathMap paths;
+  while (stmt->step()) {
+    paths.emplace(stmt->column_int64(0), stmt->column_text(1));
+  }
+  return paths;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Scanned Directories
 // ═══════════════════════════════════════════════════════════════

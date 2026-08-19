@@ -274,6 +274,14 @@ Phantom candidates (no file currently on disk) always lose to candidates with an
 
 > 🔒 *Policy source of truth: [`lib/romulus/engine/matcher.cpp`](lib/romulus/engine/matcher.cpp) — `pick_best_crc32_candidate()`. This table mirrors that function exactly.*
 
+### File Resolution: "Which File Satisfies This ROM?"
+
+The tiebreaker above answers "which **content** wins" when different `global_roms` collide on CRC32. It's a separate question from "which **file** wins" — `rom_matches` links a ROM to a `global_rom` by content (SHA-1), not to a specific row in `files`. Since `global_roms` is content-addressable, several files can legitimately share one `global_rom` (duplicate copies of the same ROM in different folders or archives), and a ROM can rarely carry more than one `rom_matches` row (`HashConflict`).
+
+`Database::get_matched_file_paths()` answers both cases with one rule: among every file linked to any of a ROM's matched `global_rom_sha1` values, pick one using the **same ordered rule chain** as the CRC32 tiebreaker above (bare file > shortest path > latest `last_write_time` > lexicographically smallest path as the deterministic fallback, since path — not SHA-1 — is what's guaranteed unique across the candidate set here).
+
+This is what the GUI's **Location** column (DATs tab → ROM detail) and any future export/copy-to-folder flow use to answer "which file do I hand the user for this ROM?" ROMs with no match, or no live file backing their match, resolve to no location.
+
 ---
 
 ## ⚙️ ~ WORKFLOW: STEP BY STEP ~

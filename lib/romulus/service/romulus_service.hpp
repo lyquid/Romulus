@@ -63,6 +63,10 @@ public:
   [[nodiscard]] Result<std::vector<core::DatVersion>> list_dat_versions();
   [[nodiscard]] Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>>
   get_roms_with_status(std::int64_t dat_version_id);
+  /// Resolves the physical file backing each matched ROM in the given DAT — see
+  /// Database::get_matched_file_paths().
+  [[nodiscard]] Result<core::MatchedFilePathMap> get_matched_file_paths(
+      std::int64_t dat_version_id);
   [[nodiscard]] Result<std::vector<core::MissingRom>> get_missing_roms(
       std::optional<std::string> dat_name = {});
   [[nodiscard]] Result<std::vector<core::FileInfo>> get_all_files();
