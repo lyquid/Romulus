@@ -142,12 +142,12 @@ sudo apt install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-d
 
 **GUI features:**
 
-- Four-tab layout: **DATs** (ROM checklist + DAT controls), **Folders** (scan directory management), **DB** (read-only database explorer), **Log** (application log)
-- DAT import, folder scanning, verification, and database purge
-- ROM checklist table with Status, ROM Name, Size, and SHA1 columns
-- Filter bar: free-text name filter + status dropdown (All / Verified / Missing / CRC Match / MD5 Match / Hash Conflict / Mismatch)
-- Status breakdown summary: color-coded counts with completion percentage
-- Active DAT shown in a full-width highlighted banner (name, version, import date)
+- Four-tab layout: **DATs** (collection audit workspace), **Folders** (scan directory management), **DB** (read-only database explorer), **Log** (application log)
+- Selecting a DAT automatically reasons over the existing content index without rescanning or re-hashing files
+- Clickable audit counts for Correct, Missing, Wrong name, Extra, Duplicate, Weak, Hash conflict, and Mismatch states
+- Explainable audit rows with game, canonical name, resolved physical/archive-entry name, location, reason, and a non-mutating suggested next step
+- Selected-DAT extras distinguish content known to another imported DAT from content that is globally unknown
+- Active DAT shown in a full-width highlighted audit-context banner
 - **DB tab**: "Read DB" loads all tables; select a table to see a Schema panel (column type + PK/NN/UQ/FK badges) and a full read-only sortable grid with a free-text filter bar and ^ / v navigation arrows; right-click any cell to copy
 - **Folders tab**: registered scan directories are listed with their scanned file count (including archive entries); supports adding, removing, and rescanning folders
 - Right-click any ROM Name, Size, SHA1 cell, or folder path to copy the value to clipboard (with toast notification)
@@ -278,9 +278,14 @@ Phantom candidates (no file currently on disk) always lose to candidates with an
 
 The tiebreaker above answers "which **content** wins" when different `global_roms` collide on CRC32. It's a separate question from "which **file** wins" — `rom_matches` links a ROM to a `global_rom` by content (SHA-1), not to a specific row in `files`. Since `global_roms` is content-addressable, several files can legitimately share one `global_rom` (duplicate copies of the same ROM in different folders or archives), and a ROM can rarely carry more than one `rom_matches` row (`HashConflict`).
 
-`Database::get_matched_file_paths()` answers both cases with one rule: among every file linked to any of a ROM's matched `global_rom_sha1` values, pick one using the **same ordered rule chain** as the CRC32 tiebreaker above (bare file > shortest path > latest `last_write_time` > lexicographically smallest path as the deterministic fallback, since path — not SHA-1 — is what's guaranteed unique across the candidate set here).
+`Database::get_matched_file_paths()` answers both cases with one rule: prefer the strongest
+recorded match type first (so an exact-content path cannot lose to a shorter weak-match path),
+then apply the physical-file rule chain above: bare file > shortest path > latest
+`last_write_time` > lexicographically smallest path as the deterministic fallback. Path — not
+SHA-1 — is what's guaranteed unique across the candidate files.
 
-This is what the GUI's **Location** column (DATs tab → ROM detail) and any future export/copy-to-folder flow use to answer "which file do I hand the user for this ROM?" ROMs with no match, or no live file backing their match, resolve to no location.
+This is what the GUI audit workspace uses for its **Location** and canonical-name comparison.
+ROMs with no match, or no live file backing their match, resolve to no location.
 
 ---
 

@@ -202,6 +202,12 @@ public:
       std::optional<std::int64_t> dat_version_id = {});
   [[nodiscard]] Result<std::vector<core::FileInfo>> get_unverified_files();
 
+  /// Returns physical files that do not match any ROM in the selected DAT but do match at
+  /// least one ROM in another imported DAT. Kept separate from get_unverified_files(), which
+  /// remains the source of truth for files unknown to every imported DAT (#97).
+  [[nodiscard]] Result<std::vector<core::OtherDatFile>> get_files_matching_other_dats(
+      std::int64_t dat_version_id);
+
   /// Resolves, for every matched ROM in scope, the single physical file that best represents
   /// its recorded match(es) — the answer to "which file satisfies this ROM?" When multiple
   /// files share the winning content (duplicate copies on disk) or a ROM has more than one

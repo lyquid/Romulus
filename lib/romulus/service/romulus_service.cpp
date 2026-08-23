@@ -5,6 +5,7 @@
 #include "romulus/dat/dat_parser.hpp"
 #include "romulus/database/database.hpp"
 #include "romulus/engine/classifier.hpp"
+#include "romulus/engine/dat_auditor.hpp"
 #include "romulus/engine/matcher.hpp"
 #include "romulus/report/report_generator.hpp"
 #include "romulus/scanner/rom_scanner.hpp"
@@ -347,6 +348,24 @@ Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>> RomulusServic
   // inlines the status computation. Replaces the prior N+1 pattern that issued
   // one get_computed_rom_status() call per ROM.
   return db_->get_all_roms_with_status(dat_version_id);
+}
+
+Result<void> RomulusService::refresh_dat_audit(std::int64_t dat_version_id) {
+  // Matching reasons over the existing global content index. It never scans the filesystem or
+  // hashes a file, so switching DAT context preserves the scan-once/reason-many contract.
+  auto matches = engine::Matcher::match_all(*db_);
+  if (!matches) {
+    return std::unexpected(matches.error());
+  }
+  auto cache = db_->refresh_status_cache(dat_version_id);
+  if (!cache) {
+    return std::unexpected(cache.error());
+  }
+  return engine::Classifier::classify_all(*db_, dat_version_id);
+}
+
+Result<core::DatAudit> RomulusService::get_dat_audit(std::int64_t dat_version_id) {
+  return engine::DatAuditor::audit(*db_, dat_version_id);
 }
 
 Result<core::MatchedFilePathMap> RomulusService::get_matched_file_paths(

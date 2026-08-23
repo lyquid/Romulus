@@ -47,6 +47,16 @@ inline constexpr int k_ColMd5 = 4;
 inline constexpr int k_ColCrc32 = 5;
 inline constexpr int k_ColLocation = 6;
 
+// DAT audit workspace column indices
+inline constexpr int k_AuditColStatus = 0;
+inline constexpr int k_AuditColGame = 1;
+inline constexpr int k_AuditColCanonicalName = 2;
+inline constexpr int k_AuditColActualName = 3;
+inline constexpr int k_AuditColSize = 4;
+inline constexpr int k_AuditColLocation = 5;
+inline constexpr int k_AuditColReason = 6;
+inline constexpr int k_AuditColAction = 7;
+
 // Game panel column indices
 inline constexpr int k_GameColStatus = 0;
 inline constexpr int k_GameColName = 1;
@@ -58,6 +68,9 @@ inline constexpr ImVec4 k_ColorCrcMatch{1.0F, 0.9F, 0.2F, 1.0F};      // yellow
 inline constexpr ImVec4 k_ColorMd5Match{0.9F, 0.7F, 0.1F, 1.0F};      // amber
 inline constexpr ImVec4 k_ColorHashConflict{1.0F, 0.4F, 0.0F, 1.0F};  // orange-red
 inline constexpr ImVec4 k_ColorMismatch{1.0F, 0.5F, 0.0F, 1.0F};      // orange
+inline constexpr ImVec4 k_ColorWrongName{0.35F, 0.75F, 1.0F, 1.0F};  // blue
+inline constexpr ImVec4 k_ColorExtra{0.75F, 0.55F, 0.95F, 1.0F};     // violet
+inline constexpr ImVec4 k_ColorDuplicate{0.25F, 0.80F, 0.85F, 1.0F}; // cyan
 
 // Log panel colour scheme (RGBA)
 inline constexpr ImVec4 k_ColorLogWarn{1.0F, 0.75F, 0.1F, 1.0F};   // amber  — warnings
@@ -91,5 +104,29 @@ inline ImVec4 status_color(core::RomStatusType status) {
   return k_ColorMissing;
 }
 
-} // namespace romulus::gui
+inline ImVec4 audit_status_color(core::DatAuditStatus status) {
+  switch (status) {
+    case core::DatAuditStatus::Correct:
+      return k_ColorVerified;
+    case core::DatAuditStatus::Missing:
+      return k_ColorMissing;
+    case core::DatAuditStatus::WrongCanonicalName:
+      return k_ColorWrongName;
+    case core::DatAuditStatus::ExtraKnownOtherDat:
+    case core::DatAuditStatus::ExtraUnknown:
+      return k_ColorExtra;
+    case core::DatAuditStatus::Duplicate:
+      return k_ColorDuplicate;
+    case core::DatAuditStatus::CrcMatch:
+      return k_ColorCrcMatch;
+    case core::DatAuditStatus::Md5Match:
+      return k_ColorMd5Match;
+    case core::DatAuditStatus::HashConflict:
+      return k_ColorHashConflict;
+    case core::DatAuditStatus::Mismatch:
+      return k_ColorMismatch;
+  }
+  return k_ColorMissing;
+}
 
+} // namespace romulus::gui

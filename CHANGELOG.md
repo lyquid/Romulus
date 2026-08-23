@@ -7,6 +7,20 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ✨ feat(audit): DAT-centric collection dashboard
+
+- Added a testable `DatAudit` model that composes existing classifier statuses, deterministic
+  matched-file resolution, global-unmatched reporting, and duplicate reporting.
+- Exact content is now split into **Correct** and **Correct content / wrong canonical name** by
+  comparing the selected DAT name with the resolved bare filename or archive-entry leaf name.
+  Weak and conflicting matches never trigger filename-policy findings.
+- Added selected-DAT-relative extras with explicit **known to another imported DAT** versus
+  **globally unknown** explanations; the latter continues to use the existing #97 query.
+- Reworked the native DATs tab into an automatically refreshed audit workspace with clickable
+  count filters, physical locations, per-row reasons, and non-mutating suggested next steps.
+- Added audit tests for canonical/wrong names, missing content, both extra scopes, duplicates,
+  archive entry names, weak matches, and exact-match file resolution.
+
 ### ✨ feat(database,gui): File resolution — "which file satisfies this ROM?"
 
 `rom_matches` links a ROM to a `global_rom` by content (SHA-1), never to a specific row in

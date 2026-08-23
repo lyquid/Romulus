@@ -13,6 +13,20 @@
 
 namespace romulus::gui {
 
+/// Clickable dashboard filter. Combined filters deliberately group the two weak-match tiers
+/// and the two selected-DAT extra scopes while preserving their distinct row labels/reasons.
+enum class DatAuditFilter {
+  All,
+  Correct,
+  Missing,
+  WrongName,
+  Extra,
+  Duplicate,
+  WeakMatch,
+  HashConflict,
+  Mismatch,
+};
+
 // ── Status label / icon string constants ─────────────────────
 // Single source of truth for all ROM status display strings.
 // gui_app_shared.hpp references these so both headers stay consistent.
@@ -139,6 +153,83 @@ inline int status_aggregate_rank(core::RomStatusType status) {
       return 5;
   }
   return -1;
+}
+
+inline const char* audit_status_label(core::DatAuditStatus status) {
+  switch (status) {
+    case core::DatAuditStatus::Correct:
+      return "[OK] Correct";
+    case core::DatAuditStatus::Missing:
+      return "[--] Missing";
+    case core::DatAuditStatus::WrongCanonicalName:
+      return "[NM] Wrong name";
+    case core::DatAuditStatus::ExtraKnownOtherDat:
+      return "[EX] Extra (known elsewhere)";
+    case core::DatAuditStatus::ExtraUnknown:
+      return "[??] Extra (globally unknown)";
+    case core::DatAuditStatus::Duplicate:
+      return "[DUP] Duplicate copy";
+    case core::DatAuditStatus::CrcMatch:
+      return "[~] Weak CRC match";
+    case core::DatAuditStatus::Md5Match:
+      return "[~~] Partial hash match";
+    case core::DatAuditStatus::HashConflict:
+      return "[?!] Hash conflict";
+    case core::DatAuditStatus::Mismatch:
+      return "[!!] Mismatch";
+  }
+  return k_StatusLabelUnknown;
+}
+
+inline int audit_status_sort_order(core::DatAuditStatus status) {
+  switch (status) {
+    case core::DatAuditStatus::Missing:
+      return 0;
+    case core::DatAuditStatus::WrongCanonicalName:
+      return 1;
+    case core::DatAuditStatus::ExtraUnknown:
+      return 2;
+    case core::DatAuditStatus::ExtraKnownOtherDat:
+      return 3;
+    case core::DatAuditStatus::Duplicate:
+      return 4;
+    case core::DatAuditStatus::Mismatch:
+      return 5;
+    case core::DatAuditStatus::HashConflict:
+      return 6;
+    case core::DatAuditStatus::CrcMatch:
+      return 7;
+    case core::DatAuditStatus::Md5Match:
+      return 8;
+    case core::DatAuditStatus::Correct:
+      return 9;
+  }
+  return 10;
+}
+
+inline bool audit_filter_matches(DatAuditFilter filter, core::DatAuditStatus status) {
+  switch (filter) {
+    case DatAuditFilter::All:
+      return true;
+    case DatAuditFilter::Correct:
+      return status == core::DatAuditStatus::Correct;
+    case DatAuditFilter::Missing:
+      return status == core::DatAuditStatus::Missing;
+    case DatAuditFilter::WrongName:
+      return status == core::DatAuditStatus::WrongCanonicalName;
+    case DatAuditFilter::Extra:
+      return status == core::DatAuditStatus::ExtraKnownOtherDat ||
+             status == core::DatAuditStatus::ExtraUnknown;
+    case DatAuditFilter::Duplicate:
+      return status == core::DatAuditStatus::Duplicate;
+    case DatAuditFilter::WeakMatch:
+      return status == core::DatAuditStatus::CrcMatch || status == core::DatAuditStatus::Md5Match;
+    case DatAuditFilter::HashConflict:
+      return status == core::DatAuditStatus::HashConflict;
+    case DatAuditFilter::Mismatch:
+      return status == core::DatAuditStatus::Mismatch;
+  }
+  return false;
 }
 
 } // namespace romulus::gui

@@ -343,6 +343,71 @@ struct DuplicateFile {
   std::string file_path;
   std::string rom_name;
   std::string game_name;
+  std::string sha1;            ///< Shared content identity for the duplicate copies
+  std::int64_t copy_count = 0; ///< Number of physical files carrying this content
+};
+
+// ── DAT Audit ────────────────────────────────────────────────
+
+/// User-facing audit state for one expectation or physical-file issue relative to a DAT.
+/// Unlike RomStatusType, this includes naming policy and selected-DAT-relative file states.
+enum class DatAuditStatus {
+  Correct,
+  Missing,
+  WrongCanonicalName,
+  ExtraKnownOtherDat,
+  ExtraUnknown,
+  Duplicate,
+  CrcMatch,
+  Md5Match,
+  HashConflict,
+  Mismatch,
+};
+
+/// A single explainable row in a DAT audit. Expected-ROM rows carry rom_id/game/canonical_name;
+/// physical-file issue rows (extra and duplicate) carry actual_name/file_path.
+struct DatAuditRow {
+  DatAuditStatus status = DatAuditStatus::Missing;
+  std::int64_t rom_id = 0;
+  std::string game_name;
+  std::string canonical_name;
+  std::string actual_name;
+  std::string file_path;
+  std::string reason;
+  std::string suggested_action; ///< Audit-only guidance; never mutates the filesystem
+  std::int64_t size = 0;
+};
+
+/// Counts shown by the DAT-centric audit dashboard. Categories intentionally overlap where
+/// they describe different dimensions: duplicate rows are physical-file issues, while correct
+/// and wrong-name counts describe DAT expectations.
+struct DatAuditSummary {
+  std::int64_t expected_roms = 0;
+  std::int64_t correct = 0;
+  std::int64_t missing = 0;
+  std::int64_t wrong_name = 0;
+  std::int64_t extra = 0;
+  std::int64_t extra_known_other_dat = 0;
+  std::int64_t globally_unknown = 0;
+  std::int64_t duplicate_files = 0;
+  std::int64_t crc_match = 0;
+  std::int64_t md5_match = 0;
+  std::int64_t hash_conflict = 0;
+  std::int64_t mismatch = 0;
+};
+
+/// Complete audit of scanned reality against one selected DAT version.
+struct DatAudit {
+  std::int64_t dat_version_id = 0;
+  DatAuditSummary summary;
+  std::vector<DatAuditRow> rows;
+};
+
+/// A physical file that does not match the selected DAT but does match one or more other
+/// imported DATs. Globally unknown files continue to come from get_unverified_files() (#97).
+struct OtherDatFile {
+  FileInfo file;
+  std::string matching_dat_names;
 };
 
 /// Scan operation summary.
