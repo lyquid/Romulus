@@ -56,8 +56,8 @@ std::string expectation_reason(core::DatAuditStatus status,
     case core::DatAuditStatus::CrcMatch:
       return "Only CRC32 matched; CRC32 alone is weak evidence and does not verify content.";
     case core::DatAuditStatus::Md5Match:
-      return "A SHA-256, SHA-1, or MD5 match exists, but the DAT's declared hashes do not all "
-             "agree.";
+      return "A SHA-256, SHA-1, or MD5 fallback matched, but the available evidence is "
+             "insufficient for exact content verification.";
     case core::DatAuditStatus::HashConflict:
       return "Multiple distinct content identities weakly match this DAT expectation.";
     case core::DatAuditStatus::Mismatch:

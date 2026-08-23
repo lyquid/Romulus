@@ -1743,20 +1743,22 @@ Result<std::vector<core::MissingRom>> Database::get_missing_roms(
 
 Result<std::vector<core::DuplicateFile>> Database::get_duplicate_files(
     std::optional<std::int64_t> dat_version_id) {
-  // Find files that share the same global ROM identity (sha1) with at least one other file.
+  // Aggregate duplicate identities once, then join that compact result to every returned copy.
+  // A correlated COUNT(*) here would repeat the same work for each physical duplicate row.
   std::string sql = "SELECT f.path, r.name, g.name, lower(hex(f.sha1)), "
-                    "  (SELECT COUNT(*) FROM files copies WHERE copies.sha1 = f.sha1) "
+                    "  duplicates.copy_count "
                     "FROM files f "
+                    "JOIN ("
+                    "  SELECT sha1, COUNT(*) AS copy_count "
+                    "  FROM files GROUP BY sha1 HAVING COUNT(*) > 1"
+                    ") duplicates ON duplicates.sha1 = f.sha1 "
                     "JOIN global_roms gr ON f.sha1 = gr.sha1 "
                     "JOIN rom_matches rm ON rm.global_rom_sha1 = gr.sha1 "
                     "JOIN roms r ON rm.rom_id = r.id "
-                    "JOIN games g ON r.game_id = g.id "
-                    "WHERE f.sha1 IN ("
-                    "  SELECT sha1 FROM files GROUP BY sha1 HAVING COUNT(*) > 1"
-                    ")";
+                    "JOIN games g ON r.game_id = g.id";
 
   if (dat_version_id.has_value()) {
-    sql += " AND g.dat_version_id = ?1";
+    sql += " WHERE g.dat_version_id = ?1";
   }
   sql += " ORDER BY r.name, f.path";
 

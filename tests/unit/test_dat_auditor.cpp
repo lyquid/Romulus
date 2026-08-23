@@ -237,6 +237,22 @@ TEST_F(DatAuditorTest, WeakMatchDoesNotTriggerBadNamePolicy) {
   EXPECT_NE(row->reason.find("weak evidence"), std::string::npos);
 }
 
+TEST_F(DatAuditorTest, Md5OnlyExplanationDoesNotClaimHashesDisagree) {
+  const auto dat_id = add_dat("Selected", "audit-md5-only-reason");
+  const std::string sha1(40, '9');
+  const auto rom_id = add_rom(dat_id, "canonical.bin", {});
+  add_file("/roms/md5-only.bin", sha1);
+  add_match(rom_id, sha1, romulus::core::MatchType::Md5Only);
+
+  const auto result = audit(dat_id);
+
+  EXPECT_EQ(result.summary.md5_match, 1);
+  const auto* row = find_row(result, DatAuditStatus::Md5Match);
+  ASSERT_NE(row, nullptr);
+  EXPECT_NE(row->reason.find("insufficient"), std::string::npos);
+  EXPECT_EQ(row->reason.find("do not all agree"), std::string::npos);
+}
+
 TEST_F(DatAuditorTest, BadNameComparisonUsesExactContentBeforeWeakerCandidate) {
   const auto dat_id = add_dat("Selected", "audit-exact-resolution");
   const std::string exact_sha1(40, 'a');
