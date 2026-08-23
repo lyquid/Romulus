@@ -1014,8 +1014,10 @@ TEST_F(DatabaseTest, MatchedFilePathsPrefersBareFileOverArchiveEntry) {
   auto rom_id = db_->insert_rom(rom);
   ASSERT_TRUE(rom_id.has_value());
 
-  // Archive entry inserted first, then a much shorter bare-file path — the bare file must
-  // still win despite losing on path length, since tier 1 (bare > archive) outranks tier 2.
+  // The bare-file path is deliberately much *longer* than the archive entry's virtual path,
+  // so tier 2 (shortest path) alone would pick the archive entry. The bare file must still
+  // win, proving tier 1 (bare > archive) outranks tier 2 rather than merely agreeing with it.
+  const std::string long_bare_path = "/some/very/long/nested/directory/structure/for/testing/r.bin";
   romulus::core::FileInfo archive_file{.id = 0,
                                        .path = "/roms/collection.zip::r.bin",
                                        .archive_path = "/roms/collection.zip",
@@ -1026,7 +1028,8 @@ TEST_F(DatabaseTest, MatchedFilePathsPrefersBareFileOverArchiveEntry) {
                                        .sha1 = sha1,
                                        .sha256 = {}};
   ASSERT_TRUE(db_->upsert_file(archive_file).has_value());
-  ASSERT_TRUE(db_->upsert_file(make_file("/r.bin", sha1)).has_value());
+  ASSERT_TRUE(db_->upsert_file(make_file(long_bare_path, sha1)).has_value());
+  ASSERT_GT(long_bare_path.size(), archive_file.path.size());
 
   romulus::core::MatchResult match{
       .rom_id = *rom_id, .global_rom_sha1 = sha1, .match_type = romulus::core::MatchType::Exact};
@@ -1035,7 +1038,7 @@ TEST_F(DatabaseTest, MatchedFilePathsPrefersBareFileOverArchiveEntry) {
   auto paths = db_->get_matched_file_paths();
   ASSERT_TRUE(paths.has_value());
   ASSERT_EQ(paths->count(*rom_id), 1u);
-  EXPECT_EQ(paths->at(*rom_id), "/r.bin");
+  EXPECT_EQ(paths->at(*rom_id), long_bare_path);
 }
 
 TEST_F(DatabaseTest, MatchedFilePathsPrefersShortestPathAmongBareFiles) {
