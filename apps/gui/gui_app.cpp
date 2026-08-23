@@ -25,7 +25,6 @@
 #include <future>
 #include <GLFW/glfw3.h>
 #include <stdexcept>
-#include <unordered_map>
 
 namespace romulus::gui {
 
@@ -41,6 +40,9 @@ GuiApp::GuiApp(service::RomulusService& svc, std::shared_ptr<GuiLogSink> log_sin
   status_message_ = "Ready.";
   refresh_dat_versions();
   refresh_folders();
+  if (selected_dat_index_ >= 0) {
+    action_check_dat();
+  }
 }
 
 GuiApp::~GuiApp() {
@@ -538,27 +540,18 @@ void GuiApp::action_check_dat() {
   }
 
   const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
-  auto dat_id = dv.id;
-  auto dat_name = dv.name;
+  const auto dat_id = dv.id;
 
-  status_message_ = "Verifying and checking DAT... Please wait.";
+  dat_audit_loaded_ = false;
+  status_message_ = "Refreshing DAT audit... No files will be re-hashed.";
   pending_task_ = PendingTask{
       .result = std::async(std::launch::async,
-                           [this, dat_id, dat_name]() -> std::string {
-                             // Run verify first to update statuses
-                             auto verify_result = svc_.verify(dat_name);
-                             if (!verify_result) {
-                               ROMULUS_WARN("Verification step failed: {}",
-                                            verify_result.error().message);
+                           [this, dat_id]() -> std::string {
+                             auto result = svc_.refresh_dat_audit(dat_id);
+                             if (!result) {
+                               return "Audit refresh failed: " + result.error().message;
                              }
-
-                             // Get ROMs with status
-                             auto roms = svc_.get_roms_with_status(dat_id);
-                             if (!roms) {
-                               return "Check failed: " + roms.error().message;
-                             }
-
-                             return "OK:" + std::to_string(roms->size());
+                             return "OK";
                            }),
       .refresh_dat_versions = false,
       .refresh_checklist = true,
@@ -610,7 +603,6 @@ void GuiApp::action_delete_dat() {
   };
 }
 
-
 void GuiApp::action_purge_database() {
   if (is_busy()) {
     return;
@@ -658,126 +650,24 @@ void GuiApp::check_pending_task() {
   bool should_refresh_folders = pending_task_->refresh_folders;
   pending_task_.reset();
 
-  // Handle check_dat result: populates checklist from service on main thread
-  if (should_refresh_checklist && task_result.starts_with("OK:")) {
-    // Re-fetch on main thread to populate both the flat ROM list and the per-game list.
+  // The expensive match refresh ran in the worker. Compose the read-only audit model on the
+  // main thread after the future synchronizes, avoiding concurrent mutation of GUI state.
+  if (should_refresh_checklist && task_result == "OK") {
     if (selected_dat_index_ >= 0) {
       const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
-      auto roms = svc_.get_roms_with_status(dv.id);
-      if (roms) {
-        rom_checklist_.clear();
-        rom_checklist_.reserve(roms->size());
-        checklist_stats_ = {};
-        ++rom_checklist_generation_; // Invalidate the per-game ROM index cache.
-
-        // Single batch query resolving which physical file backs each matched ROM (bare file
-        // > shortest path > latest mtime > lexicographic fallback — see README § Match
-        // Priority Policy). ROMs absent from the map have no match or no live file.
-        // Non-fatal on failure: the checklist still loads from `roms`, just without
-        // Location data — this mirrors how other supplementary lookups in this file degrade.
-        auto matched_paths = svc_.get_matched_file_paths(dv.id);
-        if (!matched_paths) {
-          ROMULUS_WARN("Failed to resolve matched file locations: {}",
-                       matched_paths.error().message);
-        }
-
-        // Accumulate per-game data keyed by game_id; iteration order is not significant.
-        std::unordered_map<std::int64_t, GameChecklistEntry> game_map;
-
-        for (const auto& [rom, st] : *roms) {
-          // Build ROM checklist entry
-          std::string name_lower = rom.name;
-          std::ranges::transform(name_lower, name_lower.begin(), ascii_lower);
-          std::string matched_file_path;
-          if (matched_paths) {
-            if (const auto it = matched_paths->find(rom.id); it != matched_paths->end()) {
-              matched_file_path = it->second;
-            }
-          }
-          rom_checklist_.push_back({
-              .game_id = rom.game_id,
-              .name = rom.name,
-              .name_lower = std::move(name_lower),
-              .size = rom.size,
-              .sha1 = rom.sha1,
-              .md5 = rom.md5,
-              .crc32 = rom.crc32,
-              .status = st,
-              .matched_file_path = std::move(matched_file_path),
-          });
-
-          // Update ROM-level stats
-          switch (st) {
-            case core::RomStatusType::Verified:
-              ++checklist_stats_.verified;
-              break;
-            case core::RomStatusType::Missing:
-              ++checklist_stats_.missing;
-              break;
-            case core::RomStatusType::CrcMatch:
-              ++checklist_stats_.crc_match;
-              break;
-            case core::RomStatusType::Md5Match:
-              ++checklist_stats_.md5_match;
-              break;
-            case core::RomStatusType::HashConflict:
-              ++checklist_stats_.hash_conflict;
-              break;
-            case core::RomStatusType::Mismatch:
-              ++checklist_stats_.mismatch;
-              break;
-          }
-
-          // Accumulate per-game entry
-          auto& game = game_map[rom.game_id];
-          if (game.name.empty()) {
-            // First ROM seen for this game — initialise the entry.
-            game.game_id = rom.game_id;
-            game.name = rom.game_name;
-            game.name_lower = rom.game_name;
-            std::ranges::transform(game.name_lower, game.name_lower.begin(), ascii_lower);
-            game.rom_count = 1;
-            game.status = st;
-          } else {
-            ++game.rom_count;
-            // Aggregate status: the game's status becomes that of its worst-off ROM, per
-            // status_aggregate_rank (Verified < Missing < Md5Match < CrcMatch < HashConflict
-            // < Mismatch), so e.g. a Verified + Missing mix correctly aggregates to Missing
-            // rather than falsely implying a hash match was found.
-            if (status_aggregate_rank(st) > status_aggregate_rank(game.status)) {
-              game.status = st;
-            }
-          }
-        }
-
-        checklist_stats_.total = static_cast<std::int64_t>(rom_checklist_.size());
-
-        // Convert game map to vector and sort.
-        game_checklist_.clear();
-        game_checklist_.reserve(game_map.size());
-        for (auto& [id, entry] : game_map) {
-          game_checklist_.push_back(std::move(entry));
-        }
-        checklist_stats_.games_total = static_cast<std::int64_t>(game_checklist_.size());
-
-        // Reset selected game if it is no longer present in the new checklist.
-        if (selected_game_id_ >= 0) {
-          const bool still_present =
-              std::ranges::any_of(game_checklist_, [this](const GameChecklistEntry& g) {
-                return g.game_id == selected_game_id_;
-              });
-          if (!still_present) {
-            selected_game_id_ = -1;
-          }
-        }
-
-        apply_checklist_sort();
-        apply_game_sort();
-
-        status_message_ = "Check complete: " + std::to_string(checklist_stats_.verified) + " / " +
-                          std::to_string(checklist_stats_.total) + " ROMs available.";
+      auto audit = svc_.get_dat_audit(dv.id);
+      if (audit) {
+        dat_audit_ = std::move(*audit);
+        dat_audit_loaded_ = true;
+        dat_audit_filter_ = DatAuditFilter::All;
+        apply_audit_sort();
+        status_message_ = "Audit ready: " + std::to_string(dat_audit_.summary.correct) + " / " +
+                          std::to_string(dat_audit_.summary.expected_roms) +
+                          " expectations correct; " + std::to_string(dat_audit_.summary.extra) +
+                          " selected-DAT extra file(s).";
       } else {
-        status_message_ = "Failed to load checklist: " + roms.error().message;
+        dat_audit_loaded_ = false;
+        status_message_ = "Failed to load DAT audit: " + audit.error().message;
       }
     }
   } else {
@@ -792,6 +682,9 @@ void GuiApp::check_pending_task() {
   }
 
   show_toast(status_message_);
+  if (should_refresh_dat && selected_dat_index_ >= 0 && !dat_audit_loaded_) {
+    action_check_dat();
+  }
 }
 
 bool GuiApp::is_busy() const {
@@ -835,10 +728,8 @@ void GuiApp::refresh_dat_versions() {
     // Clear checklist if the previously selected DAT is no longer available.
     if (selected_dat_index_ < 0 ||
         dat_versions_[static_cast<std::size_t>(selected_dat_index_)].id != prev_selected_id) {
-      rom_checklist_.clear();
-      game_checklist_.clear();
-      selected_game_id_ = -1;
-      checklist_stats_ = {};
+      dat_audit_ = {};
+      dat_audit_loaded_ = false;
     }
   } else {
     dat_versions_.clear();

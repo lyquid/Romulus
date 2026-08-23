@@ -184,4 +184,52 @@ TEST(GuiLogic, StatusAggregateRankMissingBeatsVerifiedForPartialGame) {
             status_aggregate_rank(RomStatusType::CrcMatch));
 }
 
+// ── DAT audit dashboard logic ────────────────────────────────
+
+TEST(GuiLogic, AuditStatusLabelsAreDistinctAndExplainScope) {
+  using romulus::core::DatAuditStatus;
+  constexpr DatAuditStatus statuses[] = {
+      DatAuditStatus::Correct,
+      DatAuditStatus::Missing,
+      DatAuditStatus::WrongCanonicalName,
+      DatAuditStatus::ExtraKnownOtherDat,
+      DatAuditStatus::ExtraUnknown,
+      DatAuditStatus::Duplicate,
+      DatAuditStatus::CrcMatch,
+      DatAuditStatus::Md5Match,
+      DatAuditStatus::HashConflict,
+      DatAuditStatus::Mismatch,
+  };
+  for (std::size_t i = 0; i < std::size(statuses); ++i) {
+    for (std::size_t j = i + 1; j < std::size(statuses); ++j) {
+      EXPECT_NE(std::string_view{romulus::gui::audit_status_label(statuses[i])},
+                std::string_view{romulus::gui::audit_status_label(statuses[j])});
+    }
+  }
+  EXPECT_NE(
+      std::string_view{romulus::gui::audit_status_label(DatAuditStatus::ExtraKnownOtherDat)}.find(
+          "known elsewhere"),
+      std::string_view::npos);
+  EXPECT_NE(std::string_view{romulus::gui::audit_status_label(DatAuditStatus::ExtraUnknown)}.find(
+                "globally unknown"),
+            std::string_view::npos);
+}
+
+TEST(GuiLogic, AuditCombinedFiltersMatchOnlyTheirIntendedStatuses) {
+  using romulus::core::DatAuditStatus;
+  using romulus::gui::audit_filter_matches;
+  using romulus::gui::DatAuditFilter;
+
+  EXPECT_TRUE(audit_filter_matches(DatAuditFilter::Extra, DatAuditStatus::ExtraKnownOtherDat));
+  EXPECT_TRUE(audit_filter_matches(DatAuditFilter::Extra, DatAuditStatus::ExtraUnknown));
+  EXPECT_FALSE(audit_filter_matches(DatAuditFilter::Extra, DatAuditStatus::Missing));
+
+  EXPECT_TRUE(audit_filter_matches(DatAuditFilter::WeakMatch, DatAuditStatus::CrcMatch));
+  EXPECT_TRUE(audit_filter_matches(DatAuditFilter::WeakMatch, DatAuditStatus::Md5Match));
+  EXPECT_FALSE(audit_filter_matches(DatAuditFilter::WeakMatch, DatAuditStatus::HashConflict));
+
+  EXPECT_TRUE(audit_filter_matches(DatAuditFilter::WrongName, DatAuditStatus::WrongCanonicalName));
+  EXPECT_FALSE(audit_filter_matches(DatAuditFilter::WrongName, DatAuditStatus::Correct));
+}
+
 } // namespace

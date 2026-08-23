@@ -5,6 +5,7 @@
 /// Decoupled from the core service — can be swapped for a web UI or disabled entirely.
 
 #include "gui_log_sink.hpp"
+#include "gui_logic.hpp"
 #include "romulus/core/types.hpp"
 #include "romulus/service/romulus_service.hpp"
 
@@ -81,8 +82,7 @@ private:
   void refresh_folders();
 
   // ── Checklist sorting ──────────────────────────────────
-  void apply_checklist_sort();
-  void apply_game_sort();
+  void apply_audit_sort();
   void apply_db_filter_sort();   ///< Recompute db_display_rows_ from current filter + sort
   void rebuild_db_lower_cache(); ///< Pre-compute lowercased cell strings for filter matching
 
@@ -93,50 +93,6 @@ private:
   service::RomulusService& svc_;
   GLFWwindow* window_ = nullptr;
   std::shared_ptr<GuiLogSink> log_sink_;
-
-  // ROM checklist — full flat list of all ROMs for the selected DAT.
-  struct RomChecklistEntry {
-    std::int64_t game_id = 0; ///< FK to the owning game (used to filter per-game view)
-    std::string name;
-    std::string name_lower; ///< Lowercase copy of name — precomputed for filter matching
-    std::int64_t size = 0;
-    std::string sha1;
-    std::string md5;
-    std::string crc32;
-    core::RomStatusType status = core::RomStatusType::Missing;
-    std::string matched_file_path; ///< Physical file backing the match; empty when unmatched.
-                                   ///< See Database::get_matched_file_paths().
-  };
-
-  // Game checklist — one entry per unique game in the selected DAT (left panel).
-  struct GameChecklistEntry {
-    std::int64_t game_id = 0;
-    std::string name;
-    std::string name_lower; ///< Lowercase copy for filter matching
-    int rom_count = 0;      ///< Number of ROMs belonging to this game
-    core::RomStatusType status = core::RomStatusType::Missing; ///< Aggregate across all ROMs
-  };
-
-  // Per-game ROM index cache — indices into rom_checklist_ for the selected game.
-  // Rebuilt whenever selected_game_id_ changes or rom_checklist_ is re-sorted/reloaded.
-  static constexpr std::int64_t k_NoCachedGameId = -2;        ///< Sentinel: cache is stale
-  static constexpr std::uint64_t k_InvalidGeneration = ~0ULL; ///< Sentinel: no generation cached
-
-  // Precomputed status counters — recomputed once when the checklist is loaded,
-  // not every frame, to avoid O(n) work in the render loop.
-  struct ChecklistStats {
-    std::int64_t total = 0;
-    std::int64_t verified = 0;
-    std::int64_t missing = 0;
-    std::int64_t crc_match = 0;
-    std::int64_t md5_match = 0;
-    std::int64_t hash_conflict = 0;
-    std::int64_t mismatch = 0;
-    std::int64_t games_total = 0; ///< Total number of unique games
-  };
-
-  // Game panel filter state (left panel)
-  static constexpr std::size_t k_MaxFilterLen = 256; ///< Max bytes for the name filter input
 
   // Background task state
   struct PendingTask {
@@ -155,28 +111,12 @@ private:
     std::vector<core::DatVersion> dat_versions; ///< All imported DAT versions
     int selected_dat_index = -1;                ///< Currently selected DAT index
 
-    std::vector<RomChecklistEntry> rom_checklist;
-    int checklist_sort_col = 1;
-    bool checklist_sort_ascending = true;
-    bool scroll_checklist_top = false;
-    bool scroll_checklist_bottom = false;
-
-    std::vector<GameChecklistEntry> game_checklist;
-    std::int64_t selected_game_id = -1;
-    int game_sort_col = 1;
-    bool game_sort_ascending = true;
-
-    std::vector<std::size_t> selected_rom_indices;
-    std::int64_t cached_rom_game_id = k_NoCachedGameId;
-    std::uint64_t rom_checklist_generation = 0;
-    std::uint64_t cached_rom_generation = k_InvalidGeneration;
-
-    ChecklistStats checklist_stats;
-    std::array<char, k_MaxFilterLen> game_filter_buf{};
-    std::string game_filter_lower;
-    int game_status_filter = 0;
-    bool scroll_game_top = false;
-    bool scroll_game_bottom = false;
+    core::DatAudit dat_audit;
+    bool dat_audit_loaded = false;
+    DatAuditFilter dat_audit_filter = DatAuditFilter::All;
+    int dat_audit_sort_col = 0;
+    bool dat_audit_sort_ascending = true;
+    bool scroll_dat_audit_top = false;
 
     std::vector<core::ScannedDirectory> scanned_dirs;
     std::string status_message;
@@ -212,25 +152,12 @@ private:
   // Compatibility aliases while preserving existing member names in implementation code.
   std::vector<core::DatVersion>& dat_versions_ = state_.dat_versions;
   int& selected_dat_index_ = state_.selected_dat_index;
-  std::vector<RomChecklistEntry>& rom_checklist_ = state_.rom_checklist;
-  int& checklist_sort_col_ = state_.checklist_sort_col;
-  bool& checklist_sort_ascending_ = state_.checklist_sort_ascending;
-  bool& scroll_checklist_top_ = state_.scroll_checklist_top;
-  bool& scroll_checklist_bottom_ = state_.scroll_checklist_bottom;
-  std::vector<GameChecklistEntry>& game_checklist_ = state_.game_checklist;
-  std::int64_t& selected_game_id_ = state_.selected_game_id;
-  int& game_sort_col_ = state_.game_sort_col;
-  bool& game_sort_ascending_ = state_.game_sort_ascending;
-  std::vector<std::size_t>& selected_rom_indices_ = state_.selected_rom_indices;
-  std::int64_t& cached_rom_game_id_ = state_.cached_rom_game_id;
-  std::uint64_t& rom_checklist_generation_ = state_.rom_checklist_generation;
-  std::uint64_t& cached_rom_generation_ = state_.cached_rom_generation;
-  ChecklistStats& checklist_stats_ = state_.checklist_stats;
-  std::array<char, k_MaxFilterLen>& game_filter_buf_ = state_.game_filter_buf;
-  std::string& game_filter_lower_ = state_.game_filter_lower;
-  int& game_status_filter_ = state_.game_status_filter;
-  bool& scroll_game_top_ = state_.scroll_game_top;
-  bool& scroll_game_bottom_ = state_.scroll_game_bottom;
+  core::DatAudit& dat_audit_ = state_.dat_audit;
+  bool& dat_audit_loaded_ = state_.dat_audit_loaded;
+  DatAuditFilter& dat_audit_filter_ = state_.dat_audit_filter;
+  int& dat_audit_sort_col_ = state_.dat_audit_sort_col;
+  bool& dat_audit_sort_ascending_ = state_.dat_audit_sort_ascending;
+  bool& scroll_dat_audit_top_ = state_.scroll_dat_audit_top;
   std::vector<core::ScannedDirectory>& scanned_dirs_ = state_.scanned_dirs;
   std::string& status_message_ = state_.status_message;
   bool& show_purge_confirm_ = state_.show_purge_confirm;

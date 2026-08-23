@@ -63,6 +63,10 @@ public:
   [[nodiscard]] Result<std::vector<core::DatVersion>> list_dat_versions();
   [[nodiscard]] Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>>
   get_roms_with_status(std::int64_t dat_version_id);
+  /// Re-runs content matching and classification for one DAT without scanning or hashing.
+  [[nodiscard]] Result<void> refresh_dat_audit(std::int64_t dat_version_id);
+  /// Composes the current classifier, naming, selected-DAT extra, and duplicate states.
+  [[nodiscard]] Result<core::DatAudit> get_dat_audit(std::int64_t dat_version_id);
   /// Resolves the physical file backing each matched ROM in the given DAT — see
   /// Database::get_matched_file_paths().
   [[nodiscard]] Result<core::MatchedFilePathMap> get_matched_file_paths(

@@ -34,6 +34,7 @@ set(ROMULUS_SOURCES
     # Engine
     engine/matcher.cpp
     engine/classifier.cpp
+    engine/dat_auditor.cpp
 
     # Report
     report/report_generator.cpp

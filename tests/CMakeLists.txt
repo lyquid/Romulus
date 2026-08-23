@@ -13,6 +13,7 @@ set(UNIT_TEST_SOURCES
     unit/test_hash_service.cpp
     unit/test_matcher.cpp
     unit/test_classifier.cpp
+    unit/test_dat_auditor.cpp
     unit/test_database.cpp
     unit/test_report_generator.cpp
     unit/test_romulus_service.cpp

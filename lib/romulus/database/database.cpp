@@ -1743,19 +1743,22 @@ Result<std::vector<core::MissingRom>> Database::get_missing_roms(
 
 Result<std::vector<core::DuplicateFile>> Database::get_duplicate_files(
     std::optional<std::int64_t> dat_version_id) {
-  // Find files that share the same global ROM identity (sha1) with at least one other file.
-  std::string sql = "SELECT f.path, r.name, g.name "
+  // Aggregate duplicate identities once, then join that compact result to every returned copy.
+  // A correlated COUNT(*) here would repeat the same work for each physical duplicate row.
+  std::string sql = "SELECT f.path, r.name, g.name, lower(hex(f.sha1)), "
+                    "  duplicates.copy_count "
                     "FROM files f "
+                    "JOIN ("
+                    "  SELECT sha1, COUNT(*) AS copy_count "
+                    "  FROM files GROUP BY sha1 HAVING COUNT(*) > 1"
+                    ") duplicates ON duplicates.sha1 = f.sha1 "
                     "JOIN global_roms gr ON f.sha1 = gr.sha1 "
                     "JOIN rom_matches rm ON rm.global_rom_sha1 = gr.sha1 "
                     "JOIN roms r ON rm.rom_id = r.id "
-                    "JOIN games g ON r.game_id = g.id "
-                    "WHERE f.sha1 IN ("
-                    "  SELECT sha1 FROM files GROUP BY sha1 HAVING COUNT(*) > 1"
-                    ")";
+                    "JOIN games g ON r.game_id = g.id";
 
   if (dat_version_id.has_value()) {
-    sql += " AND g.dat_version_id = ?1";
+    sql += " WHERE g.dat_version_id = ?1";
   }
   sql += " ORDER BY r.name, f.path";
 
@@ -1774,6 +1777,8 @@ Result<std::vector<core::DuplicateFile>> Database::get_duplicate_files(
         .file_path = stmt->column_text(0),
         .rom_name = stmt->column_text(1),
         .game_name = stmt->column_text(2),
+        .sha1 = stmt->column_text(3),
+        .copy_count = stmt->column_int64(4),
     });
   }
   return dupes;
@@ -1812,6 +1817,58 @@ Result<std::vector<core::FileInfo>> Database::get_unverified_files() {
   return unverified;
 }
 
+Result<std::vector<core::OtherDatFile>> Database::get_files_matching_other_dats(
+    std::int64_t dat_version_id) {
+  // These are selected-DAT-relative extras, but not globally unknown files: their content
+  // already satisfies at least one expectation in another imported DAT. The NOT EXISTS
+  // clause excludes every file that has any match in the selected DAT, including weak
+  // classifier matches, because those are surfaced on the corresponding expectation row.
+  constexpr std::string_view k_Sql =
+      "SELECT f.id, f.path, f.archive_path, f.entry_name, f.size, f.crc32, f.md5, f.sha1, "
+      "  f.sha256, f.last_scanned, f.last_write_time, "
+      "  GROUP_CONCAT(DISTINCT dv.name || ' v' || dv.version) "
+      "FROM files f "
+      "JOIN rom_matches other_rm ON other_rm.global_rom_sha1 = f.sha1 "
+      "JOIN roms other_r ON other_r.id = other_rm.rom_id "
+      "JOIN games other_g ON other_g.id = other_r.game_id "
+      "JOIN dat_versions dv ON dv.id = other_g.dat_version_id "
+      "WHERE other_g.dat_version_id <> ?1 "
+      "  AND NOT EXISTS ("
+      "    SELECT 1 FROM rom_matches selected_rm "
+      "    JOIN roms selected_r ON selected_r.id = selected_rm.rom_id "
+      "    JOIN games selected_g ON selected_g.id = selected_r.game_id "
+      "    WHERE selected_rm.global_rom_sha1 = f.sha1 "
+      "      AND selected_g.dat_version_id = ?1"
+      "  ) "
+      "GROUP BY f.id "
+      "ORDER BY f.path";
+
+  auto stmt = prepare(k_Sql);
+  if (!stmt) {
+    return std::unexpected(stmt.error());
+  }
+  stmt->bind_int64(1, dat_version_id);
+
+  std::vector<core::OtherDatFile> files;
+  while (stmt->step()) {
+    files.push_back({
+        .file = {.id = stmt->column_int64(0),
+                 .path = stmt->column_text(1),
+                 .archive_path = stmt->column_optional_text(2),
+                 .entry_name = stmt->column_optional_text(3),
+                 .size = stmt->column_int64(4),
+                 .crc32 = bytes_to_hex(stmt->column_blob(5)),
+                 .md5 = bytes_to_hex(stmt->column_blob(6)),
+                 .sha1 = bytes_to_hex(stmt->column_blob(7)),
+                 .sha256 = bytes_to_hex(stmt->column_blob(8)),
+                 .last_scanned = stmt->column_int64(9),
+                 .last_write_time = stmt->column_int64(10)},
+        .matching_dat_names = stmt->column_text(11),
+    });
+  }
+  return files;
+}
+
 Result<core::MatchedFilePathMap> Database::get_matched_file_paths(
     std::optional<std::int64_t> dat_version_id) {
   // Greatest-n-per-group: rank every candidate file for a rom_id using the same tiebreaker
@@ -1826,7 +1883,8 @@ Result<core::MatchedFilePathMap> Database::get_matched_file_paths(
       "  SELECT rm.rom_id AS rom_id, f.path AS path,"
       "    ROW_NUMBER() OVER ("
       "      PARTITION BY rm.rom_id"
-      "      ORDER BY (f.entry_name IS NOT NULL) ASC,"
+      "      ORDER BY rm.match_type ASC,"
+      "               (f.entry_name IS NOT NULL) ASC,"
       "               LENGTH(f.path) ASC,"
       "               f.last_write_time DESC,"
       "               f.path ASC"
