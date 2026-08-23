@@ -104,6 +104,8 @@ private:
     std::string md5;
     std::string crc32;
     core::RomStatusType status = core::RomStatusType::Missing;
+    std::string matched_file_path; ///< Physical file backing the match; empty when unmatched.
+                                   ///< See Database::get_matched_file_paths().
   };
 
   // Game checklist — one entry per unique game in the selected DAT (left panel).

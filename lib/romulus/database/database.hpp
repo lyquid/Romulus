@@ -202,6 +202,17 @@ public:
       std::optional<std::int64_t> dat_version_id = {});
   [[nodiscard]] Result<std::vector<core::FileInfo>> get_unverified_files();
 
+  /// Resolves, for every matched ROM in scope, the single physical file that best represents
+  /// its recorded match(es) — the answer to "which file satisfies this ROM?" When multiple
+  /// files share the winning content (duplicate copies on disk) or a ROM has more than one
+  /// recorded match, the same deterministic tiebreaker documented for CRC32 collisions in
+  /// README § Match Priority Policy applies: bare file > shortest path > latest mtime >
+  /// lexicographically smallest path. ROMs with no match, or no live file backing their
+  /// match, are absent from the result. When dat_version_id is omitted, resolves across all
+  /// DATs.
+  [[nodiscard]] Result<core::MatchedFilePathMap> get_matched_file_paths(
+      std::optional<std::int64_t> dat_version_id = {});
+
   /// Returns all ROMs for the given DAT version together with their status in a
   /// single batch query. Reads from rom_status_cache when populated; inlines the
   /// status computation otherwise. Prefer this over calling get_computed_rom_status()

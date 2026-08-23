@@ -45,6 +45,7 @@ inline constexpr int k_ColSize = 2;
 inline constexpr int k_ColSha1 = 3;
 inline constexpr int k_ColMd5 = 4;
 inline constexpr int k_ColCrc32 = 5;
+inline constexpr int k_ColLocation = 6;
 
 // Game panel column indices
 inline constexpr int k_GameColStatus = 0;

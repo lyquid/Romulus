@@ -7,6 +7,26 @@ This changelog is automatically generated from [Conventional Commits](https://ww
 
 ## [Unreleased]
 
+### ✨ feat(database,gui): File resolution — "which file satisfies this ROM?"
+
+`rom_matches` links a ROM to a `global_rom` by content (SHA-1), never to a specific row in
+`files`. When several files share that content (duplicate copies in different folders or
+archives), or a ROM rarely carries more than one match (`HashConflict`), there was no way to
+answer "which file is *the* file for this ROM?" — needed for GUI file-location display and
+future export/copy-to-folder flows.
+
+- **`Database::get_matched_file_paths()`**: resolves, per ROM, the single file that best
+  represents its match(es), using the same deterministic rule chain documented for the CRC32
+  tiebreaker (bare file > shortest path > latest mtime > lexicographically smallest path as
+  the fallback, since path — not SHA-1 — is the unique key across candidate files). Single
+  SQL query using a window function; scoped by `dat_version_id` or across all DATs.
+- **GUI**: new **Location** column in the DATs tab ROM detail table (right-click to copy,
+  matching the existing SHA1/MD5/CRC32 columns), sortable like the others.
+- **`RomulusService::get_matched_file_paths()`**: thin passthrough for the GUI/CLI layer.
+- **Documentation**: new "File Resolution" subsection in README § Match Priority Policy.
+- **Tests**: 8 new `DatabaseTest` cases covering every tiebreaker tier, the multi-match
+  (`HashConflict`) case, and DAT scoping.
+
 ### ✨ feat(engine): Split `Unverified` status into `CrcMatch`, `Md5Match`, `HashConflict`
 
 The old catch-all `Unverified` ROM status was too vague for practical use. It has been replaced

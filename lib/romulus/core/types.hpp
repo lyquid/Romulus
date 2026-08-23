@@ -233,6 +233,11 @@ struct MatchResult {
   MatchType match_type = MatchType::NoMatch;
 };
 
+/// Map from rom_id to the virtual path of the single physical file selected to represent
+/// its match(es). See Database::get_matched_file_paths() — ROMs with no match, or no live
+/// file backing their match, are absent from the map.
+using MatchedFilePathMap = std::unordered_map<std::int64_t, std::string>;
+
 // ── Classification ───────────────────────────────────────────
 
 /// Status of a ROM in the collection.
