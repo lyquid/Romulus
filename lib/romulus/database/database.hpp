@@ -188,8 +188,7 @@ public:
   /// refreshed (more efficient for per-DAT verify). When omitted, all ROMs are
   /// refreshed. Call this BEFORE classify_all() inside verify() so that
   /// get_collection_summary() always reads fresh data.
-  [[nodiscard]] Result<void> refresh_status_cache(
-      std::optional<std::int64_t> dat_version_id = {});
+  [[nodiscard]] Result<void> refresh_status_cache(std::optional<std::int64_t> dat_version_id = {});
 
   /// Computes the status of a single ROM. Reads from rom_status_cache when
   /// populated; falls back to querying rom_matches + files on a cache miss.

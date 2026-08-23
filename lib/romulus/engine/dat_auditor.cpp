@@ -148,7 +148,13 @@ core::Result<core::DatAudit> DatAuditor::audit(database::Database& db,
     return std::unexpected(other_dat_files.error());
   }
 
-  core::DatAudit result{.dat_version_id = dat_version_id};
+  // Spell out every aggregate field because GCC's -Wmissing-field-initializers is promoted to an
+  // error in CI. The explicit empty values also make the audit's initial state unambiguous.
+  core::DatAudit result{
+      .dat_version_id = dat_version_id,
+      .summary = {},
+      .rows = {},
+  };
   result.summary.expected_roms = static_cast<std::int64_t>(roms->size());
   result.rows.reserve(roms->size() + duplicates->size() + globally_unknown->size() +
                       other_dat_files->size());

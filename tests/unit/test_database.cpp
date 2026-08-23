@@ -645,8 +645,7 @@ TEST_F(DatabaseTest, ComputedRomStatusHashConflictWhenTwoDistinctGlobalRomsMatch
 }
 
 // Helper to build a minimal FileInfo with unique hashes under a given path.
-static romulus::core::FileInfo make_file(const std::string& path,
-                                         const std::string& sha1_hex) {
+static romulus::core::FileInfo make_file(const std::string& path, const std::string& sha1_hex) {
   return romulus::core::FileInfo{
       .id = 0,
       .path = path,
@@ -675,13 +674,16 @@ TEST_F(DatabaseTest, ScannedDirectoryFileCountIncludesFilesUnderDirectory) {
   ASSERT_TRUE(db_->add_scanned_directory("/roms/snes").has_value());
 
   // Insert two files under the registered directory.
-  ASSERT_TRUE(db_->upsert_file(make_file(
-      "/roms/snes/game1.sfc", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).has_value());
-  ASSERT_TRUE(db_->upsert_file(make_file(
-      "/roms/snes/sub/game2.sfc", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")).has_value());
+  ASSERT_TRUE(db_->upsert_file(
+                     make_file("/roms/snes/game1.sfc", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+                  .has_value());
+  ASSERT_TRUE(db_->upsert_file(make_file("/roms/snes/sub/game2.sfc",
+                                         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"))
+                  .has_value());
   // Insert a file in a sibling directory — must NOT be counted.
-  ASSERT_TRUE(db_->upsert_file(make_file(
-      "/roms/snes_hacks/hack.sfc", "cccccccccccccccccccccccccccccccccccccccc")).has_value());
+  ASSERT_TRUE(db_->upsert_file(make_file("/roms/snes_hacks/hack.sfc",
+                                         "cccccccccccccccccccccccccccccccccccccccc"))
+                  .has_value());
 
   auto dirs = db_->get_all_scanned_directories();
   ASSERT_TRUE(dirs.has_value());
@@ -693,8 +695,9 @@ TEST_F(DatabaseTest, ScannedDirectoryFileCountHandlesTrailingSeparator) {
   // Directory registered with a trailing slash — count must still work.
   ASSERT_TRUE(db_->add_scanned_directory("/roms/nes/").has_value());
 
-  ASSERT_TRUE(db_->upsert_file(make_file(
-      "/roms/nes/game.nes", "dddddddddddddddddddddddddddddddddddddddd")).has_value());
+  ASSERT_TRUE(
+      db_->upsert_file(make_file("/roms/nes/game.nes", "dddddddddddddddddddddddddddddddddddddddd"))
+          .has_value());
 
   auto dirs = db_->get_all_scanned_directories();
   ASSERT_TRUE(dirs.has_value());
@@ -706,12 +709,15 @@ TEST_F(DatabaseTest, ScannedDirectoryFileCountMultipleDirectories) {
   ASSERT_TRUE(db_->add_scanned_directory("/roms/gb").has_value());
   ASSERT_TRUE(db_->add_scanned_directory("/roms/gba").has_value());
 
-  ASSERT_TRUE(db_->upsert_file(make_file(
-      "/roms/gb/tetris.gb", "1111111111111111111111111111111111111111")).has_value());
-  ASSERT_TRUE(db_->upsert_file(make_file(
-      "/roms/gb/mario.gb", "2222222222222222222222222222222222222222")).has_value());
-  ASSERT_TRUE(db_->upsert_file(make_file(
-      "/roms/gba/metroid.gba", "3333333333333333333333333333333333333333")).has_value());
+  ASSERT_TRUE(
+      db_->upsert_file(make_file("/roms/gb/tetris.gb", "1111111111111111111111111111111111111111"))
+          .has_value());
+  ASSERT_TRUE(
+      db_->upsert_file(make_file("/roms/gb/mario.gb", "2222222222222222222222222222222222222222"))
+          .has_value());
+  ASSERT_TRUE(db_->upsert_file(
+                     make_file("/roms/gba/metroid.gba", "3333333333333333333333333333333333333333"))
+                  .has_value());
 
   auto dirs = db_->get_all_scanned_directories();
   ASSERT_TRUE(dirs.has_value());
@@ -1062,8 +1068,7 @@ TEST_F(DatabaseTest, MatchedFilePathsPrefersShortestPathAmongBareFiles) {
   auto rom_id = db_->insert_rom(rom);
   ASSERT_TRUE(rom_id.has_value());
 
-  ASSERT_TRUE(
-      db_->upsert_file(make_file("/roms/deep/nested/folder/r.bin", sha1)).has_value());
+  ASSERT_TRUE(db_->upsert_file(make_file("/roms/deep/nested/folder/r.bin", sha1)).has_value());
   ASSERT_TRUE(db_->upsert_file(make_file("/r.bin", sha1)).has_value());
 
   romulus::core::MatchResult match{

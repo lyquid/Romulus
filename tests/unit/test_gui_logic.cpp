@@ -68,8 +68,12 @@ TEST(GuiLogic, FormatSizeDisplaysGigabytes) {
 TEST(GuiLogic, StatusLabelReturnsDistinctStringsForEachStatus) {
   using romulus::core::RomStatusType;
   constexpr RomStatusType all_statuses[] = {
-      RomStatusType::Verified,     RomStatusType::Missing,      RomStatusType::CrcMatch,
-      RomStatusType::Md5Match,     RomStatusType::HashConflict, RomStatusType::Mismatch,
+      RomStatusType::Verified,
+      RomStatusType::Missing,
+      RomStatusType::CrcMatch,
+      RomStatusType::Md5Match,
+      RomStatusType::HashConflict,
+      RomStatusType::Mismatch,
   };
   for (std::size_t i = 0; i < std::size(all_statuses); ++i) {
     for (std::size_t j = i + 1; j < std::size(all_statuses); ++j) {
@@ -95,8 +99,12 @@ TEST(GuiLogic, StatusLabelReturnsNonEmptyStrings) {
 TEST(GuiLogic, StatusIconReturnsDistinctStringsForAllStatuses) {
   using romulus::core::RomStatusType;
   constexpr RomStatusType all_statuses[] = {
-      RomStatusType::Verified,     RomStatusType::Missing,      RomStatusType::CrcMatch,
-      RomStatusType::Md5Match,     RomStatusType::HashConflict, RomStatusType::Mismatch,
+      RomStatusType::Verified,
+      RomStatusType::Missing,
+      RomStatusType::CrcMatch,
+      RomStatusType::Md5Match,
+      RomStatusType::HashConflict,
+      RomStatusType::Mismatch,
   };
   for (std::size_t i = 0; i < std::size(all_statuses); ++i) {
     for (std::size_t j = i + 1; j < std::size(all_statuses); ++j) {

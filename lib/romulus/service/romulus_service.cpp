@@ -214,8 +214,8 @@ Result<core::ScanReport> RomulusService::scan_directory(
     // false match that a raw string prefix check gives (e.g. "/roms" matching "/romsbackup").
     auto is_under_scan_dir = [&scan_dir](std::string_view virtual_path) -> bool {
       const auto sep_pos = virtual_path.find(core::k_ArchiveEntrySeparator);
-      const auto file_part = sep_pos != std::string_view::npos ? virtual_path.substr(0, sep_pos)
-                                                                : virtual_path;
+      const auto file_part =
+          sep_pos != std::string_view::npos ? virtual_path.substr(0, sep_pos) : virtual_path;
       auto file_path = std::filesystem::path(file_part).lexically_normal();
       while (file_path != file_path.root_path() && file_path.filename().empty()) {
         file_path = file_path.parent_path();
@@ -241,8 +241,9 @@ Result<core::ScanReport> RomulusService::scan_directory(
         continue;
       }
       const auto sep_pos = vpath.find(core::k_ArchiveEntrySeparator);
-      const auto physical_part = sep_pos != std::string::npos ? std::string_view(vpath).substr(0, sep_pos)
-                                                               : std::string_view(vpath);
+      const auto physical_part = sep_pos != std::string::npos
+                                     ? std::string_view(vpath).substr(0, sep_pos)
+                                     : std::string_view(vpath);
       if (!std::filesystem::exists(physical_part)) {
         paths_to_delete.emplace_back(vpath);
       }

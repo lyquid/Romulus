@@ -1,5 +1,4 @@
 #include "gui_app.hpp"
-
 #include "gui_app_shared.hpp"
 
 namespace romulus::gui {
@@ -38,8 +37,8 @@ void GuiApp::render_folders_tab() {
                             ImGuiTableFlags_SizingStretchProp,
                         ImVec2(0, -30))) {
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Path",    ImGuiTableColumnFlags_None, 6.0F);
-    ImGui::TableSetupColumn("Files",   ImGuiTableColumnFlags_None, 1.0F);
+    ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_None, 6.0F);
+    ImGui::TableSetupColumn("Files", ImGuiTableColumnFlags_None, 1.0F);
     ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_None, 0.6F);
     ImGui::TableHeadersRow();
 

@@ -1,5 +1,4 @@
 #include "gui_app.hpp"
-
 #include "gui_app_shared.hpp"
 #include "romulus/core/logging.hpp"
 
@@ -86,8 +85,7 @@ void GuiApp::render_db_tab() {
     if (ImGui::BeginCombo("##db_table_combo", table_preview.c_str())) {
       for (int i = 0; i < static_cast<int>(db_table_names_.size()); ++i) {
         bool is_selected = (selected_db_table_index_ == i);
-        if (ImGui::Selectable(db_table_names_[static_cast<std::size_t>(i)].c_str(),
-                              is_selected)) {
+        if (ImGui::Selectable(db_table_names_[static_cast<std::size_t>(i)].c_str(), is_selected)) {
           selected_db_table_index_ = i;
           auto data = svc_.query_db_table(db_table_names_[static_cast<std::size_t>(i)]);
           if (data) {
@@ -141,19 +139,19 @@ void GuiApp::render_db_tab() {
 
   // ── Schema panel ─────────────────────────────────────────────
   // Collapsible summary of column metadata (type, PK, NN, UQ, FK).
-  constexpr ImVec4 k_ColorPk{1.0F, 0.80F, 0.10F, 1.0F}; // gold   — primary key
-  constexpr ImVec4 k_ColorFk{0.40F, 0.75F, 1.0F, 1.0F}; // blue   — foreign key
-  constexpr ImVec4 k_ColorUq{0.80F, 0.50F, 1.0F, 1.0F}; // purple — unique
-  constexpr ImVec4 k_ColorNn{0.70F, 0.70F, 0.70F, 1.0F};// grey   — not null
+  constexpr ImVec4 k_ColorPk{1.0F, 0.80F, 0.10F, 1.0F};  // gold   — primary key
+  constexpr ImVec4 k_ColorFk{0.40F, 0.75F, 1.0F, 1.0F};  // blue   — foreign key
+  constexpr ImVec4 k_ColorUq{0.80F, 0.50F, 1.0F, 1.0F};  // purple — unique
+  constexpr ImVec4 k_ColorNn{0.70F, 0.70F, 0.70F, 1.0F}; // grey   — not null
 
   if (ImGui::CollapsingHeader("Schema", ImGuiTreeNodeFlags_DefaultOpen)) {
     constexpr int k_SchemaCols = 3;
     constexpr ImGuiTableFlags k_SchemaFlags =
         ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit;
     if (ImGui::BeginTable("##schema_info", k_SchemaCols, k_SchemaFlags)) {
-      ImGui::TableSetupColumn("Column",  ImGuiTableColumnFlags_None, 140.0F);
-      ImGui::TableSetupColumn("Type",    ImGuiTableColumnFlags_None, 90.0F);
-      ImGui::TableSetupColumn("Flags",   ImGuiTableColumnFlags_None, 0.0F);
+      ImGui::TableSetupColumn("Column", ImGuiTableColumnFlags_None, 140.0F);
+      ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_None, 90.0F);
+      ImGui::TableSetupColumn("Flags", ImGuiTableColumnFlags_None, 0.0F);
       ImGui::TableHeadersRow();
 
       for (const auto& col : db_table_data_.columns) {
@@ -173,19 +171,25 @@ void GuiApp::render_db_tab() {
         }
         // Not-null (only show when not implied by PK, which is inherently NN)
         if (col.not_null && !col.is_primary_key) {
-          if (any) { ImGui::SameLine(); }
+          if (any) {
+            ImGui::SameLine();
+          }
           ImGui::TextColored(k_ColorNn, "[NN]");
           any = true;
         }
         // Unique index (skip if column is already a PK — that implies uniqueness)
         if (col.is_unique && !col.is_primary_key) {
-          if (any) { ImGui::SameLine(); }
+          if (any) {
+            ImGui::SameLine();
+          }
           ImGui::TextColored(k_ColorUq, "[UQ]");
           any = true;
         }
         // Foreign key with target table.column
         if (!col.fk_table.empty()) {
-          if (any) { ImGui::SameLine(); }
+          if (any) {
+            ImGui::SameLine();
+          }
           std::string fk_label = "[FK]->" + col.fk_table;
           if (!col.fk_column.empty()) {
             fk_label += '.' + col.fk_column;
@@ -228,14 +232,11 @@ void GuiApp::render_db_tab() {
   constexpr ImGuiTableFlags k_TableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
                                            ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY |
                                            ImGuiTableFlags_SizingFixedFit |
-                                           ImGuiTableFlags_Resizable |
-                                           ImGuiTableFlags_Sortable;
+                                           ImGuiTableFlags_Resizable | ImGuiTableFlags_Sortable;
 
   ImGui::BeginGroup();
-  if (ImGui::BeginTable(db_table_id.c_str(),
-                        col_count,
-                        k_TableFlags,
-                        ImVec2(-k_NavStripW - nav_gap, -30))) {
+  if (ImGui::BeginTable(
+          db_table_id.c_str(), col_count, k_TableFlags, ImVec2(-k_NavStripW - nav_gap, -30))) {
     ImGui::TableSetupScrollFreeze(0, 1);
     for (int c = 0; c < col_count; ++c) {
       ImGui::TableSetupColumn(db_table_data_.columns[static_cast<std::size_t>(c)].name.c_str(),
@@ -249,8 +250,7 @@ void GuiApp::render_db_tab() {
       if (sort_specs->SpecsDirty) {
         if (sort_specs->SpecsCount > 0) {
           db_sort_col_ = sort_specs->Specs[0].ColumnIndex;
-          db_sort_ascending_ =
-              (sort_specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
+          db_sort_ascending_ = (sort_specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
         } else {
           db_sort_col_ = -1;
         }
@@ -321,7 +321,6 @@ void GuiApp::render_db_tab() {
   }
 }
 
-
 void GuiApp::rebuild_db_lower_cache() {
   db_table_lower_rows_.clear();
   db_table_lower_rows_.reserve(db_table_data_.rows.size());
@@ -363,8 +362,7 @@ void GuiApp::apply_db_filter_sort() {
   }
 
   // Sort the filtered indices.
-  if (db_sort_col_ < 0 ||
-      db_sort_col_ >= static_cast<int>(db_table_data_.columns.size())) {
+  if (db_sort_col_ < 0 || db_sort_col_ >= static_cast<int>(db_table_data_.columns.size())) {
     return;
   }
   const std::size_t sort_col = static_cast<std::size_t>(db_sort_col_);
@@ -385,9 +383,7 @@ void GuiApp::apply_db_filter_sort() {
                           col_type_lower.find("numeric") != std::string::npos;
 
   std::stable_sort(
-      db_display_rows_.begin(),
-      db_display_rows_.end(),
-      [&](std::size_t a, std::size_t b) {
+      db_display_rows_.begin(), db_display_rows_.end(), [&](std::size_t a, std::size_t b) {
         const auto& ra = db_table_data_.rows[a];
         const auto& rb = db_table_data_.rows[b];
         const std::string& va = (sort_col < ra.size()) ? ra[sort_col] : "";
