@@ -1,5 +1,4 @@
 #include "gui_app.hpp"
-
 #include "gui_app_shared.hpp"
 
 namespace romulus::gui {

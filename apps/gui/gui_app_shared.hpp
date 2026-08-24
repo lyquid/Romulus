@@ -62,12 +62,12 @@ inline constexpr int k_GameColStatus = 0;
 inline constexpr int k_GameColName = 1;
 
 // Status colours
-inline constexpr ImVec4 k_ColorVerified{0.2F, 0.9F, 0.3F, 1.0F};      // green
-inline constexpr ImVec4 k_ColorMissing{1.0F, 0.3F, 0.3F, 1.0F};       // red
-inline constexpr ImVec4 k_ColorCrcMatch{1.0F, 0.9F, 0.2F, 1.0F};      // yellow
-inline constexpr ImVec4 k_ColorMd5Match{0.9F, 0.7F, 0.1F, 1.0F};      // amber
-inline constexpr ImVec4 k_ColorHashConflict{1.0F, 0.4F, 0.0F, 1.0F};  // orange-red
-inline constexpr ImVec4 k_ColorMismatch{1.0F, 0.5F, 0.0F, 1.0F};      // orange
+inline constexpr ImVec4 k_ColorVerified{0.2F, 0.9F, 0.3F, 1.0F};     // green
+inline constexpr ImVec4 k_ColorMissing{1.0F, 0.3F, 0.3F, 1.0F};      // red
+inline constexpr ImVec4 k_ColorCrcMatch{1.0F, 0.9F, 0.2F, 1.0F};     // yellow
+inline constexpr ImVec4 k_ColorMd5Match{0.9F, 0.7F, 0.1F, 1.0F};     // amber
+inline constexpr ImVec4 k_ColorHashConflict{1.0F, 0.4F, 0.0F, 1.0F}; // orange-red
+inline constexpr ImVec4 k_ColorMismatch{1.0F, 0.5F, 0.0F, 1.0F};     // orange
 inline constexpr ImVec4 k_ColorWrongName{0.35F, 0.75F, 1.0F, 1.0F};  // blue
 inline constexpr ImVec4 k_ColorExtra{0.75F, 0.55F, 0.95F, 1.0F};     // violet
 inline constexpr ImVec4 k_ColorDuplicate{0.25F, 0.80F, 0.85F, 1.0F}; // cyan

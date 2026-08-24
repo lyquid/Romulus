@@ -13,8 +13,7 @@ namespace {
 /// Derived from the test suite name and test name so parallel CTest runs cannot collide.
 [[nodiscard]] std::filesystem::path make_unique_db_path(std::string_view suffix = "") {
   const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
-  std::string name =
-      std::string("romulus_") + info->test_suite_name() + "_" + info->name();
+  std::string name = std::string("romulus_") + info->test_suite_name() + "_" + info->name();
   if (!suffix.empty()) {
     name += "_";
     name += suffix;
@@ -77,9 +76,8 @@ protected:
   }
 
   void seed_data() {
-    romulus::core::DatVersion dat{.name = "Test",
-                                  .version = "1.0",
-                                  .source_url = {}, .dat_sha256 = "abc", .imported_at = {}};
+    romulus::core::DatVersion dat{
+        .name = "Test", .version = "1.0", .source_url = {}, .dat_sha256 = "abc", .imported_at = {}};
     auto dat_id = db_->insert_dat_version(dat);
     ASSERT_TRUE(dat_id.has_value());
 
@@ -275,9 +273,11 @@ TEST_F(MatcherTest, MatchesMd5OnlyWhenOnlyMd5HashIsAvailable) {
 TEST_F(MatcherTest, Sha1MatchDegradesToSha1OnlyWhenSha256Disagrees) {
   TempDb tdb(make_unique_db_path("tdb"));
 
-  romulus::core::DatVersion dat{
-      .name = "Sha256ExactTest", .version = "1.0", .source_url = {}, .dat_sha256 = "x1",
-      .imported_at = {}};
+  romulus::core::DatVersion dat{.name = "Sha256ExactTest",
+                                .version = "1.0",
+                                .source_url = {},
+                                .dat_sha256 = "x1",
+                                .imported_at = {}};
   auto dat_id = tdb->insert_dat_version(dat);
   ASSERT_TRUE(dat_id.has_value());
 
@@ -287,7 +287,8 @@ TEST_F(MatcherTest, Sha1MatchDegradesToSha1OnlyWhenSha256Disagrees) {
   // DAT ROM: SHA1 matches file, but SHA256 in DAT disagrees with file's SHA256.
   const std::string sha1 = "aaaa0000aaaa0000aaaa0000aaaa0000aaaa0000";
   const std::string dat_sha256 = "dddd0000dddd0000dddd0000dddd0000dddd0000dddd0000dddd0000dddd0000";
-  const std::string file_sha256 = "eeee1111eeee1111eeee1111eeee1111eeee1111eeee1111eeee1111eeee1111";
+  const std::string file_sha256 =
+      "eeee1111eeee1111eeee1111eeee1111eeee1111eeee1111eeee1111eeee1111";
 
   romulus::core::RomInfo rom{.game_id = *game_id,
                              .name = "mismatch_sha256.bin",
@@ -326,9 +327,11 @@ TEST_F(MatcherTest, Sha1MatchDegradesToSha1OnlyWhenSha256Disagrees) {
 TEST_F(MatcherTest, Sha1MatchIsExactWhenSha256AlsoAgrees) {
   TempDb tdb(make_unique_db_path("tdb"));
 
-  romulus::core::DatVersion dat{
-      .name = "Sha256ExactTest2", .version = "1.0", .source_url = {}, .dat_sha256 = "x2",
-      .imported_at = {}};
+  romulus::core::DatVersion dat{.name = "Sha256ExactTest2",
+                                .version = "1.0",
+                                .source_url = {},
+                                .dat_sha256 = "x2",
+                                .imported_at = {}};
   auto dat_id = tdb->insert_dat_version(dat);
   ASSERT_TRUE(dat_id.has_value());
 
@@ -374,9 +377,11 @@ TEST_F(MatcherTest, Sha1MatchIsExactWhenSha256AlsoAgrees) {
 TEST_F(MatcherTest, Sha256LeadMatchIsExactWhenAllHashesAgree) {
   TempDb tdb(make_unique_db_path("tdb"));
 
-  romulus::core::DatVersion dat{
-      .name = "Sha256LeadExact", .version = "1.0", .source_url = {}, .dat_sha256 = "z1",
-      .imported_at = {}};
+  romulus::core::DatVersion dat{.name = "Sha256LeadExact",
+                                .version = "1.0",
+                                .source_url = {},
+                                .dat_sha256 = "z1",
+                                .imported_at = {}};
   auto dat_id = tdb->insert_dat_version(dat);
   ASSERT_TRUE(dat_id.has_value());
 
@@ -392,7 +397,7 @@ TEST_F(MatcherTest, Sha256LeadMatchIsExactWhenAllHashesAgree) {
                              .size = 256,
                              .crc32 = "12345678",
                              .md5 = "1234567890abcdef1234567890abcdef",
-                             .sha1 = {},     // DAT has no SHA1
+                             .sha1 = {}, // DAT has no SHA1
                              .sha256 = sha256,
                              .region = {}};
   ASSERT_TRUE(tdb->insert_rom(rom).has_value());
@@ -423,9 +428,11 @@ TEST_F(MatcherTest, Sha256LeadMatchIsExactWhenAllHashesAgree) {
 TEST_F(MatcherTest, Sha256LeadMatchIsSha256OnlyWhenLowerHashDisagrees) {
   TempDb tdb(make_unique_db_path("tdb"));
 
-  romulus::core::DatVersion dat{
-      .name = "Sha256LeadPartial", .version = "1.0", .source_url = {}, .dat_sha256 = "z2",
-      .imported_at = {}};
+  romulus::core::DatVersion dat{.name = "Sha256LeadPartial",
+                                .version = "1.0",
+                                .source_url = {},
+                                .dat_sha256 = "z2",
+                                .imported_at = {}};
   auto dat_id = tdb->insert_dat_version(dat);
   ASSERT_TRUE(dat_id.has_value());
 
@@ -471,9 +478,11 @@ TEST_F(MatcherTest, Sha256LeadMatchIsSha256OnlyWhenLowerHashDisagrees) {
 TEST_F(MatcherTest, Crc32TiebreakerPrefersNonArchiveFile) {
   TempDb tdb(make_unique_db_path("tdb"));
 
-  romulus::core::DatVersion dat{
-      .name = "CRC32BareTBTest", .version = "1.0", .source_url = {}, .dat_sha256 = "y2",
-      .imported_at = {}};
+  romulus::core::DatVersion dat{.name = "CRC32BareTBTest",
+                                .version = "1.0",
+                                .source_url = {},
+                                .dat_sha256 = "y2",
+                                .imported_at = {}};
   auto dat_id = tdb->insert_dat_version(dat);
   ASSERT_TRUE(dat_id.has_value());
 

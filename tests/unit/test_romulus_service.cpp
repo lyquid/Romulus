@@ -1,6 +1,5 @@
-#include "romulus/service/romulus_service.hpp"
-
 #include "romulus/core/error.hpp"
+#include "romulus/service/romulus_service.hpp"
 
 #include <gtest/gtest.h>
 
@@ -18,8 +17,8 @@ protected:
   void SetUp() override {
     // Use a unique DB filename per test to avoid collisions under parallel CTest runs.
     const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
-    const std::string unique_name = std::string("romulus_svc_") + info->test_suite_name() +
-                                    "_" + info->name() + ".db";
+    const std::string unique_name =
+        std::string("romulus_svc_") + info->test_suite_name() + "_" + info->name() + ".db";
     db_path_ = std::filesystem::temp_directory_path() / unique_name;
     std::filesystem::remove(db_path_);
     std::filesystem::remove(db_path_.string() + "-wal");

@@ -193,8 +193,7 @@ int main(int argc, char** argv) {
   // ── delete-dat ─────────────────────────────────────────────
   auto* cmd_delete_dat = app.add_subcommand("delete-dat", "Delete an imported DAT version by ID");
   std::int64_t delete_dat_id = 0;
-  cmd_delete_dat
-      ->add_option("id", delete_dat_id, "DAT version ID (see 'dats' command)")
+  cmd_delete_dat->add_option("id", delete_dat_id, "DAT version ID (see 'dats' command)")
       ->required();
 
   // ── status ─────────────────────────────────────────────────

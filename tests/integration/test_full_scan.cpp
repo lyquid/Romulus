@@ -46,7 +46,8 @@ protected:
 
   std::filesystem::path db_path_;
   std::filesystem::path rom_dir_;
-  std::filesystem::path other_dir_; ///< Secondary scan directory; created on demand by individual tests
+  std::filesystem::path
+      other_dir_; ///< Secondary scan directory; created on demand by individual tests
 };
 
 TEST_F(FullScanTest, ImportDatAndScanDirectory) {
@@ -336,9 +337,8 @@ TEST_F(FullScanTest, ScanPreservesFilesFromOtherDirectories) {
   ASSERT_TRUE(files_after.has_value());
   ASSERT_EQ(files_after->size(), 1u);
   // get_all_files() does not guarantee a stable row order, so search rather than index front().
-  EXPECT_TRUE(std::ranges::any_of(*files_after, [](const auto& f) {
-    return f.path.find("other.bin") != std::string::npos;
-  }));
+  EXPECT_TRUE(std::ranges::any_of(
+      *files_after, [](const auto& f) { return f.path.find("other.bin") != std::string::npos; }));
 }
 
 } // namespace

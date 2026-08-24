@@ -714,8 +714,8 @@ Result<void> Database::delete_dat_version(std::int64_t id) {
   del_matches->bind_int64(1, id);
   del_matches->execute();
 
-  auto del_roms = prepare(
-      "DELETE FROM roms WHERE game_id IN (SELECT id FROM games WHERE dat_version_id = ?1)");
+  auto del_roms =
+      prepare("DELETE FROM roms WHERE game_id IN (SELECT id FROM games WHERE dat_version_id = ?1)");
   if (!del_roms) {
     return std::unexpected(del_roms.error());
   }
@@ -1144,7 +1144,8 @@ Result<std::vector<core::FileTiebreakInfo>> Database::get_file_tiebreak_info() {
   return files;
 }
 
-Result<core::FingerprintMap> Database::get_file_fingerprints() {  auto stmt = prepare("SELECT path, size, last_write_time FROM files");
+Result<core::FingerprintMap> Database::get_file_fingerprints() {
+  auto stmt = prepare("SELECT path, size, last_write_time FROM files");
   if (!stmt) {
     return std::unexpected(stmt.error());
   }
@@ -1446,8 +1447,8 @@ Result<core::RomStatusType> Database::get_computed_rom_status(std::int64_t rom_i
 
   bool has_any_match = false;
   bool has_exact = false;
-  bool has_md5_match = false;  // MD5 / SHA1 / SHA256 partial match
-  bool has_crc_match = false;  // CRC32-only match
+  bool has_md5_match = false; // MD5 / SHA1 / SHA256 partial match
+  bool has_crc_match = false; // CRC32-only match
   std::string first_matched_sha1;
   bool has_conflict = false;
 
@@ -1572,15 +1573,14 @@ Result<core::CollectionSummary> Database::get_collection_summary(
   // Slow path: compute status dynamically using a CTE.
   // Used when the cache is absent, empty, or only partially covers the scope.
   // Uses k_StatusCaseSql for the status computation (same logic as refresh_status_cache).
-  std::string sql =
-      std::string("WITH computed AS ("
-                  "  SELECT r.id AS rom_id, ") +
-      std::string(k_StatusCaseSql) +
-      " AS status"
-      "  FROM roms r"
-      "  JOIN games g ON r.game_id = g.id"
-      "  LEFT JOIN rom_matches rm ON r.id = rm.rom_id"
-      "  LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1";
+  std::string sql = std::string("WITH computed AS ("
+                                "  SELECT r.id AS rom_id, ") +
+                    std::string(k_StatusCaseSql) +
+                    " AS status"
+                    "  FROM roms r"
+                    "  JOIN games g ON r.game_id = g.id"
+                    "  LEFT JOIN rom_matches rm ON r.id = rm.rom_id"
+                    "  LEFT JOIN files f ON rm.global_rom_sha1 = f.sha1";
 
   if (dat_version_id.has_value()) {
     sql += "  WHERE g.dat_version_id = ?1";
@@ -1624,18 +1624,17 @@ Result<core::CollectionSummary> Database::get_collection_summary(
   return summary;
 }
 
-Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>>
-Database::get_all_roms_with_status(std::int64_t dat_version_id) {
+Result<std::vector<std::pair<core::RomInfo, core::RomStatusType>>> Database::
+    get_all_roms_with_status(std::int64_t dat_version_id) {
   // Coverage check: if every ROM for this DAT has a cached status row, use the
   // simple cache-only query (no rom_matches/files joins, no GROUP BY aggregate).
   // Otherwise fall through to the COALESCE computed query, which inlines
   // k_StatusCaseSql so the result is correct even on a cold or partial cache.
-  constexpr std::string_view k_CoverageSql =
-      "SELECT COUNT(r.id), COUNT(rsc.rom_id) "
-      "FROM roms r "
-      "JOIN games g ON r.game_id = g.id "
-      "LEFT JOIN rom_status_cache rsc ON r.id = rsc.rom_id "
-      "WHERE g.dat_version_id = ?1";
+  constexpr std::string_view k_CoverageSql = "SELECT COUNT(r.id), COUNT(rsc.rom_id) "
+                                             "FROM roms r "
+                                             "JOIN games g ON r.game_id = g.id "
+                                             "LEFT JOIN rom_status_cache rsc ON r.id = rsc.rom_id "
+                                             "WHERE g.dat_version_id = ?1";
 
   bool has_complete_cache = false;
   auto cov = prepare(k_CoverageSql);
@@ -1657,10 +1656,9 @@ Database::get_all_roms_with_status(std::int64_t dat_version_id) {
             "JOIN rom_status_cache rsc ON r.id = rsc.rom_id "
             "WHERE g.dat_version_id = ?1 "
             "ORDER BY g.name, r.name"
-          : std::string(
-                "SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
-                "  r.crc32, r.md5, r.expected_sha1, r.sha256, r.region, "
-                "  COALESCE(rsc.status, ") +
+          : std::string("SELECT r.id, r.game_id, g.dat_version_id, g.name, r.name, r.size, "
+                        "  r.crc32, r.md5, r.expected_sha1, r.sha256, r.region, "
+                        "  COALESCE(rsc.status, ") +
                 std::string(k_StatusCaseSql) +
                 ") AS status "
                 "FROM roms r "
@@ -1878,21 +1876,20 @@ Result<core::MatchedFilePathMap> Database::get_matched_file_paths(
   // candidate either because several files share the winning content (duplicate copies) or,
   // in the rare HashConflict case, because more than one rom_matches row exists for it —
   // both are handled uniformly since neither is restricted to a single global_rom_sha1 here.
-  std::string sql =
-      "WITH ranked AS ("
-      "  SELECT rm.rom_id AS rom_id, f.path AS path,"
-      "    ROW_NUMBER() OVER ("
-      "      PARTITION BY rm.rom_id"
-      "      ORDER BY rm.match_type ASC,"
-      "               (f.entry_name IS NOT NULL) ASC,"
-      "               LENGTH(f.path) ASC,"
-      "               f.last_write_time DESC,"
-      "               f.path ASC"
-      "    ) AS rn"
-      "  FROM rom_matches rm"
-      "  JOIN roms r ON r.id = rm.rom_id"
-      "  JOIN games g ON g.id = r.game_id"
-      "  JOIN files f ON f.sha1 = rm.global_rom_sha1";
+  std::string sql = "WITH ranked AS ("
+                    "  SELECT rm.rom_id AS rom_id, f.path AS path,"
+                    "    ROW_NUMBER() OVER ("
+                    "      PARTITION BY rm.rom_id"
+                    "      ORDER BY rm.match_type ASC,"
+                    "               (f.entry_name IS NOT NULL) ASC,"
+                    "               LENGTH(f.path) ASC,"
+                    "               f.last_write_time DESC,"
+                    "               f.path ASC"
+                    "    ) AS rn"
+                    "  FROM rom_matches rm"
+                    "  JOIN roms r ON r.id = rm.rom_id"
+                    "  JOIN games g ON g.id = r.game_id"
+                    "  JOIN files f ON f.sha1 = rm.global_rom_sha1";
   if (dat_version_id.has_value()) {
     sql += "  WHERE g.dat_version_id = ?1";
   }

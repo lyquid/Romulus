@@ -298,8 +298,8 @@ void GuiApp::run() {
         const auto& dv = dat_versions_[static_cast<std::size_t>(selected_dat_index_)];
         ImGui::Text("Delete DAT version:");
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0F, 0.8F, 0.2F, 1.0F), "%s v%s", dv.name.c_str(),
-                           dv.version.c_str());
+        ImGui::TextColored(
+            ImVec4(1.0F, 0.8F, 0.2F, 1.0F), "%s v%s", dv.name.c_str(), dv.version.c_str());
         ImGui::Text("This will remove its games, ROMs, and match records.");
         ImGui::Text("Scanned files are preserved. This action cannot be undone!");
       }

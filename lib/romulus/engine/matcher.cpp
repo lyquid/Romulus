@@ -59,8 +59,7 @@ namespace {
 
         if (is_bare) {
           // Bare file always beats archive entry; within bare files prefer shorter path / newer
-          if (!s.has_bare_file || plen < s.path_len ||
-              (plen == s.path_len && mt > s.mtime)) {
+          if (!s.has_bare_file || plen < s.path_len || (plen == s.path_len && mt > s.mtime)) {
             s.has_bare_file = true;
             s.path_len = plen;
             s.mtime = mt;
