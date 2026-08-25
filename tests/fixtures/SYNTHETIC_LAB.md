@@ -25,6 +25,14 @@ synthetic/
     duplicates/
     unknown/
     archives/
+  operations/
+    wrong-name-free/
+    destination-identical/
+    destination-conflict/
+    source-disappears/
+    already-correct/
+    partial-batch/
+    archive-deferred/
   expected/
     scenario_manifest.json
 ```
@@ -97,6 +105,21 @@ partial matches, 4 extras (3 known elsewhere + 1 globally unknown), and 4 duplic
 Summary: 5 expected, 3 correct, 2 wrong-name, 0 missing, 6 extras (5 known elsewhere +
 1 globally unknown), and the same 4 alpha duplicate rows.
 
+## Rename-operation scenarios
+
+The `operations` tree is deliberately separate from `sources`. Tests scan one scenario directory at
+a time, so mutation cases cannot alter the permanent #134 audit counts.
+
+| Directory | Safety case |
+|---|---|
+| `wrong-name-free` | Exact beta content has a wrong name and the canonical destination is absent. |
+| `destination-identical` | Both names contain identical bytes; the source must remain untouched. |
+| `destination-conflict` | The canonical path contains different beta-v2 bytes and must never be overwritten. |
+| `source-disappears` | The source is removed after preview to exercise execution-time rechecking. |
+| `already-correct` | The physical filename is already canonical, producing an explicit no-op. |
+| `partial-batch` | Independent alpha/beta renames let one fail without erasing the other's result. |
+| `archive-deferred` | A wrong-name archive entry is planned as unsupported without changing its container. |
+
 ## Deliberate boundaries
 
 - The generator emits SHA-256 for full DAT entries and records it in the manifest. The current DAT
@@ -106,8 +129,9 @@ Summary: 5 expected, 3 correct, 2 wrong-name, 0 missing, 6 extras (5 known elsew
   `HashConflict` status therefore remains a lower-level database/`DatAuditor` unit fixture.
 - The lab does not brute-force a CRC32 collision. Existing matcher/database fixtures are a clearer,
   deterministic way to cover that policy.
-- Reserved manifest IDs name future #129/#130/#132 situations only. No operation planning,
-  renaming, Set Builder, or hardlink behavior is implemented here.
+- Reserved manifest IDs now cover only future #130/#132 situations. #129 operation scenarios are
+  implemented under the isolated `operations` tree; Set Builder and hardlink behavior remain out of
+  scope.
 
 Extend this generator and vocabulary for later roadmap work instead of creating disconnected
 one-off fixture families.

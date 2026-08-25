@@ -370,6 +370,18 @@ json expected_manifest(const std::map<std::string, Payload, std::less<>>& payloa
       {"archive_exact", "sources/archives/naming-cases.zip::Archive Exact (World).rom"},
       {"archive_wrong_name", "sources/archives/naming-cases.zip::Archive Goblin.rom"},
   };
+  manifest["operation_scenarios"] = {
+      {"wrong_name_free", "operations/wrong-name-free/Beta Goblin.rom"},
+      {"destination_identical_source", "operations/destination-identical/Beta Goblin.rom"},
+      {"destination_identical_target", "operations/destination-identical/Beta (World).rom"},
+      {"destination_conflict_source", "operations/destination-conflict/Beta Goblin.rom"},
+      {"destination_conflict_target", "operations/destination-conflict/Beta (World).rom"},
+      {"planned_source_missing", "operations/source-disappears/Beta Goblin.rom"},
+      {"already_correct", "operations/already-correct/Beta (World).rom"},
+      {"partial_batch_alpha", "operations/partial-batch/Alpha Goblin.rom"},
+      {"partial_batch_beta", "operations/partial-batch/Beta Goblin.rom"},
+      {"archive_deferred", "operations/archive-deferred/archive-name.zip::Archive Goblin.rom"},
+  };
 
   // Counts intentionally overlap: duplicate rows describe physical copies while the expectation
   // counts describe the selected DAT checklist. This mirrors DatAuditSummary rather than forcing
@@ -435,15 +447,18 @@ json expected_manifest(const std::map<std::string, Payload, std::less<>>& payloa
         "dat_hash_change",
         "md5_fallback",
         "crc32_fallback",
-        "contradictory_hash_metadata"}},
-      // These IDs reserve a common language for later roadmap work without implementing any
-      // operation planner, Set Builder, DAT-history UI, or hardlink behavior in this issue.
-      {"reserved",
-       {"rename_destination_identical",
+        "contradictory_hash_metadata",
+        "rename_destination_free",
+        "rename_destination_identical",
         "rename_destination_conflict",
         "planned_source_missing",
         "rename_already_applied",
-        "source_a_incomplete",
+        "partial_rename_batch",
+        "archive_rename_deferred"}},
+      // These IDs reserve a common language for later roadmap work without implementing any
+      // operation planner, Set Builder, DAT-history UI, or hardlink behavior in this issue.
+      {"reserved",
+       {"source_a_incomplete",
         "source_b_incomplete",
         "sources_combined_complete",
         "multiple_valid_sources",
@@ -505,6 +520,7 @@ core::Result<SyntheticFixtureTree> generate_synthetic_fixture_lab(const fs::path
         .root = output_root,
         .dats = output_root / "dats",
         .sources = output_root / "sources",
+        .operations = output_root / "operations",
         .manifest = output_root / "expected" / "scenario_manifest.json",
     };
     for (const auto& directory : {tree.dats,
@@ -514,6 +530,13 @@ core::Result<SyntheticFixtureTree> generate_synthetic_fixture_lab(const fs::path
                                   tree.sources / "duplicates",
                                   tree.sources / "unknown",
                                   tree.sources / "archives",
+                                  tree.operations / "wrong-name-free",
+                                  tree.operations / "destination-identical",
+                                  tree.operations / "destination-conflict",
+                                  tree.operations / "source-disappears",
+                                  tree.operations / "already-correct",
+                                  tree.operations / "partial-batch",
+                                  tree.operations / "archive-deferred",
                                   tree.manifest.parent_path()}) {
       fs::create_directories(directory);
     }
@@ -541,6 +564,26 @@ core::Result<SyntheticFixtureTree> generate_synthetic_fixture_lab(const fs::path
       }
     }
 
+    // Operation fixtures live outside `sources`, so adding mutation scenarios never changes the
+    // stable audit counts above. Each scenario directory is independently scannable by #129 tests.
+    const std::array<std::pair<fs::path, std::string_view>, 9> operation_files = {{
+        {tree.operations / "wrong-name-free" / "Beta Goblin.rom", "beta_v1"},
+        {tree.operations / "destination-identical" / "Beta Goblin.rom", "beta_v1"},
+        {tree.operations / "destination-identical" / "Beta (World).rom", "beta_v1"},
+        {tree.operations / "destination-conflict" / "Beta Goblin.rom", "beta_v1"},
+        {tree.operations / "destination-conflict" / "Beta (World).rom", "beta_v2"},
+        {tree.operations / "source-disappears" / "Beta Goblin.rom", "beta_v1"},
+        {tree.operations / "already-correct" / "Beta (World).rom", "beta_v1"},
+        {tree.operations / "partial-batch" / "Alpha Goblin.rom", "alpha_v1"},
+        {tree.operations / "partial-batch" / "Beta Goblin.rom", "beta_v1"},
+    }};
+    for (const auto& [path, payload_id] : operation_files) {
+      auto written = write_text_file(path, payloads.at(std::string{payload_id}).bytes);
+      if (!written) {
+        return std::unexpected(written.error());
+      }
+    }
+
     const std::array alpha_archive = {
         ArchiveMember{.entry_name = "Alpha Archive Copy.rom", .payload_id = "alpha_v1"},
     };
@@ -560,6 +603,15 @@ core::Result<SyntheticFixtureTree> generate_synthetic_fixture_lab(const fs::path
         write_zip(tree.sources / "archives" / "naming-cases.zip", naming_archive, payloads);
     if (!naming_zip) {
       return std::unexpected(naming_zip.error());
+    }
+
+    const std::array deferred_archive = {
+        ArchiveMember{.entry_name = "Archive Goblin.rom", .payload_id = "archive_wrong"},
+    };
+    auto deferred_zip = write_zip(
+        tree.operations / "archive-deferred" / "archive-name.zip", deferred_archive, payloads);
+    if (!deferred_zip) {
+      return std::unexpected(deferred_zip.error());
     }
 
     for (const auto& dat : dat_definitions()) {

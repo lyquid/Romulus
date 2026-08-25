@@ -1,16 +1,26 @@
 #include "romulus/service/romulus_service.hpp"
 
+#include "romulus/core/error.hpp"
 #include "romulus/core/logging.hpp"
+#include "romulus/core/types.hpp"
 #include "romulus/dat/dat_fetcher.hpp"
 #include "romulus/dat/dat_parser.hpp"
 #include "romulus/database/database.hpp"
 #include "romulus/engine/classifier.hpp"
 #include "romulus/engine/dat_auditor.hpp"
 #include "romulus/engine/matcher.hpp"
+#include "romulus/operations/operation_executor.hpp"
+#include "romulus/operations/operation_planner.hpp"
+#include "romulus/operations/operation_types.hpp"
 #include "romulus/report/report_generator.hpp"
 #include "romulus/scanner/rom_scanner.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
+#include <map>
+#include <set>
+#include <string>
 #include <utility>
 
 namespace romulus::service {
@@ -367,6 +377,160 @@ Result<void> RomulusService::refresh_dat_audit(std::int64_t dat_version_id) {
 
 Result<core::DatAudit> RomulusService::get_dat_audit(std::int64_t dat_version_id) {
   return engine::DatAuditor::audit(*db_, dat_version_id);
+}
+
+Result<operations::OperationPlan> RomulusService::plan_wrong_name_renames(
+    std::int64_t dat_version_id) {
+  auto audit = get_dat_audit(dat_version_id);
+  if (!audit) {
+    return std::unexpected(audit.error());
+  }
+
+  std::vector<operations::RenameRequest> requests;
+  requests.reserve(static_cast<std::size_t>(audit->summary.wrong_name));
+  for (const auto& row : audit->rows) {
+    if (row.status != core::DatAuditStatus::WrongCanonicalName) {
+      continue;
+    }
+
+    // The audit row is policy-facing; resolve it back to the content-indexed file record so every
+    // mutation carries the SHA-1 and physical container identity that make it safe to re-check.
+    auto resolved_file = db_->find_file_by_path(row.file_path);
+    if (!resolved_file) {
+      return std::unexpected(resolved_file.error());
+    }
+    if (!*resolved_file) {
+      return std::unexpected(core::Error{
+          core::ErrorCode::NotFound,
+          "Wrong-name audit row no longer resolves to a scanned file: " + row.file_path});
+    }
+
+    const auto& file = **resolved_file;
+    requests.push_back({
+        .source_path = file.archive_path ? std::filesystem::path{*file.archive_path}
+                                         : std::filesystem::path{file.path},
+        .source_entry_name = file.entry_name,
+        .content_sha1 = file.sha1,
+        .selected_dat_id = dat_version_id,
+        .expected_rom_id = row.rom_id,
+        .expected_rom_name = row.canonical_name,
+        .reason = row.reason,
+    });
+  }
+
+  // Stable ordering makes previews diffable and operation IDs reproducible even if a database
+  // query changes row order. ROM identity is primary; source path breaks the rare identity tie.
+  std::ranges::sort(requests, [](const auto& left, const auto& right) {
+    if (left.expected_rom_id != right.expected_rom_id) {
+      return left.expected_rom_id < right.expected_rom_id;
+    }
+    return left.source_path.generic_string() < right.source_path.generic_string();
+  });
+
+  return operations::OperationPlanner::plan_renames("rename-dat-" + std::to_string(dat_version_id),
+                                                    requests);
+}
+
+Result<operations::OperationBatchResult> RomulusService::execute_operation_plan(
+    const operations::OperationPlan& plan) {
+  auto batch = operations::OperationExecutor::execute(plan);
+
+  // Re-scan each affected folder once, even when a batch renamed several siblings. This updates
+  // the destination identity and lets the existing stale-path pruning remove old DB truth.
+  std::set<std::filesystem::path> affected_directories;
+  std::set<std::int64_t> affected_dats;
+  for (const auto& result : batch.results) {
+    if (result.filesystem_changed) {
+      affected_directories.insert(result.operation.destination_path.parent_path());
+      affected_dats.insert(result.operation.selected_dat_id);
+    }
+  }
+
+  std::map<std::filesystem::path, std::string> scan_failures;
+  for (const auto& directory : affected_directories) {
+    auto scan = scan_directory(directory);
+    if (!scan) {
+      scan_failures.emplace(directory, scan.error().message);
+    }
+  }
+
+  std::map<std::int64_t, std::string> audit_failures;
+  std::map<std::int64_t, core::DatAudit> refreshed_audits;
+  for (const auto dat_id : affected_dats) {
+    auto refreshed = refresh_dat_audit(dat_id);
+    if (!refreshed) {
+      audit_failures.emplace(dat_id, refreshed.error().message);
+      continue;
+    }
+    auto audit = get_dat_audit(dat_id);
+    if (!audit) {
+      audit_failures.emplace(dat_id, audit.error().message);
+      continue;
+    }
+    refreshed_audits.emplace(dat_id, std::move(*audit));
+  }
+
+  for (auto& result : batch.results) {
+    if (result.status != operations::OperationResultStatus::Completed) {
+      continue;
+    }
+
+    const auto directory = result.operation.destination_path.parent_path();
+    if (const auto failed_scan = scan_failures.find(directory);
+        failed_scan != scan_failures.end()) {
+      result.verification = operations::VerificationStatus::Failed;
+      result.verification_detail = "Post-operation scan failed: " + failed_scan->second;
+      continue;
+    }
+    if (const auto failed_audit = audit_failures.find(result.operation.selected_dat_id);
+        failed_audit != audit_failures.end()) {
+      result.verification = operations::VerificationStatus::Failed;
+      result.verification_detail = "Post-operation audit refresh failed: " + failed_audit->second;
+      continue;
+    }
+
+    auto destination = db_->find_file_by_path(result.operation.destination_path.string());
+    auto stale_source = db_->find_file_by_path(result.operation.source_path.string());
+    if (!destination || !stale_source) {
+      const auto message =
+          !destination ? destination.error().message : stale_source.error().message;
+      result.verification = operations::VerificationStatus::Failed;
+      result.verification_detail = "Post-operation database lookup failed: " + message;
+      continue;
+    }
+    if (!*destination || (**destination).sha1 != result.operation.content_sha1) {
+      result.verification = operations::VerificationStatus::Failed;
+      result.verification_detail = "Destination is missing from DB truth or has the wrong SHA-1";
+      continue;
+    }
+    if (*stale_source) {
+      result.verification = operations::VerificationStatus::Failed;
+      result.verification_detail = "Stale source path remains in DB truth after re-scan";
+      continue;
+    }
+
+    const auto audit = refreshed_audits.find(result.operation.selected_dat_id);
+    if (audit == refreshed_audits.end()) {
+      result.verification = operations::VerificationStatus::Failed;
+      result.verification_detail = "Refreshed DAT audit is unavailable";
+      continue;
+    }
+    const auto correct_row = std::ranges::find_if(audit->second.rows, [&](const auto& row) {
+      return row.rom_id == result.operation.expected_rom_id &&
+             row.status == core::DatAuditStatus::Correct &&
+             row.file_path == result.operation.destination_path.string();
+    });
+    if (correct_row == audit->second.rows.end()) {
+      result.verification = operations::VerificationStatus::Failed;
+      result.verification_detail = "DAT audit did not confirm the canonical-name postcondition";
+      continue;
+    }
+
+    result.verification = operations::VerificationStatus::Passed;
+    result.verification_detail =
+        "Re-scan confirmed canonical content and removed the stale source path";
+  }
+  return batch;
 }
 
 Result<core::MatchedFilePathMap> RomulusService::get_matched_file_paths(

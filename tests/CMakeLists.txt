@@ -72,6 +72,7 @@ set(INTEGRATION_TEST_SOURCES
     integration/test_full_scan.cpp
     integration/test_dat_update.cpp
     integration/test_synthetic_scenario_lab.cpp
+    integration/test_operation_framework.cpp
 )
 
 add_executable(romulus_integration_tests ${INTEGRATION_TEST_SOURCES})
