@@ -36,6 +36,11 @@ set(ROMULUS_SOURCES
     engine/classifier.cpp
     engine/dat_auditor.cpp
 
+    # Filesystem operations
+    operations/operation_types.cpp
+    operations/operation_planner.cpp
+    operations/operation_executor.cpp
+
     # Report
     report/report_generator.cpp
 

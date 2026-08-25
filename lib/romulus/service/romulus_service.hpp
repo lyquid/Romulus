@@ -6,6 +6,7 @@
 
 #include "romulus/core/error.hpp"
 #include "romulus/core/types.hpp"
+#include "romulus/operations/operation_types.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -67,6 +68,12 @@ public:
   [[nodiscard]] Result<void> refresh_dat_audit(std::int64_t dat_version_id);
   /// Composes the current classifier, naming, selected-DAT extra, and duplicate states.
   [[nodiscard]] Result<core::DatAudit> get_dat_audit(std::int64_t dat_version_id);
+  /// Builds a preview-only rename plan from exact-content WrongCanonicalName audit findings.
+  [[nodiscard]] Result<operations::OperationPlan> plan_wrong_name_renames(
+      std::int64_t dat_version_id);
+  /// Executes a previously previewed plan, then re-scans and verifies each completed mutation.
+  [[nodiscard]] Result<operations::OperationBatchResult> execute_operation_plan(
+      const operations::OperationPlan& plan);
   /// Resolves the physical file backing each matched ROM in the given DAT — see
   /// Database::get_matched_file_paths().
   [[nodiscard]] Result<core::MatchedFilePathMap> get_matched_file_paths(

@@ -16,6 +16,7 @@ struct SyntheticFixtureTree {
   std::filesystem::path root{};
   std::filesystem::path dats{};
   std::filesystem::path sources{};
+  std::filesystem::path operations{};
   std::filesystem::path manifest{};
 };
 
