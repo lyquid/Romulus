@@ -1,5 +1,7 @@
 # ── Tests ─────────────────────────────────────────────────────
 find_package(GTest CONFIG REQUIRED)
+find_package(LibArchive REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 include(GoogleTest)
 
 # ── Test fixture path ─────────────────────────────────────────
@@ -66,8 +68,10 @@ gtest_discover_tests(romulus_gui_logic_tests)
 
 # ── Integration tests ─────────────────────────────────────────
 set(INTEGRATION_TEST_SOURCES
+    fixtures/synthetic_fixture_lab.cpp
     integration/test_full_scan.cpp
     integration/test_dat_update.cpp
+    integration/test_synthetic_scenario_lab.cpp
 )
 
 add_executable(romulus_integration_tests ${INTEGRATION_TEST_SOURCES})
@@ -77,6 +81,13 @@ target_link_libraries(romulus_integration_tests
         romulus::lib
         GTest::gtest
         GTest::gtest_main
+        LibArchive::LibArchive
+        nlohmann_json::nlohmann_json
+)
+
+target_include_directories(romulus_integration_tests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/fixtures
 )
 
 target_compile_features(romulus_integration_tests PRIVATE cxx_std_23)
@@ -90,3 +101,30 @@ target_compile_definitions(romulus_integration_tests
 romulus_set_warnings(romulus_integration_tests)
 
 gtest_discover_tests(romulus_integration_tests)
+
+# ── Manual synthetic fixture generator ───────────────────────
+# The executable and integration tests compile the same implementation. This is important: a
+# developer inspecting the GUI must see byte-for-byte the same hostile collection exercised by CI.
+add_executable(romulus_fixture_generator
+    fixtures/generate_synthetic_fixtures.cpp
+    fixtures/synthetic_fixture_lab.cpp
+)
+
+target_link_libraries(romulus_fixture_generator
+    PRIVATE
+        romulus::lib
+        LibArchive::LibArchive
+        nlohmann_json::nlohmann_json
+)
+
+target_include_directories(romulus_fixture_generator
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/fixtures
+)
+
+target_compile_features(romulus_fixture_generator PRIVATE cxx_std_23)
+romulus_set_warnings(romulus_fixture_generator)
+
+set_target_properties(romulus_fixture_generator PROPERTIES
+    OUTPUT_NAME romulus-fixture-generator
+)
